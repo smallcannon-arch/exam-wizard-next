@@ -3,6 +3,7 @@ import { asText } from "./schema.js";
 function jsonExampleFromIntents(intents) {
   return {
     items: intents.map((intent) => ({
+      intentId: intent.intentId,
       itemId: intent.itemId,
       groupId: intent.groupId || "",
       questionType: intent.questionType,
@@ -57,6 +58,7 @@ export function buildRegenerateItemPrompt({ project = {}, materialText = "", obj
     "請重新設計同一題。不要只是改寫原題文字，應重新設計情境、資料或提問方式。",
     "",
     "# 必須保留",
+    `intentId：${originalItem?.intentId ?? ""}`,
     `itemId：${originalItem?.itemId}`,
     `questionType：${originalItem?.questionType}`,
     `score：${originalItem?.score}`,

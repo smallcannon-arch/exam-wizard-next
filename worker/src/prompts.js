@@ -22,7 +22,8 @@ export function buildGenerateItemsPrompt({ project = {}, materialText = "", obje
     "",
     "# 輸出要求",
     "只輸出 JSON，不要 Markdown。格式：{\"items\":[...]}。",
-    "每題必須包含：itemId, groupId, questionType, cognitiveLevel, stimulus, question, options, answer, explanation, objectiveIds, primaryObjectiveId, secondaryObjectiveIds, score, estimatedTimeSeconds, difficulty, reviewFlags。",
+    "每題必須沿用題目藍圖的 intentId（例如 I-001）作為對照鍵，並沿用同一筆藍圖的 itemId（例如 Q-001）作為卷面題號；兩者都必須原樣回傳，不得自行重新編號。",
+    "每題必須包含：intentId, itemId, groupId, questionType, cognitiveLevel, stimulus, question, options, answer, explanation, objectiveIds, primaryObjectiveId, secondaryObjectiveIds, score, estimatedTimeSeconds, difficulty, reviewFlags。",
   ].join("\n");
 }
 
@@ -35,6 +36,7 @@ export function buildRegenerateItemPrompt({ project = {}, materialText = "", obj
     "請針對原題重新設計同一題。不要只是改寫文字，應重新設計情境或提問方式。",
     "",
     "# 必須保留",
+    `intentId：${originalItem.intentId || ""}`,
     `itemId：${originalItem.itemId}`,
     `groupId：${originalItem.groupId || ""}`,
     `questionType：${originalItem.questionType}`,

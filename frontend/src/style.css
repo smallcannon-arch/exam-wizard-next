@@ -141,6 +141,25 @@ button.danger {
 
 .notice.error { background: #fff1ef; color: var(--danger); border: 1px solid #f3b6ab; }
 .notice.success { background: #eef9f1; color: var(--success); border: 1px solid #bfe3cb; }
+.notice.loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--blue-soft);
+  color: var(--blue);
+  border: 1px solid #bcd3f3;
+  font-weight: 600;
+}
+.notice.loading .spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex: 0 0 auto;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 .table-wrap { overflow-x: auto; }
 

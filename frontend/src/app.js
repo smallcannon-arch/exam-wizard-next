@@ -7,10 +7,12 @@ import { replaceItemById } from "./core/replaceItem.js";
 import { renderStudentPaper, renderTeacherPaper } from "./core/renderPaper.js";
 import { generateItemsViaApi, regenerateItemViaApi } from "./apiClient.js";
 import { getApiBaseUrl } from "./config.js";
+import { validateGeneratedItemsAgainstIntents } from "./core/validateGeneratedItems.js";
 
 const app = document.querySelector("#app");
 let state = createInitialState();
 let busy = false;
+let busyItemId = null;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -94,9 +96,10 @@ async function generateItems() {
   }
 
   busy = true;
+  busyItemId = null;
   setState({
     errors: [],
-    messages: ["正在送出 AI 生成請求，請稍候……"],
+    messages: ["AI 正在生成試題草稿，請稍候……"],
   });
 
   try {
@@ -109,46 +112,45 @@ async function generateItems() {
     });
 
     if (!result?.ok || !Array.isArray(result.items)) {
-      setState({
-        errors: [result?.error || "AI 回傳格式錯誤。"],
-        messages: [],
-      });
-      return;
-    }
+  setState({
+    errors: [result?.error || "AI 回傳格式錯誤。"],
+    messages: [],
+  });
+  return;
+}
 
-    setState({
-      items: result.items,
-      errors: [],
-      messages: [`已產生 ${result.items.length} 個正式草稿計分單位。`],
-      step: 5,
-    });
+const generatedCheck = validateGeneratedItemsAgainstIntents({
+  intents: state.intents,
+  items: result.items,
+});
+
+if (!generatedCheck.ok) {
+  setState({
+    errors: generatedCheck.errors,
+    messages: ["AI 回傳題目不完整，尚未匯入正式草稿。請重新生成。"],
+  });
+  return;
+}
+
+setState({
+  items: result.items,
+  errors: [],
+  messages: [`已產生 ${result.items.length} 個正式草稿計分單位。`],
+  step: 5,
+});
   } catch (error) {
     setState({
       errors: [
         `AI 生成請求失敗：${error?.message || String(error)}`,
-        "請確認 Worker 是否仍在 ${getApiBaseUrl()} 執行。",
+        `請確認 Worker 是否仍在 ${getApiBaseUrl()} 執行。`,
       ],
       messages: [],
     });
   } finally {
     busy = false;
+    busyItemId = null;
     render();
   }
-}
-
-function mockGenerateItems() {
-  const items = state.intents.map((intent) => ({
-    ...intent,
-    stimulus: "",
-    question: `【示範題】請依據「${intent.primaryObjectiveId}」設計的${intent.questionType}題。`,
-    options: intent.questionType === "選擇題" ? ["選項一", "選項二", "選項三", "選項四"] : [],
-    answer: intent.questionType === "選擇題" ? "選項一" : "示範答案",
-    explanation: "這是離線示範題。正式使用時請接後端 AI。",
-    estimatedTimeSeconds: 60,
-    reviewFlags: ["MOCK_ITEM"],
-  }));
-
-  setState({ items, errors: [], messages: [`已產生 ${items.length} 題離線示範草稿。`], step: 5 });
 }
 
 async function regenerateItem(itemId) {
@@ -159,7 +161,8 @@ async function regenerateItem(itemId) {
   if (reason === null) return;
 
   busy = true;
-  render();
+  busyItemId = itemId;
+  setState({ errors: [], messages: [`AI 正在重新設計 ${itemId}，請稍候……`] });
 
   try {
     const objectiveIds = new Set(originalItem.objectiveIds || []);
@@ -190,27 +193,19 @@ async function regenerateItem(itemId) {
     }
 
     setState({ items: replacement.items, errors: [], messages: [`${itemId} 已重新出題，結構欄位已保留。`] });
+  } catch (error) {
+    setState({
+      errors: [
+        `AI 重出請求失敗：${error?.message || String(error)}`,
+        `請確認 Worker 是否仍在 ${getApiBaseUrl()} 執行。`,
+      ],
+      messages: [],
+    });
   } finally {
     busy = false;
+    busyItemId = null;
     render();
   }
-}
-
-function mockRegenerateItem(itemId) {
-  const originalItem = state.items.find((item) => item.itemId === itemId);
-  const replacement = replaceItemById({
-    items: state.items,
-    itemId,
-    regeneratedItem: {
-      ...originalItem,
-      question: `【重出示範】這是針對 ${itemId} 重新設計的題幹。`,
-      answer: originalItem.questionType === "選擇題" ? "選項二" : "新答案",
-      explanation: "離線示範：AI 重出時只替換內容欄位，不改題號、配分、目標與題型。",
-      reviewFlags: ["MOCK_REGENERATED"],
-    },
-  });
-
-  setState({ items: replacement.items, errors: [], messages: [`${itemId} 已離線示範重出。`] });
 }
 
 function updateItemField(itemId, field, value) {
@@ -276,8 +271,7 @@ function renderStep3Or4() {
       <tbody>${intents.slice(0, 80).map((intent) => `<tr><td>${intent.itemId}</td><td>${intent.primaryObjectiveId}</td><td>${escapeHtml(intent.themeBlockId)}</td><td>${escapeHtml(intent.questionType)}</td><td>${intent.score}</td></tr>`).join("")}</tbody>
     </table></div>
     <div class="actions">
-      <button data-action="generate-items" ${busy ? "disabled" : ""}>連線 AI 生成正式草稿</button>
-      <button class="secondary" data-action="mock-generate">離線產生示範題</button>
+      <button data-action="generate-items" ${busy ? "disabled" : ""}>${busy ? "AI 生成中……" : "連線 AI 生成正式草稿"}</button>
     </div>
   </section>`;
 }
@@ -297,8 +291,7 @@ function renderItems() {
       <label>答案<input data-item-field="answer" data-item-id="${escapeHtml(item.itemId)}" value="${escapeHtml(item.answer)}"></label>
       <label>解析<textarea data-item-field="explanation" data-item-id="${escapeHtml(item.itemId)}">${escapeHtml(item.explanation)}</textarea></label>
       <div class="actions">
-        <button data-action="regenerate-item" data-item-id="${escapeHtml(item.itemId)}" ${busy ? "disabled" : ""}>AI 重出此題</button>
-        <button class="secondary" data-action="mock-regenerate-item" data-item-id="${escapeHtml(item.itemId)}">離線重出示範</button>
+        <button data-action="regenerate-item" data-item-id="${escapeHtml(item.itemId)}" ${busy ? "disabled" : ""}>${busy && busyItemId === item.itemId ? "AI 重出中……" : "AI 重出此題"}</button>
       </div>
     </article>`).join("")}
     <div class="actions"><button data-next-step="6">前往檢核</button></div>
@@ -349,8 +342,16 @@ function renderCurrentStep() {
   return renderStep1();
 }
 
+function renderBusyBanner() {
+  if (!busy) return "";
+  const label = busyItemId
+    ? `AI 正在重新設計 ${escapeHtml(busyItemId)}，請稍候……`
+    : "AI 正在生成試題草稿，請稍候……";
+  return `<div class="notice loading" role="status" aria-live="polite"><span class="spinner" aria-hidden="true"></span>${label}</div>`;
+}
+
 function render() {
-  app.innerHTML = `${renderSteps()}${renderMessages()}${renderCurrentStep()}`;
+  app.innerHTML = `${renderSteps()}${renderBusyBanner()}${renderMessages()}${renderCurrentStep()}`;
 }
 
 app.addEventListener("input", (event) => {
@@ -394,9 +395,7 @@ app.addEventListener("click", (event) => {
   const action = actionButton.dataset.action;
   if (action === "build-blueprint") buildBlueprint();
   if (action === "generate-items") generateItems();
-  if (action === "mock-generate") mockGenerateItems();
   if (action === "regenerate-item") regenerateItem(actionButton.dataset.itemId);
-  if (action === "mock-regenerate-item") mockRegenerateItem(actionButton.dataset.itemId);
 });
 
 render();
