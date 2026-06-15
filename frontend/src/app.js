@@ -7,7 +7,7 @@ import { getQuestionTypeOptions, SUBJECT_OPTIONS } from "./core/questionTypes.js
 import { validateExam } from "./core/validation.js";
 import { replaceItemById } from "./core/replaceItem.js";
 import { renderStudentPaper, renderTeacherPaper } from "./core/renderPaper.js";
-import { extractObjectivesViaApi, generateItemsViaApi, normalizeObjectivesViaApi, regenerateItemViaApi } from "./apiClient.js";
+import { generateItemsViaApi, normalizeObjectivesViaApi, regenerateItemViaApi } from "./apiClient.js";
 import { normalizeExtractedObjectives, objectivesToInputText, parseObjectiveInput } from "./core/objectives.js";
 import { computeObjectiveShares, formatPercent } from "./core/periods.js";
 import { largestRemainder } from "./core/distribute.js";
@@ -236,54 +236,22 @@ setState({
   }
 }
 
-async function extractObjectives() {
-  if (!state.materialText || !state.materialText.trim()) {
-    setState({ errors: ["請先在第①步填入教材內容或摘要，再用 AI 提取目標。"], messages: [] });
+// 一鍵整理：用本機智慧解析，把貼上的雜亂指標轉成標準格式（含編號與節數）填回欄位。
+function organizeObjectives() {
+  const parsed = parseObjectiveInput(state.objectiveInput);
+  if (parsed.length === 0) {
+    setState({ errors: ["沒有可整理的內容，請先把 LLM／Gem 抓回的指標貼進「學習目標」欄。"], messages: [] });
     return;
   }
+  state.objectiveInput = parsed
+    .map((objective) => `${objective.text}｜${toPositiveIntegerSafe(objective.periodCount)}`)
+    .join("\n");
+  setState({ errors: [], messages: [`已整理出 ${parsed.length} 個學習指標，請確認下方預覽，沒問題就往下建立藍圖。`] });
+}
 
-  busy = true;
-  busyItemId = null;
-  busyLabel = "AI 正在從教材提取學習目標，請稍候……";
-  setState({ errors: [], messages: [] });
-
-  try {
-    const result = await extractObjectivesViaApi({
-      apiBaseUrl: getApiBaseUrl(),
-      project: state.project,
-      materialText: state.materialText,
-    });
-
-    if (!result?.ok || !Array.isArray(result.objectives)) {
-      setState({ errors: [result?.error || "AI 提取目標回傳格式錯誤。"], messages: [] });
-      return;
-    }
-
-    const objectives = normalizeExtractedObjectives(result.objectives);
-    if (objectives.length === 0) {
-      setState({ errors: ["AI 未提取到可用目標，請補充教材內容。"], messages: [] });
-      return;
-    }
-
-    state.objectiveInput = objectivesToInputText(objectives);
-    setState({
-      errors: [],
-      messages: [`AI 已提取 ${objectives.length} 個學習目標並填入下方欄位，請確認或修改後再建立藍圖。`],
-    });
-  } catch (error) {
-    setState({
-      errors: [
-        `AI 提取目標失敗：${error?.message || String(error)}`,
-        `請確認 Worker 是否仍在 ${getApiBaseUrl()} 執行。`,
-      ],
-      messages: [],
-    });
-  } finally {
-    busy = false;
-    busyItemId = null;
-    busyLabel = "";
-    render();
-  }
+function toPositiveIntegerSafe(value) {
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0 ? number : 1;
 }
 
 async function normalizeObjectives() {
@@ -476,15 +444,18 @@ function renderStep2() {
       </ol>
       不想用 Gem 也可以：直接在下方「學習目標」欄輸入，每行 <code>目標文字｜節數</code>（例：<code>1-2 動物適應環境的策略｜2</code>）。
     </div>
-    <label>學習目標（每行：目標文字｜節數）<textarea data-field="objectiveInput">${escapeHtml(state.objectiveInput)}</textarea></label>
-    ${renderObjectivePreview()}
-    <label>教材摘要（選填，建議貼上 Gem 摘出的課本／習作重點：國語的生字、語詞、句型、課文重點；其他科的核心概念與重要詞彙，供 AI 依課本實際內容出題）<textarea data-field="materialText">${escapeHtml(state.materialText)}</textarea></label>
-    <p class="notice">貼上後，下方會自動整理成預覽表。若整理得不夠好，按「用 AI 整理」交給 AI 重排一次。</p>
+    <label>學習目標（把 LLM／Gem 抓回的指標整段貼進來即可）<textarea data-field="objectiveInput">${escapeHtml(state.objectiveInput)}</textarea></label>
+    <p class="notice">貼好後按「整理學習目標」，系統會把它整理成帶編號與節數的標準格式（見下方預覽）。若整理得不理想，再按「用 AI 重排」。</p>
     <div class="actions">
-      <button class="secondary" data-action="normalize-objectives" ${busy ? "disabled" : ""}>${busy ? "AI 整理中……" : "用 AI 整理"}</button>
-      <button data-action="build-blueprint">建立配題與藍圖</button>
+      <button data-action="organize-objectives">整理學習目標</button>
+      <button class="secondary" data-action="normalize-objectives" ${busy ? "disabled" : ""}>${busy ? "AI 整理中……" : "用 AI 重排"}</button>
     </div>
     ${loadingLine()}
+    ${renderObjectivePreview()}
+    <label>教材摘要（選填，建議貼上 Gem 摘出的課本／習作重點：國語的生字、語詞、句型、課文重點；其他科的核心概念與重要詞彙，供 AI 依課本實際內容出題）<textarea data-field="materialText">${escapeHtml(state.materialText)}</textarea></label>
+    <div class="actions">
+      <button data-action="build-blueprint">確認目標，建立配題與藍圖</button>
+    </div>
   </section>`;
 }
 
@@ -656,7 +627,7 @@ app.addEventListener("click", (event) => {
   if (!actionButton) return;
 
   const action = actionButton.dataset.action;
-  if (action === "extract-objectives") extractObjectives();
+  if (action === "organize-objectives") organizeObjectives();
   if (action === "normalize-objectives") normalizeObjectives();
   if (action === "build-blueprint") buildBlueprint();
   if (action === "generate-items") generateItems();

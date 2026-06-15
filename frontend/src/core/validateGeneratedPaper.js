@@ -74,12 +74,13 @@ export function validateGeneratedPaper({ slots = [], objectives = [], items = []
       errors.push(`${id}：缺少 answer。`);
     }
 
-    if (normalizeId(item.questionType) === "選擇題") {
+    const CHOICE_LIKE = ["選擇題", "圖表判讀題", "實驗探究題"];
+    if (CHOICE_LIKE.includes(normalizeId(item.questionType))) {
       const optionCount = Array.isArray(item.options) ? item.options.length : 0;
       if (optionCount < 2) {
-        errors.push(`${id}：選擇題缺少選項。`);
+        errors.push(`${id}：${item.questionType}採選擇題形式，缺少選項。`);
       } else if (optionCount < 4) {
-        warnings.push(`提醒：${id} 選擇題只有 ${optionCount} 個選項（建議 4 個）。`);
+        warnings.push(`提醒：${id}（${item.questionType}）只有 ${optionCount} 個選項（建議 4 個）。`);
       }
     }
 

@@ -3,12 +3,14 @@ function numberToChinese(index) {
   return chars[index - 1] || String(index);
 }
 
-// 是非題、選擇題在題號前加作答括號（如 (      )1.）；其餘題型不加。
+// 選擇題形式（含實驗探究題、圖表判讀題）在題號前加作答括號（如 (      )1.）。
+const CHOICE_LIKE_TYPES = ["選擇題", "是非題", "實驗探究題", "圖表判讀題"];
+
 function answerBlank(questionType) {
-  return questionType === "是非題" || questionType === "選擇題" ? "(      )" : "";
+  return CHOICE_LIKE_TYPES.includes(questionType) ? "(      )" : "";
 }
 
-// 是非題不呈現選項。
+// 是非題不呈現選項；其餘只要有 options 就列出。
 function showsOptions(item) {
   return item.questionType !== "是非題" && Array.isArray(item.options) && item.options.length > 0;
 }
@@ -43,7 +45,7 @@ export function renderTeacherPaper({ project = {}, sections = [], items = [] } =
       const item = itemById.get(itemId);
       if (!item) return;
       const objectiveTag = item.objectiveIds?.join("、") || item.primaryObjectiveId || "未標示";
-      lines.push(`${answerBlank(item.questionType)}${localIndex + 1}.（${item.score}分）${item.question}　【${objectiveTag}｜${item.cognitiveLevel || "未標示"}｜${item.score}分】`);
+      lines.push(`${answerBlank(item.questionType)}${localIndex + 1}.（${item.score}分）${item.question}　【${item.questionType || "未標示"}｜${objectiveTag}｜${item.cognitiveLevel || "未標示"}｜${item.score}分】`);
       if (showsOptions(item)) {
         lines.push(item.options.map((option, index) => `(${String.fromCharCode(65 + index)}) ${option}`).join("　"));
       }

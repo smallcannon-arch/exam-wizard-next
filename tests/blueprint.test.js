@@ -96,3 +96,20 @@ describe("buildSectionsByQuestionType", () => {
     expect(result.sections[1].itemIds).toEqual(["Q-002"]);
   });
 });
+
+describe("buildSectionsByQuestionType 圖表/實驗併入選擇題", () => {
+  it("圖表判讀題、實驗探究題在學生卷併進「選擇題」大題", async () => {
+    const { buildSectionsByQuestionType } = await import("../frontend/src/core/blueprint.js");
+    const result = buildSectionsByQuestionType({
+      items: [
+        { itemId: "Q-001", questionType: "選擇題" },
+        { itemId: "Q-002", questionType: "圖表判讀題" },
+        { itemId: "Q-003", questionType: "實驗探究題" },
+        { itemId: "Q-004", questionType: "填充題" },
+      ],
+      typeOrder: ["選擇題", "圖表判讀題", "實驗探究題", "填充題"],
+    });
+    expect(result.sections.map((s) => s.title)).toEqual(["選擇題", "填充題"]);
+    expect(result.sections[0].itemIds).toEqual(["Q-001", "Q-002", "Q-003"]);
+  });
+});
