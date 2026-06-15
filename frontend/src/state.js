@@ -1,7 +1,7 @@
 export function createInitialState() {
   return {
     step: 1,
-    apiBaseUrl: "https://exam-wizard-proxy.example.workers.dev",
+    apiBaseUrl: "http://127.0.0.1:8787",
     project: {
       examName: "自然第一次定期評量",
       subject: "自然",

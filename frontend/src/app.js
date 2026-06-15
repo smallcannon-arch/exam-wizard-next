@@ -85,16 +85,30 @@ function buildBlueprint() {
 
 async function generateItems() {
   if (state.intents.length === 0) {
-    setState({ errors: ["請先建立題目藍圖。"], messages: [] });
+    setState({
+      errors: ["請先建立題目藍圖。"],
+      messages: [],
+    });
+    return;
+  }
+
+  if (!state.apiBaseUrl || !String(state.apiBaseUrl).trim()) {
+    setState({
+      errors: ["請先在第 ① 步填入後端 API Base URL，例如：http://127.0.0.1:8787"],
+      messages: [],
+    });
     return;
   }
 
   busy = true;
-  render();
+  setState({
+    errors: [],
+    messages: ["正在送出 AI 生成請求，請稍候……"],
+  });
 
   try {
     const result = await generateItemsViaApi({
-      apiBaseUrl: state.apiBaseUrl,
+      apiBaseUrl: state.apiBaseUrl.trim(),
       project: state.project,
       materialText: state.materialText,
       objectives: state.objectives,
@@ -102,11 +116,27 @@ async function generateItems() {
     });
 
     if (!result?.ok || !Array.isArray(result.items)) {
-      setState({ errors: [result?.error || "AI 回傳格式錯誤。"], messages: [] });
+      setState({
+        errors: [result?.error || "AI 回傳格式錯誤。"],
+        messages: [],
+      });
       return;
     }
 
-    setState({ items: result.items, errors: [], messages: [`已產生 ${result.items.length} 題正式草稿。`], step: 5 });
+    setState({
+      items: result.items,
+      errors: [],
+      messages: [`已產生 ${result.items.length} 個正式草稿計分單位。`],
+      step: 5,
+    });
+  } catch (error) {
+    setState({
+      errors: [
+        `AI 生成請求失敗：${error?.message || String(error)}`,
+        "請確認 Worker 是否仍在 http://127.0.0.1:8787 執行，且第 ① 步 API Base URL 是否正確。",
+      ],
+      messages: [],
+    });
   } finally {
     busy = false;
     render();
@@ -219,7 +249,7 @@ function renderStep1() {
       <label>年級<input data-project="grade" value="${escapeHtml(state.project.grade)}"></label>
       <label>總分<input type="number" data-project="totalScore" value="${escapeHtml(state.project.totalScore)}"></label>
       <label>每個計分單位分數<input type="number" data-project="unitScore" value="${escapeHtml(state.project.unitScore)}"></label>
-      <label>後端 API Base URL<input data-field="apiBaseUrl" value="${escapeHtml(state.apiBaseUrl)}"></label>
+      <label>後端 API Base URL<input data-api-base-url value="${escapeHtml(state.apiBaseUrl || "http://127.0.0.1:8787")}"></label>
     </div>
     <label>教材內容或摘要<textarea data-field="materialText">${escapeHtml(state.materialText)}</textarea></label>
     <div class="actions"><button data-next-step="2">下一步</button></div>
@@ -244,7 +274,7 @@ function renderStep3Or4() {
       <thead><tr><th>目標</th><th>文字</th><th>節數</th><th>計分單位數</th><th>配分</th></tr></thead>
       <tbody>${plans.map((plan) => {
         const objective = state.objectives.find((entry) => entry.objectiveId === plan.objectiveId);
-        return `<tr><td>${escapeHtml(plan.targetUnitCount)}</td><td>${escapeHtml(objective?.text)}</td><td>${escapeHtml(objective?.periodCount)}</td><td>${escapeHtml(plan.targetItemCount)}</td><td>${escapeHtml(plan.targetScore)}</td></tr>`;
+        return `<tr><td>${escapeHtml(plan.targetUnitCount)}</td><td>${escapeHtml(objective?.text)}</td><td>${escapeHtml(objective?.periodCount)}</td><td>${escapeHtml(plan.targetUnitCount)}</td><td>${escapeHtml(plan.targetScore)}</td></tr>`;
       }).join("")}</tbody>
     </table></div>
 
@@ -266,7 +296,7 @@ function renderItems() {
     <h2>⑤ 修題定稿</h2>
     <p class="notice">這裡沒有備選池。題目就是正式草稿；不滿意的題目，直接重出該題。</p>
     <div class="table-wrap"><table>
-      <thead><tr><th>目標</th><th>題數</th><th>分數</th></tr></thead>
+      <thead><tr><th>目標</th><th>計分單位數</th><th>分數</th></tr></thead>
       <tbody>${summary.map((row) => `<tr><td>${row.objectiveId}</td><td>${row.unitCount}</td><td>${row.score}</td></tr>`).join("")}</tbody>
     </table></div>
     ${state.items.map((item) => `<article class="item-card">
@@ -332,10 +362,18 @@ function render() {
 }
 
 app.addEventListener("input", (event) => {
+  const apiBaseUrlInput = event.target.closest("[data-api-base-url]");
   const projectField = event.target.dataset.project;
   const field = event.target.dataset.field;
   const itemField = event.target.dataset.itemField;
   const itemId = event.target.dataset.itemId;
+
+  if (apiBaseUrlInput) {
+    setState({
+      apiBaseUrl: apiBaseUrlInput.value.trim(),
+    });
+    return;
+  }
 
   if (projectField) {
     setProjectField(projectField, event.target.value);
