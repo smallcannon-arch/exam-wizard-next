@@ -194,20 +194,28 @@ if (!generatedCheck.ok) {
   return;
 }
 
+// 補齊 objectiveIds（AI 有時只回 primaryObjectiveId），避免後續檢核誤判缺漏。
+const importedItems = result.items.map((item) => ({
+  ...item,
+  objectiveIds: (Array.isArray(item.objectiveIds) && item.objectiveIds.length > 0)
+    ? item.objectiveIds
+    : (item.primaryObjectiveId ? [item.primaryObjectiveId] : []),
+}));
+
 const sectionResult = buildSectionsByQuestionType({
-  items: result.items,
+  items: importedItems,
   typeOrder: state.planRows.map((row) => row.questionType),
 });
 const sections = sectionResult.ok
   ? sectionResult.sections
-  : [{ sectionId: "S-01", order: 1, title: "試題", layoutMode: "sequential", itemIds: result.items.map((item) => item.itemId) }];
+  : [{ sectionId: "S-01", order: 1, title: "試題", layoutMode: "sequential", itemIds: importedItems.map((item) => item.itemId) }];
 
 setState({
-  items: result.items,
+  items: importedItems,
   sections,
   errors: [],
   messages: [
-    `已產生 ${result.items.length} 題正式草稿（AI 已依節數比例與整卷整體性編排）。`,
+    `已產生 ${importedItems.length} 題正式草稿（AI 已依節數比例與整卷整體性編排）。`,
     ...(generatedCheck.warnings || []),
   ],
   step: 5,
@@ -338,14 +346,14 @@ async function regenerateItem(itemId) {
 
   try {
     const objectiveIds = new Set(originalItem.objectiveIds || []);
-    const objectives = state.objectives.filter((objective) => objectiveIds.has(objective.objectiveId));
+    const relatedObjectives = state.objectives.filter((objective) => objectiveIds.has(objective.objectiveId));
     const result = await regenerateItemViaApi({
       apiBaseUrl: getApiBaseUrl(),
       project: state.project,
       materialText: state.materialText,
-      objectives: state.objectives,
+      objectives: relatedObjectives.length > 0 ? relatedObjectives : state.objectives,
       originalItem,
-      reason: "請重新設計此題，避免只是改寫原題。",
+      reason: reason.trim() || "請重新設計此題，避免只是改寫原題。",
     });
 
     if (!result?.ok || !Array.isArray(result.items) || result.items.length !== 1) {
@@ -353,10 +361,17 @@ async function regenerateItem(itemId) {
       return;
     }
 
+    const newItem = result.items[0];
+    const hasText = (value) => typeof value === "string" && value.trim() !== "";
+    if (!hasText(newItem.question) || !hasText(newItem.answer)) {
+      setState({ errors: [`${itemId}：AI 重出的題幹或答案是空的，未替換。請再試一次。`], messages: [] });
+      return;
+    }
+
     const replacement = replaceItemById({
       items: state.items,
       itemId,
-      regeneratedItem: result.items[0],
+      regeneratedItem: newItem,
     });
 
     if (!replacement.ok) {
@@ -382,9 +397,9 @@ async function regenerateItem(itemId) {
 }
 
 function updateItemField(itemId, field, value) {
-  setState({
-    items: state.items.map((item) => (item.itemId === itemId ? { ...item, [field]: value } : item)),
-  });
+  // 直接就地更新，不重繪整頁，避免修題時 textarea/input 失焦。
+  const target = state.items.find((item) => item.itemId === itemId);
+  if (target) target[field] = value;
 }
 
 function renderMessages() {
@@ -403,10 +418,9 @@ function renderSteps() {
 
 function renderStep1() {
   return `<section class="panel">
-    <h2>① 建卷</h2>
     <div class="grid">
-      <label>科目<input data-project="subject" value="${escapeHtml(state.project.subject)}"></label>
-      <label>年級<input data-project="grade" value="${escapeHtml(state.project.grade)}"></label>
+      <label class="field-lg">科目<input data-project="subject" value="${escapeHtml(state.project.subject)}"></label>
+      <label class="field-lg">年級<input data-project="grade" value="${escapeHtml(state.project.grade)}"></label>
     </div>
     ${renderPlanTable()}
     <div class="actions"><button data-next-step="2">下一步</button></div>
@@ -465,11 +479,12 @@ function renderStep2() {
     <label>學習目標（每行：目標文字｜節數）<textarea data-field="objectiveInput">${escapeHtml(state.objectiveInput)}</textarea></label>
     ${renderObjectivePreview()}
     <label>教材摘要（選填，建議貼上 Gem 摘出的課本／習作重點：國語的生字、語詞、句型、課文重點；其他科的核心概念與重要詞彙，供 AI 依課本實際內容出題）<textarea data-field="materialText">${escapeHtml(state.materialText)}</textarea></label>
-    <p class="notice">貼上後若格式跑掉（單元、節數沒對好），按「用 AI 整理目標格式」讓系統幫你轉成標準格式。</p>
+    <p class="notice">貼上後，下方會自動整理成預覽表。若整理得不夠好，按「用 AI 整理」交給 AI 重排一次。</p>
     <div class="actions">
-      <button class="secondary" data-action="normalize-objectives" ${busy ? "disabled" : ""}>${busy ? "處理中……" : "用 AI 整理目標格式"}</button>
+      <button class="secondary" data-action="normalize-objectives" ${busy ? "disabled" : ""}>${busy ? "AI 整理中……" : "用 AI 整理"}</button>
       <button data-action="build-blueprint">建立配題與藍圖</button>
     </div>
+    ${loadingLine()}
   </section>`;
 }
 
@@ -501,6 +516,7 @@ function renderStep3Or4() {
     <div class="actions">
       <button data-action="generate-items" ${busy ? "disabled" : ""}>${busy ? "AI 生成中……" : "連線 AI 生成正式草稿"}</button>
     </div>
+    ${loadingLine()}
   </section>`;
 }
 
@@ -522,12 +538,14 @@ function renderItems() {
         <button data-action="regenerate-item" data-item-id="${escapeHtml(item.itemId)}" ${busy ? "disabled" : ""}>${busy && busyItemId === item.itemId ? "AI 重出中……" : "AI 重出此題"}</button>
       </div>
     </article>`).join("")}
+    ${loadingLine()}
     <div class="actions"><button data-next-step="6">前往檢核</button></div>
   </section>`;
 }
 
 function renderAudit() {
-  const examTotal = state.items.reduce((sum, item) => sum + (Number(item?.score) || 0), 0);
+  // 以配題表的總分作為預期總分，才能真的檢查「題目總分是否符合預期」。
+  const examTotal = getPlanTotals(state.planRows).totalScore || state.items.reduce((sum, item) => sum + (Number(item?.score) || 0), 0);
   const result = validateExam({
   objectives: state.objectives,
   objectivePlans: state.objectivePlans,
@@ -577,14 +595,15 @@ function renderCurrentStep() {
   return renderStep1();
 }
 
-function renderBusyBanner() {
+// 顯示在動作按鈕下方的進行中提示（取代原本最上方的橫幅）。
+function loadingLine() {
   if (!busy) return "";
   const label = busyLabel || "AI 處理中，請稍候……";
   return `<div class="notice loading" role="status" aria-live="polite"><span class="spinner" aria-hidden="true"></span>${escapeHtml(label)}</div>`;
 }
 
 function render() {
-  app.innerHTML = `${renderSteps()}${renderBusyBanner()}${renderMessages()}${renderCurrentStep()}`;
+  app.innerHTML = `${renderSteps()}${renderMessages()}${renderCurrentStep()}`;
 }
 
 app.addEventListener("input", (event) => {

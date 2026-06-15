@@ -74,6 +74,15 @@ export function validateGeneratedPaper({ slots = [], objectives = [], items = []
       errors.push(`${id}：缺少 answer。`);
     }
 
+    if (normalizeId(item.questionType) === "選擇題") {
+      const optionCount = Array.isArray(item.options) ? item.options.length : 0;
+      if (optionCount < 2) {
+        errors.push(`${id}：選擇題缺少選項。`);
+      } else if (optionCount < 4) {
+        warnings.push(`提醒：${id} 選擇題只有 ${optionCount} 個選項（建議 4 個）。`);
+      }
+    }
+
     const primary = getPrimaryObjective(item);
     if (!primary) {
       errors.push(`${id}：缺少對應學習目標。`);

@@ -15,6 +15,7 @@ function item(overrides) {
     itemId: "Q-001", questionType: "選擇題", score: 2,
     primaryObjectiveId: "O-001", objectiveIds: ["O-001"],
     cognitiveLevel: "理解", question: "題幹", answer: "A",
+    options: ["甲", "乙", "丙", "丁"],
     ...overrides,
   };
 }
