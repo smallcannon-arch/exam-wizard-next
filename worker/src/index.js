@@ -1,7 +1,30 @@
-import { buildGenerateItemsPrompt, buildRegenerateItemPrompt } from "./prompts.js";
+import { buildExtractObjectivesPrompt, buildGenerateItemsPrompt, buildRegenerateItemPrompt } from "./prompts.js";
 import { callGemini } from "./gemini.js";
-import { assertItemsPayload, extractJsonObject, readJson } from "./json.js";
+import { assertItemsPayload, assertObjectivesPayload, extractJsonObject, readJson } from "./json.js";
 import { handleOptions, jsonResponse } from "./cors.js";
+
+async function handleExtractObjectives(request, env) {
+  const body = await readJson(request);
+  if (!body.ok) return jsonResponse(request, env, { ok: false, error: body.error }, 400);
+
+  const { project = {}, materialText = "" } = body.data;
+
+  if (!materialText || !String(materialText).trim()) {
+    return jsonResponse(request, env, { ok: false, error: "缺少教材內容 materialText。" }, 400);
+  }
+
+  const prompt = buildExtractObjectivesPrompt({ project, materialText });
+  const ai = await callGemini({ env, prompt });
+  if (!ai.ok) return jsonResponse(request, env, { ok: false, error: ai.error }, ai.status || 502);
+
+  const parsed = extractJsonObject(ai.text);
+  if (!parsed.ok) return jsonResponse(request, env, { ok: false, error: parsed.error }, 502);
+
+  const payload = assertObjectivesPayload(parsed.data);
+  if (!payload.ok) return jsonResponse(request, env, { ok: false, error: payload.error }, 502);
+
+  return jsonResponse(request, env, { ok: true, objectives: payload.objectives });
+}
 
 async function handleGenerateItems(request, env) {
   const body = await readJson(request);
@@ -61,6 +84,10 @@ export default {
 
     if (url.pathname === "/health" && request.method === "GET") {
       return jsonResponse(request, env, { ok: true, service: "exam-wizard-next-proxy" });
+    }
+
+    if (url.pathname === "/extract-objectives" && request.method === "POST") {
+      return handleExtractObjectives(request, env);
     }
 
     if (url.pathname === "/generate-items" && request.method === "POST") {

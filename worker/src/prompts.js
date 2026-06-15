@@ -27,6 +27,24 @@ export function buildGenerateItemsPrompt({ project = {}, materialText = "", obje
   ].join("\n");
 }
 
+export function buildExtractObjectivesPrompt({ project = {}, materialText = "" }) {
+  return [
+    "# 角色",
+    `你是臺灣國小${text(project.grade, "未指定年級")}${text(project.subject, "未指定科目")}課程設計協助者。`,
+    "",
+    "# 任務",
+    "請從教材內容萃取可評量的學習目標。每個目標需具體、可命題、對應一個重點概念。",
+    "目標數量依教材內容多寡判斷，一般 3 到 8 個。不得自行假造教材沒有的內容。",
+    "",
+    "# 教材內容",
+    text(materialText, "未提供教材內容。"),
+    "",
+    "# 輸出要求",
+    "只輸出 JSON，不要 Markdown。格式：{\"objectives\":[...]}。",
+    "每個目標必須包含：unitName（單元名稱）, lessonName（課名，可為空字串）, text（目標敘述）, periodCount（建議節數，正整數）。",
+  ].join("\n");
+}
+
 export function buildRegenerateItemPrompt({ project = {}, materialText = "", objectives = [], originalItem, reason = "" }) {
   return [
     "# 角色",

@@ -6,11 +6,26 @@ function normalizeQuestionType(value, index) {
   return DEFAULT_EXAM_CONFIG.defaultQuestionTypes[index % DEFAULT_EXAM_CONFIG.defaultQuestionTypes.length];
 }
 
+// 解析「全卷題型比例」輸入，例如：選擇題:70, 填充題:20, 短答題:10
+export function parseQuestionTypeMix(input) {
+  return String(input || "")
+    .split(/[\n,，、]+/)
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .map((segment) => {
+      const parts = segment.split(/[:：=\s]+/).map((part) => part.trim()).filter(Boolean);
+      return { questionType: parts[0] || "", percent: Number(parts[1]) };
+    })
+    .filter((row) => row.questionType && Number.isFinite(row.percent) && row.percent > 0);
+}
+
 export function buildItemIntents({
   objectivePlans,
   objectives = [],
   unitScore = DEFAULT_EXAM_CONFIG.unitScore,
   questionTypeMix = DEFAULT_EXAM_CONFIG.defaultQuestionTypes,
+  questionTypeSequence = null,
+  scoreSequence = null,
 } = {}) {
 
   if (!Array.isArray(objectivePlans) || objectivePlans.length === 0) {
@@ -18,6 +33,8 @@ export function buildItemIntents({
   }
 
   const objectiveById = new Map(objectives.map((objective) => [objective.objectiveId, objective]));
+  const useTypeSequence = Array.isArray(questionTypeSequence);
+  const useScoreSequence = Array.isArray(scoreSequence);
   const intents = [];
   let serial = 1;
 
@@ -26,7 +43,13 @@ export function buildItemIntents({
     const objective = objectiveById.get(plan.objectiveId);
 
     for (let localIndex = 0; localIndex < count; localIndex += 1) {
-      const questionType = normalizeQuestionType(questionTypeMix[localIndex % questionTypeMix.length], localIndex);
+      const globalIndex = serial - 1;
+      const questionType = useTypeSequence
+        ? normalizeQuestionType(questionTypeSequence[globalIndex], globalIndex)
+        : normalizeQuestionType(questionTypeMix[localIndex % questionTypeMix.length], localIndex);
+      const score = useScoreSequence
+        ? toPositiveInteger(scoreSequence[globalIndex], unitScore)
+        : unitScore;
       const unitName = asText(objective?.unitName, "未分單元");
 
       intents.push({
@@ -40,7 +63,7 @@ export function buildItemIntents({
         questionType,
         cognitiveLevel: DEFAULT_EXAM_CONFIG.defaultCognitiveLevel,
         difficulty: DEFAULT_EXAM_CONFIG.defaultDifficulty,
-        score: unitScore,
+        score,
         generationHint: "",
       });
 

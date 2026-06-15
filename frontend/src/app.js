@@ -1,18 +1,29 @@
 import { createInitialState } from "./state.js";
 import { makeObjectiveId } from "./core/ids.js";
-import { allocateObjectivePlans, summarizeScoreByObjective } from "./core/scoring.js";
-import { buildItemIntents, buildPaperSectionsByTheme } from "./core/blueprint.js";
+import {
+  allocateObjectivePlans,
+  allocateUnitsByPeriod,
+  buildScoreSequence,
+  parseScorePlan,
+  summarizeScoreByObjective,
+  validateScorePlan,
+} from "./core/scoring.js";
+import { buildItemIntents, buildPaperSectionsByTheme, parseQuestionTypeMix } from "./core/blueprint.js";
+import { buildProportionalSequence } from "./core/distribute.js";
 import { validateExam } from "./core/validation.js";
 import { replaceItemById } from "./core/replaceItem.js";
 import { renderStudentPaper, renderTeacherPaper } from "./core/renderPaper.js";
-import { generateItemsViaApi, regenerateItemViaApi } from "./apiClient.js";
+import { extractObjectivesViaApi, generateItemsViaApi, regenerateItemViaApi } from "./apiClient.js";
+import { normalizeExtractedObjectives, objectivesToInputText } from "./core/objectives.js";
 import { getApiBaseUrl } from "./config.js";
 import { validateGeneratedItemsAgainstIntents } from "./core/validateGeneratedItems.js";
+import { buildAuditRows } from "./core/auditRows.js";
 
 const app = document.querySelector("#app");
 let state = createInitialState();
 let busy = false;
 let busyItemId = null;
+let busyLabel = "";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -50,38 +61,85 @@ function parseObjectives(input) {
 
 function buildBlueprint() {
   const objectives = parseObjectives(state.objectiveInput);
-  const plans = allocateObjectivePlans({
-  objectives,
-  totalScore: Number(state.project.totalScore),
-  unitScore: Number(state.project.unitScore),
-  });
+  const totalScore = Number(state.project.totalScore);
+  const unitScore = Number(state.project.unitScore);
+  const typeMix = parseQuestionTypeMix(state.questionTypeMixInput);
+  const scorePlan = parseScorePlan(state.scorePlanInput);
+  const useScorePlan = scorePlan.length > 0;
 
-  if (!plans.ok) {
-    setState({ objectives, objectivePlans: [], intents: [], sections: [], errors: [plans.error], messages: [] });
-    return;
+  let objectivePlans;
+  let scoreSequence = null;
+  let totalUnits;
+
+  if (useScorePlan) {
+    const planCheck = validateScorePlan(scorePlan, totalScore);
+    if (!planCheck.ok) {
+      setState({ objectives, objectivePlans: [], intents: [], sections: [], errors: [planCheck.error], messages: [] });
+      return;
+    }
+
+    const alloc = allocateUnitsByPeriod({ objectives, totalUnits: planCheck.totalItems });
+    if (!alloc.ok) {
+      setState({ objectives, objectivePlans: [], intents: [], sections: [], errors: [alloc.error], messages: [] });
+      return;
+    }
+
+    objectivePlans = alloc.counts.map((row) => ({
+      objectiveId: row.objectiveId,
+      targetUnitCount: row.targetUnitCount,
+      targetScore: 0,
+      locked: false,
+      note: "",
+    }));
+    scoreSequence = buildScoreSequence(scorePlan);
+    totalUnits = planCheck.totalItems;
+  } else {
+    const plans = allocateObjectivePlans({ objectives, totalScore, unitScore });
+    if (!plans.ok) {
+      setState({ objectives, objectivePlans: [], intents: [], sections: [], errors: [plans.error], messages: [] });
+      return;
+    }
+    objectivePlans = plans.plans;
+    totalUnits = objectivePlans.reduce((sum, plan) => sum + plan.targetUnitCount, 0);
   }
 
+  const questionTypeSequence = typeMix.length > 0
+    ? buildProportionalSequence(totalUnits, typeMix.map((row) => ({ key: row.questionType, weight: row.percent })))
+    : null;
+
   const intentResult = buildItemIntents({
-  objectives,
-  objectivePlans: plans.plans,
-  unitScore: Number(state.project.unitScore),
-  questionTypeMix: ["選擇題", "填充題", "應用題"],
+    objectives,
+    objectivePlans,
+    unitScore,
+    questionTypeMix: ["選擇題", "填充題", "應用題"],
+    questionTypeSequence,
+    scoreSequence,
   });
 
   if (!intentResult.ok) {
-    setState({ objectives, objectivePlans: plans.plans, intents: [], sections: [], errors: [intentResult.error], messages: [] });
+    setState({ objectives, objectivePlans, intents: [], sections: [], errors: [intentResult.error], messages: [] });
     return;
   }
 
+  if (useScorePlan) {
+    const scoreById = new Map(summarizeScoreByObjective(intentResult.intents).map((row) => [row.objectiveId, row.score]));
+    objectivePlans = objectivePlans.map((plan) => ({ ...plan, targetScore: scoreById.get(plan.objectiveId) ?? 0 }));
+  }
+
   const sectionResult = buildPaperSectionsByTheme({ intents: intentResult.intents });
+  const totalUnitsActual = intentResult.intents.length;
+  const totalScoreActual = intentResult.intents.reduce((sum, intent) => sum + (Number(intent.score) || 0), 0);
+  const baseMsg = useScorePlan
+    ? `已建立藍圖：${totalUnitsActual} 題，總分 ${totalScoreActual} 分（自訂配分方案）。`
+    : `已建立藍圖：${totalUnitsActual} 個計分單位，每個計分單位 ${unitScore} 分。`;
 
   setState({
     objectives,
-    objectivePlans: plans.plans,
+    objectivePlans,
     intents: intentResult.intents,
     sections: sectionResult.sections,
     errors: [],
-    messages: [`已建立藍圖：${intentResult.intents.length} 個計分單位，每個計分單位 ${state.project.unitScore} 分。`],
+    messages: [questionTypeSequence ? `${baseMsg}題型已依比例分配。` : baseMsg],
     step: 4,
   });
 }
@@ -97,6 +155,7 @@ async function generateItems() {
 
   busy = true;
   busyItemId = null;
+  busyLabel = "AI 正在生成試題草稿，請稍候……";
   setState({
     errors: [],
     messages: ["AI 正在生成試題草稿，請稍候……"],
@@ -149,6 +208,57 @@ setState({
   } finally {
     busy = false;
     busyItemId = null;
+    busyLabel = "";
+    render();
+  }
+}
+
+async function extractObjectives() {
+  if (!state.materialText || !state.materialText.trim()) {
+    setState({ errors: ["請先在第①步填入教材內容或摘要，再用 AI 提取目標。"], messages: [] });
+    return;
+  }
+
+  busy = true;
+  busyItemId = null;
+  busyLabel = "AI 正在從教材提取學習目標，請稍候……";
+  setState({ errors: [], messages: [busyLabel] });
+
+  try {
+    const result = await extractObjectivesViaApi({
+      apiBaseUrl: getApiBaseUrl(),
+      project: state.project,
+      materialText: state.materialText,
+    });
+
+    if (!result?.ok || !Array.isArray(result.objectives)) {
+      setState({ errors: [result?.error || "AI 提取目標回傳格式錯誤。"], messages: [] });
+      return;
+    }
+
+    const objectives = normalizeExtractedObjectives(result.objectives);
+    if (objectives.length === 0) {
+      setState({ errors: ["AI 未提取到可用目標，請補充教材內容。"], messages: [] });
+      return;
+    }
+
+    state.objectiveInput = objectivesToInputText(objectives);
+    setState({
+      errors: [],
+      messages: [`AI 已提取 ${objectives.length} 個學習目標並填入下方欄位，請確認或修改後再建立藍圖。`],
+    });
+  } catch (error) {
+    setState({
+      errors: [
+        `AI 提取目標失敗：${error?.message || String(error)}`,
+        `請確認 Worker 是否仍在 ${getApiBaseUrl()} 執行。`,
+      ],
+      messages: [],
+    });
+  } finally {
+    busy = false;
+    busyItemId = null;
+    busyLabel = "";
     render();
   }
 }
@@ -162,7 +272,8 @@ async function regenerateItem(itemId) {
 
   busy = true;
   busyItemId = itemId;
-  setState({ errors: [], messages: [`AI 正在重新設計 ${itemId}，請稍候……`] });
+  busyLabel = `AI 正在重新設計 ${itemId}，請稍候……`;
+  setState({ errors: [], messages: [busyLabel] });
 
   try {
     const objectiveIds = new Set(originalItem.objectiveIds || []);
@@ -204,6 +315,7 @@ async function regenerateItem(itemId) {
   } finally {
     busy = false;
     busyItemId = null;
+    busyLabel = "";
     render();
   }
 }
@@ -238,6 +350,8 @@ function renderStep1() {
       <label>總分<input type="number" data-project="totalScore" value="${escapeHtml(state.project.totalScore)}"></label>
       <label>每個計分單位分數<input type="number" data-project="unitScore" value="${escapeHtml(state.project.unitScore)}"></label>
     </div>
+    <label>題型比例（選填，例：選擇題:70, 填充題:20, 短答題:10；留空則用預設輪替）<input data-field="questionTypeMixInput" value="${escapeHtml(state.questionTypeMixInput)}"></label>
+    <label>配分方案（選填，例：2分×35題, 3分×10題；填了就改用自訂配分，需與總分相符）<input data-field="scorePlanInput" value="${escapeHtml(state.scorePlanInput)}"></label>
     <label>教材內容或摘要<textarea data-field="materialText">${escapeHtml(state.materialText)}</textarea></label>
     <div class="actions"><button data-next-step="2">下一步</button></div>
   </section>`;
@@ -247,8 +361,12 @@ function renderStep2() {
   return `<section class="panel">
     <h2>② 學習目標</h2>
     <p class="notice">每行一個目標，格式：目標文字｜節數。節數會用來分配計分單位數。</p>
+    <p class="notice">也可以先用 AI 從第①步的教材內容提取目標草稿，提取後務必人工確認與修改，再建立藍圖。</p>
     <label>學習目標<textarea data-field="objectiveInput">${escapeHtml(state.objectiveInput)}</textarea></label>
-    <div class="actions"><button data-action="build-blueprint">建立配題與藍圖</button></div>
+    <div class="actions">
+      <button class="secondary" data-action="extract-objectives" ${busy ? "disabled" : ""}>${busy ? "AI 提取中……" : "AI 從教材提取目標"}</button>
+      <button data-action="build-blueprint">建立配題與藍圖</button>
+    </div>
   </section>`;
 }
 
@@ -286,7 +404,7 @@ function renderItems() {
       <tbody>${summary.map((row) => `<tr><td>${row.objectiveId}</td><td>${row.unitCount}</td><td>${row.score}</td></tr>`).join("")}</tbody>
     </table></div>
     ${state.items.map((item) => `<article class="item-card">
-      <div class="item-meta">${escapeHtml(item.itemId)}｜${escapeHtml(item.questionType)}｜${escapeHtml(item.objectiveIds?.join(", "))}｜${escapeHtml(item.score)}分</div>
+      <div class="item-meta">${escapeHtml(item.itemId)}｜${escapeHtml(item.questionType)}｜${escapeHtml(item.score)}分｜對應目標 ${escapeHtml(item.objectiveIds?.join("、") || item.primaryObjectiveId || "未標示")}｜層次 ${escapeHtml(item.cognitiveLevel || "未標示")}</div>
       <label>題幹<textarea data-item-field="question" data-item-id="${escapeHtml(item.itemId)}">${escapeHtml(item.question)}</textarea></label>
       <label>答案<input data-item-field="answer" data-item-id="${escapeHtml(item.itemId)}" value="${escapeHtml(item.answer)}"></label>
       <label>解析<textarea data-item-field="explanation" data-item-id="${escapeHtml(item.itemId)}">${escapeHtml(item.explanation)}</textarea></label>
@@ -312,9 +430,15 @@ function renderAudit() {
     <div class="notice ${result.ok ? "success" : "error"}">${result.ok ? "基本檢核通過。仍請人工確認題意、答案與解析。" : "發現錯誤，請先修正。"}</div>
     ${result.errors.length ? `<h3>錯誤</h3><ul>${result.errors.map((error) => `<li>${escapeHtml(error)}</li>`).join("")}</ul>` : ""}
     ${result.warnings.length ? `<h3>提醒</h3><ul>${result.warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul>` : ""}
+    <h3>目標配分統計</h3>
     <div class="table-wrap"><table>
       <thead><tr><th>目標</th><th>計分單位數</th><th>分數</th></tr></thead>
       <tbody>${result.summary.map((row) => `<tr><td>${row.objectiveId}</td><td>${row.unitCount}</td><td>${row.score}</td></tr>`).join("")}</tbody>
+    </table></div>
+    <h3>逐題審核表</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>題號</th><th>題型</th><th>配分</th><th>對應目標</th><th>認知層次</th></tr></thead>
+      <tbody>${buildAuditRows(state.items).map((row) => `<tr><td>${escapeHtml(row.itemId)}</td><td>${escapeHtml(row.questionType)}</td><td>${escapeHtml(row.score)}</td><td>${escapeHtml(row.objectiveIds)}</td><td>${escapeHtml(row.cognitiveLevel)}</td></tr>`).join("")}</tbody>
     </table></div>
     <div class="actions"><button data-next-step="7">前往輸出</button></div>
   </section>`;
@@ -344,10 +468,8 @@ function renderCurrentStep() {
 
 function renderBusyBanner() {
   if (!busy) return "";
-  const label = busyItemId
-    ? `AI 正在重新設計 ${escapeHtml(busyItemId)}，請稍候……`
-    : "AI 正在生成試題草稿，請稍候……";
-  return `<div class="notice loading" role="status" aria-live="polite"><span class="spinner" aria-hidden="true"></span>${label}</div>`;
+  const label = busyLabel || "AI 處理中，請稍候……";
+  return `<div class="notice loading" role="status" aria-live="polite"><span class="spinner" aria-hidden="true"></span>${escapeHtml(label)}</div>`;
 }
 
 function render() {
@@ -393,6 +515,7 @@ app.addEventListener("click", (event) => {
   if (!actionButton) return;
 
   const action = actionButton.dataset.action;
+  if (action === "extract-objectives") extractObjectives();
   if (action === "build-blueprint") buildBlueprint();
   if (action === "generate-items") generateItems();
   if (action === "regenerate-item") regenerateItem(actionButton.dataset.itemId);

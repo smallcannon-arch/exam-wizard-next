@@ -32,10 +32,10 @@ export function renderTeacherPaper({ project = {}, sections = [], items = [] } =
     section.itemIds.forEach((itemId, localIndex) => {
       const item = itemById.get(itemId);
       if (!item) return;
-      lines.push(`${localIndex + 1}.（${item.score}分）${item.question}`);
+      const objectiveTag = item.objectiveIds?.join("、") || item.primaryObjectiveId || "未標示";
+      lines.push(`${localIndex + 1}.（${item.score}分）${item.question}　【${objectiveTag}｜${item.cognitiveLevel || "未標示"}｜${item.score}分】`);
       lines.push(`答案：${item.answer}`);
       lines.push(`解析：${item.explanation || "未提供"}`);
-      lines.push(`目標：${item.objectiveIds?.join(", ") || "未標示"}｜層次：${item.cognitiveLevel || "未標示"}`);
       lines.push("");
     });
   });

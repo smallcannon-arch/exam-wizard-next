@@ -31,6 +31,18 @@ export function extractJsonObject(text) {
   }
 }
 
+export function assertObjectivesPayload(payload) {
+  if (!payload || typeof payload !== "object" || !Array.isArray(payload.objectives)) {
+    return { ok: false, error: "AI 回應缺少 objectives 陣列。" };
+  }
+
+  if (payload.objectives.length === 0) {
+    return { ok: false, error: "AI 未萃取到任何學習目標。" };
+  }
+
+  return { ok: true, objectives: payload.objectives };
+}
+
 export function assertItemsPayload(payload, expectedCount = null) {
   if (!payload || typeof payload !== "object" || !Array.isArray(payload.items)) {
     return { ok: false, error: "AI 回應缺少 items 陣列。" };
