@@ -7,8 +7,8 @@ import { getQuestionTypeOptions, SUBJECT_OPTIONS } from "./core/questionTypes.js
 import { validateExam } from "./core/validation.js";
 import { replaceItemById } from "./core/replaceItem.js";
 import { renderStudentPaper, renderTeacherPaper } from "./core/renderPaper.js";
-import { generateItemsViaApi, normalizeObjectivesViaApi, regenerateItemViaApi } from "./apiClient.js";
-import { normalizeExtractedObjectives, objectivesToInputText, parseObjectiveInput } from "./core/objectives.js";
+import { generateItemsViaApi, regenerateItemViaApi } from "./apiClient.js";
+import { parseObjectiveInput } from "./core/objectives.js";
 import { computeObjectiveShares, formatPercent } from "./core/periods.js";
 import { largestRemainder } from "./core/distribute.js";
 import { getApiBaseUrl } from "./config.js";
@@ -254,52 +254,6 @@ function toPositiveIntegerSafe(value) {
   return Number.isInteger(number) && number > 0 ? number : 1;
 }
 
-async function normalizeObjectives() {
-  if (!state.objectiveInput || !state.objectiveInput.trim()) {
-    setState({ errors: ["請先在下方貼上或輸入目標，再用 AI 整理。"], messages: [] });
-    return;
-  }
-
-  busy = true;
-  busyItemId = null;
-  busyLabel = "AI 正在整理目標格式，請稍候……";
-  setState({ errors: [], messages: [] });
-
-  try {
-    const result = await normalizeObjectivesViaApi({
-      apiBaseUrl: getApiBaseUrl(),
-      text: state.objectiveInput,
-    });
-
-    if (!result?.ok || !Array.isArray(result.objectives)) {
-      setState({ errors: [result?.error || "AI 整理回傳格式錯誤。"], messages: [] });
-      return;
-    }
-
-    const objectives = normalizeExtractedObjectives(result.objectives);
-    if (objectives.length === 0) {
-      setState({ errors: ["AI 未整理出有效目標，請檢查貼上的內容。"], messages: [] });
-      return;
-    }
-
-    state.objectiveInput = objectivesToInputText(objectives);
-    setState({ errors: [], messages: [`AI 已整理出 ${objectives.length} 個學習指標，請確認或修改後再建立藍圖。`] });
-  } catch (error) {
-    setState({
-      errors: [
-        `AI 整理失敗：${error?.message || String(error)}`,
-        `請確認 Worker 是否仍在 ${getApiBaseUrl()} 執行。`,
-      ],
-      messages: [],
-    });
-  } finally {
-    busy = false;
-    busyItemId = null;
-    busyLabel = "";
-    render();
-  }
-}
-
 async function regenerateItem(itemId) {
   const originalItem = state.items.find((item) => item.itemId === itemId);
   if (!originalItem) return;
@@ -396,11 +350,13 @@ function renderStep1() {
     <div class="grid">
       <label class="field-lg">科目
         <select data-project="subject">
+          <option value="" ${!state.project.subject ? "selected" : ""}>請選擇</option>
           ${["國語", "數學", "社會", "自然", "英文"].map((option) => `<option value="${option}" ${option === state.project.subject ? "selected" : ""}>${option}</option>`).join("")}
         </select>
       </label>
       <label class="field-lg">年級
         <select data-project="grade">
+          <option value="" ${!state.project.grade ? "selected" : ""}>請選擇</option>
           ${["一年級", "二年級", "三年級", "四年級", "五年級", "六年級"].map((option) => `<option value="${option}" ${option === state.project.grade ? "selected" : ""}>${option}</option>`).join("")}
         </select>
       </label>
@@ -460,14 +416,13 @@ function renderStep2() {
       不想用 Gem 也可以：直接在下方「學習目標」欄輸入，每行 <code>目標文字｜節數</code>（例：<code>1-2 動物適應環境的策略｜2</code>）。
     </div>
     <label>學習目標（把 LLM／Gem 抓回的指標整段貼進來即可）<textarea data-field="objectiveInput">${escapeHtml(state.objectiveInput)}</textarea></label>
-    <p class="notice">貼好後按「整理學習目標」，系統會把它整理成帶編號與節數的標準格式（見下方預覽）。若整理得不理想，再按「用 AI 重排」。</p>
+    <p class="notice">貼好後按「整理學習目標」，系統會把它整理成帶編號與節數的標準格式（見下方預覽），可再手動微調。</p>
     <div class="actions">
       <button data-action="organize-objectives">整理學習目標</button>
-      <button class="secondary" data-action="normalize-objectives" ${busy ? "disabled" : ""}>${busy ? "AI 整理中……" : "用 AI 重排"}</button>
     </div>
-    ${loadingLine()}
     ${renderObjectivePreview()}
-    <label>教材摘要（選填，建議貼上 Gem 摘出的課本／習作重點：國語的生字、語詞、句型、課文重點；其他科的核心概念與重要詞彙，供 AI 依課本實際內容出題）<textarea data-field="materialText">${escapeHtml(state.materialText)}</textarea></label>
+    <label>教材摘要（選填）<textarea data-field="materialText">${escapeHtml(state.materialText)}</textarea></label>
+    <p class="notice">用途：作為 AI 出題的依據。建議貼上「教材提取」Gem 摘出的課本／習作重點（國語：生字、語詞、句型、課文重點；其他科：核心概念與重要詞彙）。留空也可以，AI 會只依學習目標出題。</p>
     <div class="actions">
       <button data-action="build-blueprint">確認目標，建立配題與藍圖</button>
     </div>
@@ -662,7 +617,6 @@ app.addEventListener("click", (event) => {
 
   const action = actionButton.dataset.action;
   if (action === "organize-objectives") organizeObjectives();
-  if (action === "normalize-objectives") normalizeObjectives();
   if (action === "build-blueprint") buildBlueprint();
   if (action === "generate-items") generateItems();
   if (action === "regenerate-item") regenerateItem(actionButton.dataset.itemId);

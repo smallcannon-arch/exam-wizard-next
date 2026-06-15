@@ -28,17 +28,6 @@ async function postJson({ apiBaseUrl = getApiBaseUrl(), path, body }) {
   return data;
 }
 
-export function normalizeObjectivesViaApi({
-  apiBaseUrl,
-  text,
-}) {
-  return postJson({
-    apiBaseUrl,
-    path: "/normalize-objectives",
-    body: { text },
-  });
-}
-
 export function generateItemsViaApi({
   apiBaseUrl,
   project,
