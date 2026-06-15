@@ -41,7 +41,8 @@ export function validatePlan(rows, totalScore = null) {
   const { totalItems, totalScore: planScore } = getPlanTotals(normalized);
   const expected = Number(totalScore);
 
-  if (Number.isFinite(expected) && planScore !== expected) {
+  // 只有在明確傳入正的總分時才比對；未傳（總分由配題表自行決定）則略過。
+  if (Number.isFinite(expected) && expected > 0 && planScore !== expected) {
     return { ok: false, error: `配題表合計 ${planScore} 分，與全卷總分 ${expected} 分不符。` };
   }
 

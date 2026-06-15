@@ -98,3 +98,32 @@ export function buildPaperSectionsByTheme({ intents } = {}) {
 
   return { ok: true, sections };
 }
+
+// 題位制：只鎖每題的題型與配分（來自配題表），不預先綁定學習目標。
+// 學習目標、認知層次與排序交由 LLM 在生成時依節數比例與整卷整體性編排。
+export function buildItemSlots({ questionTypeSequence = [], scoreSequence = [] } = {}) {
+  const types = Array.isArray(questionTypeSequence) ? questionTypeSequence : [];
+  const scores = Array.isArray(scoreSequence) ? scoreSequence : [];
+  const total = Math.max(types.length, scores.length);
+
+  if (total === 0) {
+    return { ok: false, slots: [], error: "缺少配題序列，請先填寫配題表。" };
+  }
+
+  const slots = [];
+  for (let index = 0; index < total; index += 1) {
+    const serial = index + 1;
+    slots.push({
+      intentId: makeIntentId(serial),
+      itemId: `Q-${String(serial).padStart(3, "0")}`,
+      questionType: asText(types[index], DEFAULT_EXAM_CONFIG.defaultQuestionTypes[0]),
+      score: toPositiveInteger(scores[index], 1),
+      cognitiveLevel: "",
+      objectiveIds: [],
+      primaryObjectiveId: "",
+      groupId: "",
+    });
+  }
+
+  return { ok: true, slots };
+}

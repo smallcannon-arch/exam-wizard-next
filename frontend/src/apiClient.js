@@ -32,6 +32,7 @@ export function extractObjectivesViaApi({
   apiBaseUrl,
   project,
   materialText,
+  files = [],
 }) {
   return postJson({
     apiBaseUrl,
@@ -39,6 +40,7 @@ export function extractObjectivesViaApi({
     body: {
       project,
       materialText,
+      files,
     },
   });
 }

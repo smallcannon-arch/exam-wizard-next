@@ -3,45 +3,60 @@ function text(value, fallback = "未提供") {
 }
 
 export function buildGenerateItemsPrompt({ project = {}, materialText = "", objectives = [], intents = [] }) {
+  const slots = (Array.isArray(intents) ? intents : []).map((slot) => ({
+    itemId: slot.itemId,
+    questionType: slot.questionType,
+    score: slot.score,
+  }));
+
   return [
     "# 角色",
     `你是臺灣國小${text(project.grade, "未指定年級")}${text(project.subject, "未指定科目")}命題協助者。`,
     "",
     "# 任務",
-    "請依題目藍圖產生正式試題草稿。每個 intent 只產生一題，不要產生備選題。",
-    "題目需符合國小學生程度，答案與解析需正確。",
+    "我已決定整卷的「題位」：每個題位的題型與配分固定，不可更動。請為每個題位命題，並自行決定每題對應哪一個學習目標與認知層次，讓整份考卷有良好的整體性。",
+    "題目需符合國小學生程度，答案與解析需正確。每個題位只出一題，不要備選題。",
     "",
-    "# 特殊題型：學力檢測題",
-    "若某題的 questionType 為「學力檢測題」，請以情境素養題組命題：先給一段生活化、可較長的情境題幹，再於同一題內設計 2 至 3 個由淺入深的子題，評量理解、分析與應用，避免純記憶。",
-    "此時 question 欄位需完整呈現情境與各子題（子題以 (1)(2)(3) 標示）；answer 欄位需逐一列出各子題答案；該題配分視為整題總分。",
+    "# 學習目標（含節數）JSON",
+    "請依各目標的 periodCount（節數）占總教學時數的比例，分配各目標在整卷的配分占比：節數多的目標，對應到較多題與較高總分。務必涵蓋所有目標，不可遺漏。",
+    JSON.stringify(objectives, null, 2),
+    "",
+    "# 題位 JSON（itemId、questionType、score 請原樣保留，不可更動）",
+    JSON.stringify(slots, null, 2),
     "",
     "# 教材內容",
     text(materialText, "未提供教材內容。請只依學習目標命題，不得假造課本專有內容。"),
     "",
-    "# 學習目標 JSON",
-    JSON.stringify(objectives, null, 2),
-    "",
-    "# 題目藍圖 JSON",
-    JSON.stringify(intents, null, 2),
+    "# 編排原則（整卷整體性）",
+    "- 每題指派一個 primaryObjectiveId（必填，須為上方學習目標的 objectiveId）；如有次要目標可放入 objectiveIds。",
+    "- 每題標註 cognitiveLevel（記憶／理解／應用／分析／評鑑／創造）。",
+    "- 讓各學習目標的「總配分」盡量貼近其節數比例；所有目標都要有題目。",
+    "- 整卷由易到難，相同情境或主題的題目相鄰，避免題意重複或互相暗示答案。",
+    "- 若 questionType 為「學力檢測題」，以生活情境較長題幹＋2 至 3 個遞進子題命題；question 完整呈現情境與 (1)(2)(3) 子題，answer 逐一列出各子題答案，該題配分為整題總分。",
     "",
     "# 輸出要求",
-    "只輸出 JSON，不要 Markdown。格式：{\"items\":[...]}。",
-    "每題必須沿用題目藍圖的 intentId（例如 I-001）作為對照鍵，並沿用同一筆藍圖的 itemId（例如 Q-001）作為卷面題號；兩者都必須原樣回傳，不得自行重新編號。",
-    "每題必須包含：intentId, itemId, groupId, questionType, cognitiveLevel, stimulus, question, options, answer, explanation, objectiveIds, primaryObjectiveId, secondaryObjectiveIds, score, estimatedTimeSeconds, difficulty, reviewFlags。",
+    "只輸出 JSON，不要 Markdown。格式：{\"items\":[...]}。items 的排列順序就是考卷的出題順序，請依編排原則排好。",
+    "每題必須包含：itemId（沿用題位）, questionType（沿用題位）, score（沿用題位）, primaryObjectiveId, objectiveIds, cognitiveLevel, stimulus, question, options, answer, explanation。",
   ].join("\n");
 }
 
-export function buildExtractObjectivesPrompt({ project = {}, materialText = "" }) {
+export function buildExtractObjectivesPrompt({ project = {}, materialText = "", hasFiles = false }) {
   return [
     "# 角色",
     `你是臺灣國小${text(project.grade, "未指定年級")}${text(project.subject, "未指定科目")}課程設計協助者。`,
     "",
     "# 任務",
-    "請從教材內容萃取可評量的學習目標。每個目標需具體、可命題、對應一個重點概念。",
+    hasFiles
+      ? "請閱讀我隨附的教材檔案（可能多份 PDF），萃取可評量的學習目標。每個目標需具體、可命題、對應一個重點概念。"
+      : "請從教材內容萃取可評量的學習目標。每個目標需具體、可命題、對應一個重點概念。",
     "目標數量依教材內容多寡判斷，一般 3 到 8 個。不得自行假造教材沒有的內容。",
     "",
+    "# 節數（重要）",
+    "請依教材分量，為每個目標估算建議教學節數 periodCount（正整數）。",
+    "節數會用來計算各目標占總教學時數的比例，作為配分依據（節數多的目標分配到較多題與較高分），務必合理填寫。",
+    "",
     "# 教材內容",
-    text(materialText, "未提供教材內容。"),
+    hasFiles ? "（見隨附檔案）" : text(materialText, "未提供教材內容。"),
     "",
     "# 輸出要求",
     "只輸出 JSON，不要 Markdown。格式：{\"objectives\":[...]}。",

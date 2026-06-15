@@ -1,17 +1,20 @@
 import { createInitialState } from "./state.js";
 import { makeObjectiveId } from "./core/ids.js";
-import { allocateUnitsByPeriod, summarizeScoreByObjective } from "./core/scoring.js";
-import { buildItemIntents, buildPaperSectionsByTheme } from "./core/blueprint.js";
+import { summarizeScoreByObjective } from "./core/scoring.js";
+import { buildItemSlots } from "./core/blueprint.js";
 import { buildPlanSequences, getPlanTotals, validatePlan } from "./core/plan.js";
 import { getQuestionTypeOptions, SUBJECT_OPTIONS } from "./core/questionTypes.js";
 import { validateExam } from "./core/validation.js";
 import { replaceItemById } from "./core/replaceItem.js";
 import { renderStudentPaper, renderTeacherPaper } from "./core/renderPaper.js";
 import { extractObjectivesViaApi, generateItemsViaApi, regenerateItemViaApi } from "./apiClient.js";
-import { normalizeExtractedObjectives, objectivesToInputText } from "./core/objectives.js";
+import { normalizeExtractedObjectives, objectivesToInputText, parseObjectiveInput } from "./core/objectives.js";
+import { computeObjectiveShares, formatPercent } from "./core/periods.js";
 import { getApiBaseUrl } from "./config.js";
-import { validateGeneratedItemsAgainstIntents } from "./core/validateGeneratedItems.js";
+import { validateGeneratedPaper } from "./core/validateGeneratedPaper.js";
 import { buildAuditRows } from "./core/auditRows.js";
+
+const GEM_URL = "https://gemini.google.com/gem/1Xd6a-3N4dZvvzC7TdgP1yBjAa2IXDUFb?usp=sharing";
 
 const app = document.querySelector("#app");
 let state = createInitialState();
@@ -37,75 +40,60 @@ function setProjectField(field, value) {
   state.project = { ...state.project, [field]: value };
 }
 
+function examTitle() {
+  return `${state.project.grade || ""}${state.project.subject || ""}評量` || "未命名評量";
+}
+
 function parseObjectives(input) {
-  return String(input || "")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line, index) => {
-      const [text, periodCount = "1"] = line.split("｜").map((part) => part.trim());
-      return {
-        objectiveId: makeObjectiveId(index + 1),
-        unitName: index < 2 ? "觀察與推論" : "生活應用",
-        text,
-        periodCount: Number(periodCount) || 1,
-      };
-    });
+  return parseObjectiveInput(input).map((objective, index) => ({
+    objectiveId: makeObjectiveId(index + 1),
+    unitName: objective.unitName || (index < 2 ? "觀察與推論" : "生活應用"),
+    text: objective.text,
+    periodCount: objective.periodCount,
+  }));
 }
 
 function buildBlueprint() {
   const objectives = parseObjectives(state.objectiveInput);
-  const totalScore = Number(state.project.totalScore);
+  if (objectives.length === 0) {
+    setState({ objectives: [], objectiveTargets: [], objectivePlans: [], intents: [], sections: [], errors: ["請先貼上學習目標（可用上方的 Gem 取得，每行：目標文字｜節數）。"], messages: [] });
+    return;
+  }
 
-  const planCheck = validatePlan(state.planRows, totalScore);
+  const planCheck = validatePlan(state.planRows);
   if (!planCheck.ok) {
-    setState({ objectives, objectivePlans: [], intents: [], sections: [], errors: [planCheck.error], messages: [] });
+    setState({ objectives, objectiveTargets: [], objectivePlans: [], intents: [], sections: [], errors: [planCheck.error], messages: [] });
     return;
   }
-
-  const alloc = allocateUnitsByPeriod({ objectives, totalUnits: planCheck.totalItems });
-  if (!alloc.ok) {
-    setState({ objectives, objectivePlans: [], intents: [], sections: [], errors: [alloc.error], messages: [] });
-    return;
-  }
-
-  let objectivePlans = alloc.counts.map((row) => ({
-    objectiveId: row.objectiveId,
-    targetUnitCount: row.targetUnitCount,
-    targetScore: 0,
-    locked: false,
-    note: "",
-  }));
 
   const { questionTypeSequence, scoreSequence } = buildPlanSequences(state.planRows);
-
-  const intentResult = buildItemIntents({
-    objectives,
-    objectivePlans,
-    unitScore: Number(state.project.unitScore),
-    questionTypeSequence,
-    scoreSequence,
-  });
-
-  if (!intentResult.ok) {
-    setState({ objectives, objectivePlans, intents: [], sections: [], errors: [intentResult.error], messages: [] });
+  const slotResult = buildItemSlots({ questionTypeSequence, scoreSequence });
+  if (!slotResult.ok) {
+    setState({ objectives, objectiveTargets: [], objectivePlans: [], intents: [], sections: [], errors: [slotResult.error], messages: [] });
     return;
   }
 
-  const scoreById = new Map(summarizeScoreByObjective(intentResult.intents).map((row) => [row.objectiveId, row.score]));
-  objectivePlans = objectivePlans.map((plan) => ({ ...plan, targetScore: scoreById.get(plan.objectiveId) ?? 0 }));
-
-  const sectionResult = buildPaperSectionsByTheme({ intents: intentResult.intents });
-  const totalItems = intentResult.intents.length;
-  const totalScoreActual = intentResult.intents.reduce((sum, intent) => sum + (Number(intent.score) || 0), 0);
+  const totalScore = planCheck.totalScore;
+  const objectiveTargets = computeObjectiveShares(objectives).map((row) => {
+    const objective = objectives.find((entry) => entry.objectiveId === row.objectiveId);
+    return {
+      objectiveId: row.objectiveId,
+      text: objective?.text || "",
+      periodCount: row.periodCount,
+      share: row.share,
+      targetScore: Math.round(row.share * totalScore),
+    };
+  });
 
   setState({
     objectives,
-    objectivePlans,
-    intents: intentResult.intents,
-    sections: sectionResult.sections,
+    objectiveTargets,
+    objectivePlans: [],
+    intents: slotResult.slots,
+    sections: [],
+    items: [],
     errors: [],
-    messages: [`已建立藍圖：${totalItems} 題，總分 ${totalScoreActual} 分（依配題表）。`],
+    messages: [`已建立藍圖：${slotResult.slots.length} 題、總分 ${totalScore} 分。各題對應的學習目標與出題順序，將在生成時由 AI 依節數比例與整卷整體性編排。`],
     step: 4,
   });
 }
@@ -144,23 +132,33 @@ async function generateItems() {
   return;
 }
 
-const generatedCheck = validateGeneratedItemsAgainstIntents({
-  intents: state.intents,
+const generatedCheck = validateGeneratedPaper({
+  slots: state.intents,
+  objectives: state.objectives,
   items: result.items,
 });
 
 if (!generatedCheck.ok) {
   setState({
     errors: generatedCheck.errors,
-    messages: ["AI 回傳題目不完整，尚未匯入正式草稿。請重新生成。"],
+    messages: ["AI 回傳的試卷不符合題位或目標覆蓋要求，尚未匯入。請重新生成。"],
   });
   return;
 }
 
+const sections = [{
+  sectionId: "S-01",
+  order: 1,
+  title: "試題",
+  layoutMode: "sequential",
+  itemIds: result.items.map((item) => item.itemId),
+}];
+
 setState({
   items: result.items,
+  sections,
   errors: [],
-  messages: [`已產生 ${result.items.length} 個正式草稿計分單位。`],
+  messages: [`已產生 ${result.items.length} 題正式草稿（AI 已依節數比例與整卷整體性編排）。`],
   step: 5,
 });
   } catch (error) {
@@ -310,14 +308,10 @@ function renderStep1() {
   return `<section class="panel">
     <h2>① 建卷</h2>
     <div class="grid">
-      <label>評量名稱<input data-project="examName" value="${escapeHtml(state.project.examName)}"></label>
       <label>科目<input data-project="subject" value="${escapeHtml(state.project.subject)}"></label>
       <label>年級<input data-project="grade" value="${escapeHtml(state.project.grade)}"></label>
-      <label>總分<input type="number" data-project="totalScore" value="${escapeHtml(state.project.totalScore)}"></label>
-      <label>每個計分單位分數<input type="number" data-project="unitScore" value="${escapeHtml(state.project.unitScore)}"></label>
     </div>
     ${renderPlanTable()}
-    <label>教材內容或摘要<textarea data-field="materialText">${escapeHtml(state.materialText)}</textarea></label>
     <div class="actions"><button data-next-step="2">下一步</button></div>
   </section>`;
 }
@@ -326,11 +320,9 @@ function renderPlanTable() {
   const subject = state.planSubject || state.project.subject;
   const baseOptions = getQuestionTypeOptions(subject);
   const totals = getPlanTotals(state.planRows);
-  const totalScore = Number(state.project.totalScore);
-  const balanced = totals.totalScore === totalScore;
 
   const subjectSelect = ["", ...SUBJECT_OPTIONS]
-    .map((option) => `<option value="${escapeHtml(option)}" ${option === (state.planSubject || "") ? "selected" : ""}>${option === "" ? `跟隨科目（${escapeHtml(state.project.subject)}）` : escapeHtml(option)}</option>`)
+    .map((option) => `<option value="${escapeHtml(option)}" ${option === (state.planSubject || "") ? "selected" : ""}>${option === "" ? "請選擇科目" : escapeHtml(option)}</option>`)
     .join("");
 
   const rowsHtml = state.planRows.map((row, index) => {
@@ -352,44 +344,59 @@ function renderPlanTable() {
     <h3>配題表（題型／題數／配分）</h3>
     <p class="notice">題型清單依：<select data-field="planSubject">${subjectSelect}</select>　含「學力檢測題」＝情境素養題組（題幹含生活情境與子題）。</p>
     <div class="table-wrap"><table>
-      <thead><tr><th>題型</th><th>題數</th><th>每題配分</th><th>小計</th><th></th></tr></thead>
+      <thead><tr><th>題型</th><th>題數</th><th>每題(答)配分</th><th>小計</th><th></th></tr></thead>
       <tbody>${rowsHtml}</tbody>
     </table></div>
     <div class="actions"><button class="secondary" data-action="add-plan-row">＋ 新增一列</button></div>
-    <p class="notice ${balanced ? "success" : "error"}">合計：${totals.totalItems} 題、${totals.totalScore} 分　${balanced ? "✓ 與總分相符" : `✗ 與總分 ${totalScore} 不符，建立藍圖前請調整`}</p>
+    <p class="notice ${totals.totalItems > 0 ? "success" : ""}">合計：${totals.totalItems} 題、${totals.totalScore} 分（即本卷總分）</p>
   `;
 }
 
 function renderStep2() {
   return `<section class="panel">
     <h2>② 學習目標</h2>
-    <p class="notice">每行一個目標，格式：目標文字｜節數。節數會用來分配計分單位數。</p>
-    <p class="notice">也可以先用 AI 從第①步的教材內容提取目標草稿，提取後務必人工確認與修改，再建立藍圖。</p>
-    <label>學習目標<textarea data-field="objectiveInput">${escapeHtml(state.objectiveInput)}</textarea></label>
+    <div class="notice">
+      <strong>用 Gem 從教材抓學習目標（建議）</strong>
+      <ol class="gem-steps">
+        <li><a href="${GEM_URL}" target="_blank" rel="noopener">開啟「學習目標擷取」Gem ↗</a></li>
+        <li>在 Gem 裡上傳教材（可多份 PDF），請它列出各學習目標與「節數」。</li>
+        <li>把 Gem 的結果貼到下方欄位（每行：<code>目標文字｜節數</code>；Gem 的 JSON 也可直接貼）。</li>
+        <li>確認或修改後按「建立配題與藍圖」。系統會依各目標節數占總教學時數的比例配分出題。</li>
+      </ol>
+    </div>
+    <label>學習目標（每行：目標文字｜節數）<textarea data-field="objectiveInput">${escapeHtml(state.objectiveInput)}</textarea></label>
+    <label>教材摘要（選填，提供 AI 出題參考）<textarea data-field="materialText">${escapeHtml(state.materialText)}</textarea></label>
     <div class="actions">
-      <button class="secondary" data-action="extract-objectives" ${busy ? "disabled" : ""}>${busy ? "AI 提取中……" : "AI 從教材提取目標"}</button>
+      <button class="secondary" data-action="extract-objectives" ${busy ? "disabled" : ""}>${busy ? "AI 提取中……" : "或：用上方教材摘要快速擷取"}</button>
       <button data-action="build-blueprint">建立配題與藍圖</button>
     </div>
   </section>`;
 }
 
 function renderStep3Or4() {
-  const plans = state.objectivePlans;
+  const targets = state.objectiveTargets || [];
   const intents = state.intents;
+  const planRows = state.planRows;
   return `<section class="panel">
     <h2>${state.step === 3 ? "③ 目標配題" : "④ 題目藍圖"}</h2>
+    <p class="notice">藍圖只鎖定每題的題型與配分；各題對應哪個學習目標、認知層次與出題順序，交由 AI 依下列節數比例與整卷整體性編排。</p>
+
+    <h3>學習目標與配分占比（依節數）</h3>
     <div class="table-wrap"><table>
-      <thead><tr><th>目標</th><th>文字</th><th>節數</th><th>計分單位數</th><th>配分</th></tr></thead>
-      <tbody>${plans.map((plan) => {
-        const objective = state.objectives.find((entry) => entry.objectiveId === plan.objectiveId);
-        return `<tr><td>${escapeHtml(plan.targetUnitCount)}</td><td>${escapeHtml(objective?.text)}</td><td>${escapeHtml(objective?.periodCount)}</td><td>${escapeHtml(plan.targetUnitCount)}</td><td>${escapeHtml(plan.targetScore)}</td></tr>`;
-      }).join("")}</tbody>
+      <thead><tr><th>目標</th><th>文字</th><th>節數</th><th>占總時數</th><th>目標配分(約)</th></tr></thead>
+      <tbody>${targets.map((row) => `<tr><td>${escapeHtml(row.objectiveId)}</td><td>${escapeHtml(row.text)}</td><td>${escapeHtml(row.periodCount)}</td><td>${escapeHtml(formatPercent(row.share))}</td><td>${escapeHtml(row.targetScore)}</td></tr>`).join("")}</tbody>
     </table></div>
 
-    <h3>題目意圖</h3>
+    <h3>配題分布（題型與配分固定）</h3>
     <div class="table-wrap"><table>
-      <thead><tr><th>題號</th><th>目標</th><th>主題</th><th>題型</th><th>分數</th></tr></thead>
-      <tbody>${intents.slice(0, 80).map((intent) => `<tr><td>${intent.itemId}</td><td>${intent.primaryObjectiveId}</td><td>${escapeHtml(intent.themeBlockId)}</td><td>${escapeHtml(intent.questionType)}</td><td>${intent.score}</td></tr>`).join("")}</tbody>
+      <thead><tr><th>題型</th><th>題數</th><th>每題(答)配分</th><th>小計</th></tr></thead>
+      <tbody>${planRows.map((row) => `<tr><td>${escapeHtml(row.questionType)}</td><td>${escapeHtml(row.count)}</td><td>${escapeHtml(row.score)}</td><td>${escapeHtml((Number(row.count) || 0) * (Number(row.score) || 0))}分</td></tr>`).join("")}</tbody>
+    </table></div>
+
+    <h3>題位（共 ${intents.length} 題）</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>題號</th><th>題型</th><th>配分</th></tr></thead>
+      <tbody>${intents.slice(0, 80).map((slot) => `<tr><td>${escapeHtml(slot.itemId)}</td><td>${escapeHtml(slot.questionType)}</td><td>${escapeHtml(slot.score)}</td></tr>`).join("")}</tbody>
     </table></div>
     <div class="actions">
       <button data-action="generate-items" ${busy ? "disabled" : ""}>${busy ? "AI 生成中……" : "連線 AI 生成正式草稿"}</button>
@@ -420,12 +427,12 @@ function renderItems() {
 }
 
 function renderAudit() {
+  const examTotal = state.items.reduce((sum, item) => sum + (Number(item?.score) || 0), 0);
   const result = validateExam({
   objectives: state.objectives,
   objectivePlans: state.objectivePlans,
   items: state.items,
-  totalScore: Number(state.project.totalScore),
-  unitScore: Number(state.project.unitScore),
+  totalScore: examTotal,
   });
 
   return `<section class="panel">
@@ -448,8 +455,9 @@ function renderAudit() {
 }
 
 function renderOutput() {
-  const studentPaper = renderStudentPaper({ project: state.project, sections: state.sections, items: state.items });
-  const teacherPaper = renderTeacherPaper({ project: state.project, sections: state.sections, items: state.items });
+  const project = { ...state.project, examName: examTitle() };
+  const studentPaper = renderStudentPaper({ project, sections: state.sections, items: state.items });
+  const teacherPaper = renderTeacherPaper({ project, sections: state.sections, items: state.items });
   return `<section class="panel">
     <h2>⑦ 輸出</h2>
     <h3>學生卷</h3>

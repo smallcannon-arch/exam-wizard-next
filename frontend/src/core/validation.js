@@ -1,4 +1,4 @@
-import { getTotalScoreUnits, summarizeScoreByObjective } from "./scoring.js";
+import { summarizeScoreByObjective } from "./scoring.js";
 import { hasText, isPlainObject } from "./schema.js";
 
 export function validateObjective(objective) {
@@ -31,11 +31,6 @@ export function validateExam({
   const errors = [];
   const warnings = [];
 
-  const unitResult = getTotalScoreUnits({ totalScore, unitScore });
-
-if (!unitResult.ok) {
-  errors.push(unitResult.error);
-}
   for (const objective of objectives) {
     const result = validateObjective(objective);
     if (!result.ok) errors.push(...result.errors.map((error) => `${objective?.objectiveId ?? "未知目標"}：${error}`));

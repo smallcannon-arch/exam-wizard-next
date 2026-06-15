@@ -7,14 +7,27 @@ async function handleExtractObjectives(request, env) {
   const body = await readJson(request);
   if (!body.ok) return jsonResponse(request, env, { ok: false, error: body.error }, 400);
 
-  const { project = {}, materialText = "" } = body.data;
+  const { project = {}, materialText = "", files = [] } = body.data;
+  const safeFiles = Array.isArray(files)
+    ? files.filter((file) => file && typeof file.data === "string" && file.data.trim())
+    : [];
+  const hasFiles = safeFiles.length > 0;
 
-  if (!materialText || !String(materialText).trim()) {
-    return jsonResponse(request, env, { ok: false, error: "缺少教材內容 materialText。" }, 400);
+  if (!hasFiles && (!materialText || !String(materialText).trim())) {
+    return jsonResponse(request, env, { ok: false, error: "請上傳教材 PDF 或填入教材內容。" }, 400);
   }
 
-  const prompt = buildExtractObjectivesPrompt({ project, materialText });
-  const ai = await callGemini({ env, prompt });
+  if (safeFiles.length > 10) {
+    return jsonResponse(request, env, { ok: false, error: "一次最多上傳 10 個檔案。" }, 400);
+  }
+
+  const totalBytes = safeFiles.reduce((sum, file) => sum + Math.ceil((file.data.length * 3) / 4), 0);
+  if (totalBytes > 18 * 1024 * 1024) {
+    return jsonResponse(request, env, { ok: false, error: "上傳檔案總量過大（約 18MB 上限），請減少檔案或頁數。" }, 400);
+  }
+
+  const prompt = buildExtractObjectivesPrompt({ project, materialText, hasFiles });
+  const ai = await callGemini({ env, prompt, files: safeFiles });
   if (!ai.ok) return jsonResponse(request, env, { ok: false, error: ai.error }, ai.status || 502);
 
   const parsed = extractJsonObject(ai.text);
