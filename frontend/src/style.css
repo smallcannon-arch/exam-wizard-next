@@ -17,6 +17,8 @@
 body {
   margin: 0;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 17px;
+  line-height: 1.6;
   color: var(--ink);
   background: linear-gradient(180deg, #f7f9fd, #f3efe5);
 }
@@ -24,7 +26,7 @@ body {
 .site-header {
   background: var(--blue);
   color: white;
-  padding: 32px max(24px, calc((100vw - 1080px) / 2));
+  padding: 32px max(24px, calc((100vw - 1600px) / 2));
 }
 
 .eyebrow {
@@ -41,9 +43,16 @@ h3 { margin: 0 0 8px; }
 .lead { margin: 12px 0 0; color: #e8eefb; }
 
 .app-shell {
-  width: min(1080px, calc(100vw - 32px));
+  width: min(1600px, calc(100vw - 40px));
   margin: 24px auto 56px;
 }
+
+input, select, textarea, button {
+  font-size: 1rem;
+  font-family: inherit;
+}
+
+table { font-size: 0.97rem; }
 
 .grid {
   display: grid;
@@ -201,6 +210,8 @@ th, td {
 }
 
 th { color: var(--muted); font-weight: 600; }
+th.num, td.num { text-align: right; white-space: nowrap; }
+tfoot td { border-top: 2px solid var(--line); }
 
 .item-card {
   border: 1px solid var(--line);

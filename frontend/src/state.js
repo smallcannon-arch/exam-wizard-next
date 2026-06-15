@@ -9,7 +9,7 @@ export function createInitialState() {
     materialText: "",
     planSubject: "",
     planRows: [],
-    objectiveInput: "能判讀天氣資料並說明天氣變化｜3\n能根據觀察紀錄進行簡單推論｜2\n能說明水循環與生活的關係｜2",
+    objectiveInput: "",
     objectives: [],
     objectivePlans: [],
     intents: [],

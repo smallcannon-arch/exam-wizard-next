@@ -127,3 +127,38 @@ export function buildItemSlots({ questionTypeSequence = [], scoreSequence = [] }
 
   return { ok: true, slots };
 }
+
+// 將題目依題型分「大題」：相同 questionType 放在一起，順序依 typeOrder（配題表順序），
+// 其餘未列到的題型接在後面。同一大題內維持題目原順序。
+export function buildSectionsByQuestionType({ items = [], typeOrder = [] } = {}) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return { ok: false, sections: [], error: "缺少題目。" };
+  }
+
+  const order = [];
+  for (const type of (Array.isArray(typeOrder) ? typeOrder : [])) {
+    const normalized = asText(type);
+    if (normalized && !order.includes(normalized)) order.push(normalized);
+  }
+  for (const item of items) {
+    const normalized = asText(item?.questionType, "其他");
+    if (!order.includes(normalized)) order.push(normalized);
+  }
+
+  const groups = new Map(order.map((type) => [type, []]));
+  for (const item of items) {
+    const type = asText(item?.questionType, "其他");
+    if (!groups.has(type)) groups.set(type, []);
+    groups.get(type).push(item.itemId);
+  }
+
+  let serial = 1;
+  const sections = [];
+  for (const [title, itemIds] of groups) {
+    if (itemIds.length === 0) continue;
+    sections.push({ sectionId: makeSectionId(serial), order: serial, title, layoutMode: "byType", itemIds });
+    serial += 1;
+  }
+
+  return { ok: true, sections };
+}

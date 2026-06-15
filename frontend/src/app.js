@@ -1,7 +1,7 @@
 import { createInitialState } from "./state.js";
 import { makeObjectiveId } from "./core/ids.js";
 import { summarizeScoreByObjective } from "./core/scoring.js";
-import { buildItemSlots } from "./core/blueprint.js";
+import { buildItemSlots, buildSectionsByQuestionType } from "./core/blueprint.js";
 import { buildPlanSequences, getPlanTotals, validatePlan } from "./core/plan.js";
 import { getQuestionTypeOptions, SUBJECT_OPTIONS } from "./core/questionTypes.js";
 import { validateExam } from "./core/validation.js";
@@ -10,11 +10,20 @@ import { renderStudentPaper, renderTeacherPaper } from "./core/renderPaper.js";
 import { extractObjectivesViaApi, generateItemsViaApi, regenerateItemViaApi } from "./apiClient.js";
 import { normalizeExtractedObjectives, objectivesToInputText, parseObjectiveInput } from "./core/objectives.js";
 import { computeObjectiveShares, formatPercent } from "./core/periods.js";
+import { largestRemainder } from "./core/distribute.js";
 import { getApiBaseUrl } from "./config.js";
 import { validateGeneratedPaper } from "./core/validateGeneratedPaper.js";
 import { buildAuditRows } from "./core/auditRows.js";
 
-const GEM_URL = "https://gemini.google.com/gem/1Xd6a-3N4dZvvzC7TdgP1yBjAa2IXDUFb?usp=sharing";
+// 目標提取 Gem（沿用現有連結）；教材提取 Gem 建立後，把網址填到 GEM_MATERIAL_URL。
+const GEM_OBJECTIVES_URL = "https://gemini.google.com/gem/1Xd6a-3N4dZvvzC7TdgP1yBjAa2IXDUFb?usp=sharing";
+const GEM_MATERIAL_URL = "";
+
+function gemLink(url, label) {
+  return url
+    ? `<a href="${url}" target="_blank" rel="noopener">${label} ↗</a>`
+    : `<span title="建立教材提取 Gem 後補上連結">${label}（連結待設定）</span>`;
+}
 
 const app = document.querySelector("#app");
 let state = createInitialState();
@@ -42,6 +51,37 @@ function setProjectField(field, value) {
 
 function examTitle() {
   return `${state.project.grade || ""}${state.project.subject || ""}評量` || "未命名評量";
+}
+
+// 依各目標節數，以最大餘數法把總分配成整數目標配分（總和等於總分）。
+function objectiveScoresByPeriod(objectives, totalScore) {
+  const rows = largestRemainder(totalScore, objectives.map((objective) => ({ key: objective.objectiveId, weight: objective.periodCount })));
+  return new Map(rows.map((row) => [row.key, row.count]));
+}
+
+function renderObjectivePreview() {
+  const objectives = parseObjectives(state.objectiveInput);
+  if (objectives.length === 0) return "";
+
+  const totalScore = getPlanTotals(state.planRows).totalScore;
+  const totalPeriods = objectives.reduce((sum, objective) => sum + (Number(objective.periodCount) || 0), 0);
+  const scoreById = objectiveScoresByPeriod(objectives, totalScore);
+
+  const rows = objectives.map((objective, index) => `<tr>
+      <td>${index + 1}</td>
+      <td>${escapeHtml(objective.text)}</td>
+      <td class="num">${escapeHtml(objective.periodCount)} 節</td>
+      <td class="num">${escapeHtml(scoreById.get(objective.objectiveId) || 0)} 分</td>
+    </tr>`).join("");
+
+  return `
+    <h3>目標配分預覽（依節數比例）</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>№</th><th>單元／學習目標</th><th class="num">授課節數</th><th class="num">目標配分</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr><td></td><td><strong>合計</strong></td><td class="num"><strong>${totalPeriods} 節</strong></td><td class="num"><strong>${totalScore} 分</strong></td></tr></tfoot>
+    </table></div>
+  `;
 }
 
 function parseObjectives(input) {
@@ -74,6 +114,7 @@ function buildBlueprint() {
   }
 
   const totalScore = planCheck.totalScore;
+  const scoreById = objectiveScoresByPeriod(objectives, totalScore);
   const objectiveTargets = computeObjectiveShares(objectives).map((row) => {
     const objective = objectives.find((entry) => entry.objectiveId === row.objectiveId);
     return {
@@ -81,7 +122,7 @@ function buildBlueprint() {
       text: objective?.text || "",
       periodCount: row.periodCount,
       share: row.share,
-      targetScore: Math.round(row.share * totalScore),
+      targetScore: scoreById.get(row.objectiveId) || 0,
     };
   });
 
@@ -146,13 +187,13 @@ if (!generatedCheck.ok) {
   return;
 }
 
-const sections = [{
-  sectionId: "S-01",
-  order: 1,
-  title: "試題",
-  layoutMode: "sequential",
-  itemIds: result.items.map((item) => item.itemId),
-}];
+const sectionResult = buildSectionsByQuestionType({
+  items: result.items,
+  typeOrder: state.planRows.map((row) => row.questionType),
+});
+const sections = sectionResult.ok
+  ? sectionResult.sections
+  : [{ sectionId: "S-01", order: 1, title: "試題", layoutMode: "sequential", itemIds: result.items.map((item) => item.itemId) }];
 
 setState({
   items: result.items,
@@ -356,16 +397,18 @@ function renderStep2() {
   return `<section class="panel">
     <h2>② 學習目標</h2>
     <div class="notice">
-      <strong>用 Gem 從教材抓學習目標（建議）</strong>
+      <strong>用兩個 Gem 分別抓「學習目標」與「教材重點」（建議；也可自己填）</strong>
       <ol class="gem-steps">
-        <li><a href="${GEM_URL}" target="_blank" rel="noopener">開啟「學習目標擷取」Gem ↗</a></li>
-        <li>在 Gem 裡上傳教材（可多份 PDF），請它列出各學習目標與「節數」。</li>
-        <li>把 Gem 的結果貼到下方欄位（每行：<code>目標文字｜節數</code>；Gem 的 JSON 也可直接貼）。</li>
-        <li>確認或修改後按「建立配題與藍圖」。系統會依各目標節數占總教學時數的比例配分出題。</li>
+        <li><strong>學習目標：</strong>${gemLink(GEM_OBJECTIVES_URL, "開啟「目標提取」Gem")}，上傳該課的課本／單元活動架構，把它輸出的每行（<code>目標文字｜節數</code>）整段貼到下方「<strong>學習目標</strong>」欄。</li>
+        <li><strong>教材重點：</strong>${gemLink(GEM_MATERIAL_URL, "開啟「教材提取」Gem")}，上傳該課的課本／習作，把它輸出的各單元重點整段貼到下方「<strong>教材摘要</strong>」欄。</li>
+        <li>兩個 Gem 都<strong>不必</strong>上傳目次、解答或純教學 PPT。</li>
+        <li>確認或修改後按「建立配題與藍圖」，系統會依各目標<strong>節數比例</strong>配分出題。</li>
       </ol>
+      不想用 Gem 也可以：直接在下方「學習目標」欄輸入，每行 <code>目標文字｜節數</code>（例：<code>1-2 動物適應環境的策略｜2</code>）。
     </div>
     <label>學習目標（每行：目標文字｜節數）<textarea data-field="objectiveInput">${escapeHtml(state.objectiveInput)}</textarea></label>
-    <label>教材摘要（選填，提供 AI 出題參考）<textarea data-field="materialText">${escapeHtml(state.materialText)}</textarea></label>
+    ${renderObjectivePreview()}
+    <label>教材摘要（選填，建議貼上 Gem 摘出的課本／習作重點：國語的生字、語詞、句型、課文重點；其他科的核心概念與重要詞彙，供 AI 依課本實際內容出題）<textarea data-field="materialText">${escapeHtml(state.materialText)}</textarea></label>
     <div class="actions">
       <button class="secondary" data-action="extract-objectives" ${busy ? "disabled" : ""}>${busy ? "AI 提取中……" : "或：用上方教材摘要快速擷取"}</button>
       <button data-action="build-blueprint">建立配題與藍圖</button>
@@ -554,7 +597,7 @@ app.addEventListener("click", (event) => {
 
 // 配題表的題型/題數/配分或科目改變時（blur 觸發），重繪以更新小計與合計。
 app.addEventListener("change", (event) => {
-  if (event.target.dataset.planField || event.target.dataset.field === "planSubject") {
+  if (event.target.dataset.planField || event.target.dataset.field === "planSubject" || event.target.dataset.field === "objectiveInput") {
     render();
   }
 });

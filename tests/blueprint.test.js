@@ -77,3 +77,22 @@ describe("buildPaperSectionsByTheme", () => {
     ]);
   });
 });
+
+describe("buildSectionsByQuestionType", () => {
+  it("同題型分到同一大題，順序依 typeOrder", async () => {
+    const { buildSectionsByQuestionType } = await import("../frontend/src/core/blueprint.js");
+    const result = buildSectionsByQuestionType({
+      items: [
+        { itemId: "Q-001", questionType: "選擇題" },
+        { itemId: "Q-002", questionType: "學力檢測題" },
+        { itemId: "Q-003", questionType: "選擇題" },
+      ],
+      typeOrder: ["選擇題", "學力檢測題"],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.sections.map((s) => s.title)).toEqual(["選擇題", "學力檢測題"]);
+    expect(result.sections[0].itemIds).toEqual(["Q-001", "Q-003"]);
+    expect(result.sections[1].itemIds).toEqual(["Q-002"]);
+  });
+});

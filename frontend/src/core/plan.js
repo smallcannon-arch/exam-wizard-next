@@ -1,6 +1,5 @@
 // 統一配題表：每列 = { questionType, count, score }。
 // 由配題表直接導出整卷的題型序列與配分序列。純函式，不依賴 DOM。
-import { interleaveByCounts } from "./distribute.js";
 
 function asText(value, fallback = "") {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : fallback;
@@ -51,10 +50,16 @@ export function validatePlan(rows, totalScore = null) {
 
 export function buildPlanSequences(rows) {
   const normalized = normalizePlanRows(rows);
-  const order = interleaveByCounts(normalized.map((row, index) => ({ key: index, count: row.count })));
+  const questionTypeSequence = [];
+  const scoreSequence = [];
 
-  return {
-    questionTypeSequence: order.map((index) => normalized[index].questionType),
-    scoreSequence: order.map((index) => normalized[index].score),
-  };
+  // 依配題表的列順序分組展開：同題型相鄰（不打散），方便整卷分大題。
+  for (const row of normalized) {
+    for (let index = 0; index < row.count; index += 1) {
+      questionTypeSequence.push(row.questionType);
+      scoreSequence.push(row.score);
+    }
+  }
+
+  return { questionTypeSequence, scoreSequence };
 }
