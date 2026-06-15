@@ -1,0 +1,15 @@
+{
+  "name": "exam-wizard-next",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "零相依前端命題系統骨架：目標層配題數、AI 生成正式草稿、單題重出。",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "node scripts/check-imports.mjs"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.6"
+  }
+}
