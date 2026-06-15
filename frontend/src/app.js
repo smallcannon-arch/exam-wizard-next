@@ -6,6 +6,7 @@ import { validateExam } from "./core/validation.js";
 import { replaceItemById } from "./core/replaceItem.js";
 import { renderStudentPaper, renderTeacherPaper } from "./core/renderPaper.js";
 import { generateItemsViaApi, regenerateItemViaApi } from "./apiClient.js";
+import { getApiBaseUrl } from "./config.js";
 
 const app = document.querySelector("#app");
 let state = createInitialState();
@@ -92,14 +93,6 @@ async function generateItems() {
     return;
   }
 
-  if (!state.apiBaseUrl || !String(state.apiBaseUrl).trim()) {
-    setState({
-      errors: ["請先在第 ① 步填入後端 API Base URL，例如：http://127.0.0.1:8787"],
-      messages: [],
-    });
-    return;
-  }
-
   busy = true;
   setState({
     errors: [],
@@ -108,7 +101,7 @@ async function generateItems() {
 
   try {
     const result = await generateItemsViaApi({
-      apiBaseUrl: state.apiBaseUrl.trim(),
+      apiBaseUrl: getApiBaseUrl(),
       project: state.project,
       materialText: state.materialText,
       objectives: state.objectives,
@@ -133,7 +126,7 @@ async function generateItems() {
     setState({
       errors: [
         `AI 生成請求失敗：${error?.message || String(error)}`,
-        "請確認 Worker 是否仍在 http://127.0.0.1:8787 執行，且第 ① 步 API Base URL 是否正確。",
+        "請確認 Worker 是否仍在 ${getApiBaseUrl()} 執行。",
       ],
       messages: [],
     });
@@ -172,12 +165,12 @@ async function regenerateItem(itemId) {
     const objectiveIds = new Set(originalItem.objectiveIds || []);
     const objectives = state.objectives.filter((objective) => objectiveIds.has(objective.objectiveId));
     const result = await regenerateItemViaApi({
-      apiBaseUrl: state.apiBaseUrl,
+      apiBaseUrl: getApiBaseUrl(),
       project: state.project,
       materialText: state.materialText,
-      objectives,
+      objectives: state.objectives,
       originalItem,
-      reason,
+      reason: "請重新設計此題，避免只是改寫原題。",
     });
 
     if (!result?.ok || !Array.isArray(result.items) || result.items.length !== 1) {
@@ -249,7 +242,6 @@ function renderStep1() {
       <label>年級<input data-project="grade" value="${escapeHtml(state.project.grade)}"></label>
       <label>總分<input type="number" data-project="totalScore" value="${escapeHtml(state.project.totalScore)}"></label>
       <label>每個計分單位分數<input type="number" data-project="unitScore" value="${escapeHtml(state.project.unitScore)}"></label>
-      <label>後端 API Base URL<input data-api-base-url value="${escapeHtml(state.apiBaseUrl || "http://127.0.0.1:8787")}"></label>
     </div>
     <label>教材內容或摘要<textarea data-field="materialText">${escapeHtml(state.materialText)}</textarea></label>
     <div class="actions"><button data-next-step="2">下一步</button></div>
@@ -362,18 +354,10 @@ function render() {
 }
 
 app.addEventListener("input", (event) => {
-  const apiBaseUrlInput = event.target.closest("[data-api-base-url]");
   const projectField = event.target.dataset.project;
   const field = event.target.dataset.field;
   const itemField = event.target.dataset.itemField;
   const itemId = event.target.dataset.itemId;
-
-  if (apiBaseUrlInput) {
-    setState({
-      apiBaseUrl: apiBaseUrlInput.value.trim(),
-    });
-    return;
-  }
 
   if (projectField) {
     setProjectField(projectField, event.target.value);

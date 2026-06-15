@@ -1,7 +1,12 @@
-async function postJson({ apiBaseUrl, path, body }) {
+import { getApiBaseUrl } from "./config.js";
+import { normalizeGeneratedItems } from "./core/normalizeItem.js";
+
+async function postJson({ apiBaseUrl = getApiBaseUrl(), path, body }) {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify(body),
   });
 
@@ -10,25 +15,55 @@ async function postJson({ apiBaseUrl, path, body }) {
   if (!response.ok) {
     return {
       ok: false,
-      error: data?.error || `API 錯誤：HTTP ${response.status}`,
+      error: data?.error || `HTTP ${response.status}`,
     };
   }
 
+  if (Array.isArray(data?.items)) {
+  return {
+    ...data,
+    items: normalizeGeneratedItems(data.items),
+  };
+}
   return data;
 }
 
-export function generateItemsViaApi({ apiBaseUrl, project, materialText, objectives, intents }) {
+export function generateItemsViaApi({
+  apiBaseUrl,
+  project,
+  materialText,
+  objectives,
+  intents,
+}) {
   return postJson({
     apiBaseUrl,
     path: "/generate-items",
-    body: { project, materialText, objectives, intents },
+    body: {
+      project,
+      materialText,
+      objectives,
+      intents,
+    },
   });
 }
 
-export function regenerateItemViaApi({ apiBaseUrl, project, materialText, objectives, originalItem, reason }) {
+export function regenerateItemViaApi({
+  apiBaseUrl,
+  project,
+  materialText,
+  objectives,
+  originalItem,
+  reason,
+}) {
   return postJson({
     apiBaseUrl,
     path: "/regenerate-item",
-    body: { project, materialText, objectives, originalItem, reason },
+    body: {
+      project,
+      materialText,
+      objectives,
+      originalItem,
+      reason,
+    },
   });
 }
