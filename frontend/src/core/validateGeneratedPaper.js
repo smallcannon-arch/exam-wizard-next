@@ -1,5 +1,6 @@
 // 題位制的生成後檢核：題型與配分需與題位相符；每題須指派有效的學習目標；
-// 所有學習目標都要被覆蓋；題數與總分需正確。LLM 回傳的順序即卷面順序。
+// 題數與總分需正確（以上為「錯誤」，會擋下匯入）。
+// 「目標覆蓋」改為「提醒」：目標很細時不一定每個都出到題，僅提示、不擋下。
 function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -23,12 +24,13 @@ function getPrimaryObjective(item) {
 
 export function validateGeneratedPaper({ slots = [], objectives = [], items = [] } = {}) {
   const errors = [];
+  const warnings = [];
 
   if (!Array.isArray(slots) || slots.length === 0) {
-    return { ok: false, errors: ["缺少題位資料，請先建立藍圖。"] };
+    return { ok: false, errors: ["缺少題位資料，請先建立藍圖。"], warnings };
   }
   if (!Array.isArray(items)) {
-    return { ok: false, errors: ["AI 回傳 items 不是陣列。"] };
+    return { ok: false, errors: ["AI 回傳 items 不是陣列。"], warnings };
   }
 
   const objectiveIdSet = new Set(objectives.map((objective) => normalizeId(objective?.objectiveId)).filter(Boolean));
@@ -94,15 +96,18 @@ export function validateGeneratedPaper({ slots = [], objectives = [], items = []
     }
   }
 
-  for (const objectiveId of objectiveIdSet) {
-    if (!covered.has(objectiveId)) {
-      errors.push(`學習目標 ${objectiveId} 未被任何題目覆蓋。`);
-    }
-  }
-
   if (items.length !== slots.length) {
     errors.push(`AI 回傳題數 ${items.length}，與題位數 ${slots.length} 不一致。`);
   }
 
-  return { ok: errors.length === 0, errors };
+  // 目標覆蓋：提醒，不擋下匯入
+  const uncovered = [];
+  for (const objectiveId of objectiveIdSet) {
+    if (!covered.has(objectiveId)) uncovered.push(objectiveId);
+  }
+  if (uncovered.length > 0) {
+    warnings.push(`提醒：以下學習目標未被任何題目覆蓋，可重新生成或自行補強：${uncovered.join("、")}。`);
+  }
+
+  return { ok: errors.length === 0, errors, warnings };
 }

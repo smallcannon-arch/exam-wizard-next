@@ -58,3 +58,20 @@ describe("parseObjectiveInput", () => {
     expect(parseObjectiveInput("只有目標文字")).toEqual([{ text: "只有目標文字", periodCount: 1 }]);
   });
 });
+
+describe("parseObjectiveInput 結構化容錯", () => {
+  it("單元標題＋節數＋條列指標 → 指標編號＋平均節數", () => {
+    const text = "【單元名稱】4-3 動物的生命延續\n【節數】4\n- 能知道求偶方式\n- 能了解繁殖方式\n- 能了解保護行為\n- 能知道性狀差異";
+    const result = parseObjectiveInput(text);
+    expect(result).toHaveLength(4);
+    expect(result[0].text.startsWith("4-3-1 ")).toBe(true);
+    expect(result[3].text.startsWith("4-3-4 ")).toBe(true);
+    expect(result.reduce((sum, o) => sum + o.periodCount, 0)).toBe(4);
+  });
+
+  it("康軒架構圖（括號節數）也能轉換", () => {
+    const result = parseObjectiveInput("1-2 動物適應環境的策略（2節）\n- 了解調節體溫\n- 了解遷移行為");
+    expect(result.map((o) => o.text)).toEqual(["1-2-1 了解調節體溫", "1-2-2 了解遷移行為"]);
+    expect(result.reduce((sum, o) => sum + o.periodCount, 0)).toBe(2);
+  });
+});

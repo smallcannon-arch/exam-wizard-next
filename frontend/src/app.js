@@ -7,7 +7,7 @@ import { getQuestionTypeOptions, SUBJECT_OPTIONS } from "./core/questionTypes.js
 import { validateExam } from "./core/validation.js";
 import { replaceItemById } from "./core/replaceItem.js";
 import { renderStudentPaper, renderTeacherPaper } from "./core/renderPaper.js";
-import { extractObjectivesViaApi, generateItemsViaApi, regenerateItemViaApi } from "./apiClient.js";
+import { extractObjectivesViaApi, generateItemsViaApi, normalizeObjectivesViaApi, regenerateItemViaApi } from "./apiClient.js";
 import { normalizeExtractedObjectives, objectivesToInputText, parseObjectiveInput } from "./core/objectives.js";
 import { computeObjectiveShares, formatPercent } from "./core/periods.js";
 import { largestRemainder } from "./core/distribute.js";
@@ -59,6 +59,13 @@ function objectiveScoresByPeriod(objectives, totalScore) {
   return new Map(rows.map((row) => [row.key, row.count]));
 }
 
+// 從目標文字最前面抽出學習指標編號（如 3-1、3-1-1）；沒有就回傳空字串。
+function splitObjectiveCode(text) {
+  const match = String(text || "").match(/^\s*([0-9]+(?:[-－.][0-9]+)+)[\s、.:：]*(.*)$/);
+  if (match) return { code: match[1].replace(/[－.]/g, "-"), label: match[2].trim() || match[1] };
+  return { code: "", label: String(text || "").trim() };
+}
+
 function renderObjectivePreview() {
   const objectives = parseObjectives(state.objectiveInput);
   if (objectives.length === 0) return "";
@@ -67,17 +74,20 @@ function renderObjectivePreview() {
   const totalPeriods = objectives.reduce((sum, objective) => sum + (Number(objective.periodCount) || 0), 0);
   const scoreById = objectiveScoresByPeriod(objectives, totalScore);
 
-  const rows = objectives.map((objective, index) => `<tr>
-      <td>${index + 1}</td>
-      <td>${escapeHtml(objective.text)}</td>
+  const rows = objectives.map((objective, index) => {
+    const { code, label } = splitObjectiveCode(objective.text);
+    return `<tr>
+      <td>${escapeHtml(code || index + 1)}</td>
+      <td>${escapeHtml(label)}</td>
       <td class="num">${escapeHtml(objective.periodCount)} 節</td>
       <td class="num">${escapeHtml(scoreById.get(objective.objectiveId) || 0)} 分</td>
-    </tr>`).join("");
+    </tr>`;
+  }).join("");
 
   return `
     <h3>目標配分預覽（依節數比例）</h3>
     <div class="table-wrap"><table>
-      <thead><tr><th>№</th><th>單元／學習目標</th><th class="num">授課節數</th><th class="num">目標配分</th></tr></thead>
+      <thead><tr><th>指標編號</th><th>學習指標／單元</th><th class="num">授課節數</th><th class="num">目標配分</th></tr></thead>
       <tbody>${rows}</tbody>
       <tfoot><tr><td></td><td><strong>合計</strong></td><td class="num"><strong>${totalPeriods} 節</strong></td><td class="num"><strong>${totalScore} 分</strong></td></tr></tfoot>
     </table></div>
@@ -150,11 +160,8 @@ async function generateItems() {
 
   busy = true;
   busyItemId = null;
-  busyLabel = "AI 正在生成試題草稿，請稍候……";
-  setState({
-    errors: [],
-    messages: ["AI 正在生成試題草稿，請稍候……"],
-  });
+  busyLabel = "AI 正在生成整卷試題，題目較多時可能要 30 秒以上，請耐心等候，不要關閉或重整……";
+  setState({ errors: [], messages: [] });
 
   try {
     const result = await generateItemsViaApi({
@@ -182,7 +189,7 @@ const generatedCheck = validateGeneratedPaper({
 if (!generatedCheck.ok) {
   setState({
     errors: generatedCheck.errors,
-    messages: ["AI 回傳的試卷不符合題位或目標覆蓋要求，尚未匯入。請重新生成。"],
+    messages: ["AI 回傳的試卷題型或配分被更動、或有缺漏，尚未匯入。請重新生成。"],
   });
   return;
 }
@@ -199,7 +206,10 @@ setState({
   items: result.items,
   sections,
   errors: [],
-  messages: [`已產生 ${result.items.length} 題正式草稿（AI 已依節數比例與整卷整體性編排）。`],
+  messages: [
+    `已產生 ${result.items.length} 題正式草稿（AI 已依節數比例與整卷整體性編排）。`,
+    ...(generatedCheck.warnings || []),
+  ],
   step: 5,
 });
   } catch (error) {
@@ -227,7 +237,7 @@ async function extractObjectives() {
   busy = true;
   busyItemId = null;
   busyLabel = "AI 正在從教材提取學習目標，請稍候……";
-  setState({ errors: [], messages: [busyLabel] });
+  setState({ errors: [], messages: [] });
 
   try {
     const result = await extractObjectivesViaApi({
@@ -268,6 +278,52 @@ async function extractObjectives() {
   }
 }
 
+async function normalizeObjectives() {
+  if (!state.objectiveInput || !state.objectiveInput.trim()) {
+    setState({ errors: ["請先在下方貼上或輸入目標，再用 AI 整理。"], messages: [] });
+    return;
+  }
+
+  busy = true;
+  busyItemId = null;
+  busyLabel = "AI 正在整理目標格式，請稍候……";
+  setState({ errors: [], messages: [] });
+
+  try {
+    const result = await normalizeObjectivesViaApi({
+      apiBaseUrl: getApiBaseUrl(),
+      text: state.objectiveInput,
+    });
+
+    if (!result?.ok || !Array.isArray(result.objectives)) {
+      setState({ errors: [result?.error || "AI 整理回傳格式錯誤。"], messages: [] });
+      return;
+    }
+
+    const objectives = normalizeExtractedObjectives(result.objectives);
+    if (objectives.length === 0) {
+      setState({ errors: ["AI 未整理出有效目標，請檢查貼上的內容。"], messages: [] });
+      return;
+    }
+
+    state.objectiveInput = objectivesToInputText(objectives);
+    setState({ errors: [], messages: [`AI 已整理出 ${objectives.length} 個學習指標，請確認或修改後再建立藍圖。`] });
+  } catch (error) {
+    setState({
+      errors: [
+        `AI 整理失敗：${error?.message || String(error)}`,
+        `請確認 Worker 是否仍在 ${getApiBaseUrl()} 執行。`,
+      ],
+      messages: [],
+    });
+  } finally {
+    busy = false;
+    busyItemId = null;
+    busyLabel = "";
+    render();
+  }
+}
+
 async function regenerateItem(itemId) {
   const originalItem = state.items.find((item) => item.itemId === itemId);
   if (!originalItem) return;
@@ -278,7 +334,7 @@ async function regenerateItem(itemId) {
   busy = true;
   busyItemId = itemId;
   busyLabel = `AI 正在重新設計 ${itemId}，請稍候……`;
-  setState({ errors: [], messages: [busyLabel] });
+  setState({ errors: [], messages: [] });
 
   try {
     const objectiveIds = new Set(originalItem.objectiveIds || []);
@@ -409,8 +465,9 @@ function renderStep2() {
     <label>學習目標（每行：目標文字｜節數）<textarea data-field="objectiveInput">${escapeHtml(state.objectiveInput)}</textarea></label>
     ${renderObjectivePreview()}
     <label>教材摘要（選填，建議貼上 Gem 摘出的課本／習作重點：國語的生字、語詞、句型、課文重點；其他科的核心概念與重要詞彙，供 AI 依課本實際內容出題）<textarea data-field="materialText">${escapeHtml(state.materialText)}</textarea></label>
+    <p class="notice">貼上後若格式跑掉（單元、節數沒對好），按「用 AI 整理目標格式」讓系統幫你轉成標準格式。</p>
     <div class="actions">
-      <button class="secondary" data-action="extract-objectives" ${busy ? "disabled" : ""}>${busy ? "AI 提取中……" : "或：用上方教材摘要快速擷取"}</button>
+      <button class="secondary" data-action="normalize-objectives" ${busy ? "disabled" : ""}>${busy ? "處理中……" : "用 AI 整理目標格式"}</button>
       <button data-action="build-blueprint">建立配題與藍圖</button>
     </div>
   </section>`;
@@ -581,6 +638,7 @@ app.addEventListener("click", (event) => {
 
   const action = actionButton.dataset.action;
   if (action === "extract-objectives") extractObjectives();
+  if (action === "normalize-objectives") normalizeObjectives();
   if (action === "build-blueprint") buildBlueprint();
   if (action === "generate-items") generateItems();
   if (action === "regenerate-item") regenerateItem(actionButton.dataset.itemId);

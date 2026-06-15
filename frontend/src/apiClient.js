@@ -45,6 +45,17 @@ export function extractObjectivesViaApi({
   });
 }
 
+export function normalizeObjectivesViaApi({
+  apiBaseUrl,
+  text,
+}) {
+  return postJson({
+    apiBaseUrl,
+    path: "/normalize-objectives",
+    body: { text },
+  });
+}
+
 export function generateItemsViaApi({
   apiBaseUrl,
   project,

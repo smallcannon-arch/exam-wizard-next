@@ -44,7 +44,7 @@ describe("validateGeneratedPaper", () => {
     expect(result.errors.some((e) => e.includes("題型應為"))).toBe(true);
   });
 
-  it("有目標未被覆蓋時報錯", () => {
+  it("有目標未被覆蓋時，仍可匯入但給提醒（不擋下）", () => {
     const result = validateGeneratedPaper({
       slots, objectives,
       items: [
@@ -52,8 +52,8 @@ describe("validateGeneratedPaper", () => {
         item({ itemId: "Q-002", questionType: "學力檢測題", score: 5, primaryObjectiveId: "O-001", objectiveIds: ["O-001"] }),
       ],
     });
-    expect(result.ok).toBe(false);
-    expect(result.errors).toContain("學習目標 O-002 未被任何題目覆蓋。");
+    expect(result.ok).toBe(true);
+    expect(result.warnings.join("")).toContain("O-002");
   });
 
   it("對應到清單外的目標時報錯", () => {
