@@ -8,7 +8,12 @@ export function createInitialState() {
     },
     materialText: "",
     planSubject: "",
-    planRows: [],
+    planRows: [
+      { questionType: "選擇題", count: 20, score: 2 },
+      { questionType: "是非題", count: 10, score: 2 },
+      { questionType: "填充題", count: 10, score: 2 },
+      { questionType: "學力檢測題", count: 4, score: 5 },
+    ],
     objectiveInput: "",
     objectives: [],
     objectivePlans: [],

@@ -145,7 +145,7 @@ function buildBlueprint() {
     items: [],
     errors: [],
     messages: [`已建立藍圖：${slotResult.slots.length} 題、總分 ${totalScore} 分。各題對應的學習目標與出題順序，將在生成時由 AI 依節數比例與整卷整體性編排。`],
-    step: 4,
+    step: 3,
   });
 }
 
@@ -218,7 +218,7 @@ setState({
     `已產生 ${importedItems.length} 題正式草稿（AI 已依節數比例與整卷整體性編排）。`,
     ...(generatedCheck.warnings || []),
   ],
-  step: 5,
+  step: 4,
 });
   } catch (error) {
     setState({
@@ -370,6 +370,13 @@ function updateItemField(itemId, field, value) {
   if (target) target[field] = value;
 }
 
+function updateItemOption(itemId, optionIndex, value) {
+  const target = state.items.find((item) => item.itemId === itemId);
+  if (target && Array.isArray(target.options) && optionIndex >= 0 && optionIndex < target.options.length) {
+    target.options[optionIndex] = value;
+  }
+}
+
 function renderMessages() {
   return [
     ...state.messages.map((message) => `<div class="notice success">${escapeHtml(message)}</div>`),
@@ -378,7 +385,7 @@ function renderMessages() {
 }
 
 function renderSteps() {
-  const labels = ["建卷", "目標", "配題", "藍圖", "修題", "檢核", "輸出"];
+  const labels = ["建卷", "目標", "藍圖", "修題", "檢核", "輸出"];
   return `<nav class="step-list">${labels.map((label, index) => `
     <button class="step-button ${state.step === index + 1 ? "active" : ""}" data-step="${index + 1}">${index + 1}. ${label}</button>
   `).join("")}</nav>`;
@@ -387,8 +394,16 @@ function renderSteps() {
 function renderStep1() {
   return `<section class="panel">
     <div class="grid">
-      <label class="field-lg">科目<input data-project="subject" value="${escapeHtml(state.project.subject)}"></label>
-      <label class="field-lg">年級<input data-project="grade" value="${escapeHtml(state.project.grade)}"></label>
+      <label class="field-lg">科目
+        <select data-project="subject">
+          ${["國語", "數學", "社會", "自然", "英文"].map((option) => `<option value="${option}" ${option === state.project.subject ? "selected" : ""}>${option}</option>`).join("")}
+        </select>
+      </label>
+      <label class="field-lg">年級
+        <select data-project="grade">
+          ${["一年級", "二年級", "三年級", "四年級", "五年級", "六年級"].map((option) => `<option value="${option}" ${option === state.project.grade ? "selected" : ""}>${option}</option>`).join("")}
+        </select>
+      </label>
     </div>
     ${renderPlanTable()}
     <div class="actions"><button data-next-step="2">下一步</button></div>
@@ -464,7 +479,7 @@ function renderStep3Or4() {
   const intents = state.intents;
   const planRows = state.planRows;
   return `<section class="panel">
-    <h2>${state.step === 3 ? "③ 目標配題" : "④ 題目藍圖"}</h2>
+    <h2>③ 配題與藍圖</h2>
     <p class="notice">藍圖只鎖定每題的題型與配分；各題對應哪個學習目標、認知層次與出題順序，交由 AI 依下列節數比例與整卷整體性編排。</p>
 
     <h3>學習目標與配分占比（依節數）</h3>
@@ -494,7 +509,7 @@ function renderStep3Or4() {
 function renderItems() {
   const summary = summarizeScoreByObjective(state.items);
   return `<section class="panel">
-    <h2>⑤ 修題定稿</h2>
+    <h2>④ 修題定稿</h2>
     <p class="notice">這裡沒有備選池。題目就是正式草稿；不滿意的題目，直接重出該題。</p>
     <div class="table-wrap"><table>
       <thead><tr><th>目標</th><th>計分單位數</th><th>分數</th></tr></thead>
@@ -503,6 +518,7 @@ function renderItems() {
     ${state.items.map((item) => `<article class="item-card">
       <div class="item-meta">${escapeHtml(item.itemId)}｜${escapeHtml(item.questionType)}｜${escapeHtml(item.score)}分｜對應目標 ${escapeHtml(item.objectiveIds?.join("、") || item.primaryObjectiveId || "未標示")}｜層次 ${escapeHtml(item.cognitiveLevel || "未標示")}</div>
       <label>題幹<textarea data-item-field="question" data-item-id="${escapeHtml(item.itemId)}">${escapeHtml(item.question)}</textarea></label>
+      ${Array.isArray(item.options) && item.options.length > 0 ? `<div class="options-edit"><span class="options-label">選項</span>${item.options.map((option, optionIndex) => `<label class="option-row">(${String.fromCharCode(65 + optionIndex)})<input data-item-field="option" data-item-id="${escapeHtml(item.itemId)}" data-option-index="${optionIndex}" value="${escapeHtml(option)}"></label>`).join("")}</div>` : ""}
       <label>答案<input data-item-field="answer" data-item-id="${escapeHtml(item.itemId)}" value="${escapeHtml(item.answer)}"></label>
       <label>解析<textarea data-item-field="explanation" data-item-id="${escapeHtml(item.itemId)}">${escapeHtml(item.explanation)}</textarea></label>
       <div class="actions">
@@ -510,7 +526,7 @@ function renderItems() {
       </div>
     </article>`).join("")}
     ${loadingLine()}
-    <div class="actions"><button data-next-step="6">前往檢核</button></div>
+    <div class="actions"><button data-next-step="5">前往檢核</button></div>
   </section>`;
 }
 
@@ -525,21 +541,34 @@ function renderAudit() {
   });
 
   return `<section class="panel">
-    <h2>⑥ 檢核</h2>
+    <h2>⑤ 檢核</h2>
     <div class="notice ${result.ok ? "success" : "error"}">${result.ok ? "基本檢核通過。仍請人工確認題意、答案與解析。" : "發現錯誤，請先修正。"}</div>
     ${result.errors.length ? `<h3>錯誤</h3><ul>${result.errors.map((error) => `<li>${escapeHtml(error)}</li>`).join("")}</ul>` : ""}
     ${result.warnings.length ? `<h3>提醒</h3><ul>${result.warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul>` : ""}
-    <h3>目標配分統計</h3>
+    <h3>目標配分統計（實際 vs 預估）</h3>
     <div class="table-wrap"><table>
-      <thead><tr><th>目標</th><th>計分單位數</th><th>分數</th></tr></thead>
-      <tbody>${result.summary.map((row) => `<tr><td>${row.objectiveId}</td><td>${row.unitCount}</td><td>${row.score}</td></tr>`).join("")}</tbody>
+      <thead><tr><th>目標</th><th class="num">題數</th><th class="num">實際配分</th><th class="num">預估配分</th></tr></thead>
+      <tbody>${(() => {
+        const targets = state.objectiveTargets || [];
+        const actualById = new Map(result.summary.map((row) => [row.objectiveId, row]));
+        const rows = targets.length > 0
+          ? targets.map((target) => {
+              const actual = actualById.get(target.objectiveId);
+              return { objectiveId: target.objectiveId, unitCount: actual?.unitCount || 0, score: actual?.score || 0, target: target.targetScore };
+            })
+          : result.summary.map((row) => ({ ...row, target: null }));
+        return rows.map((row) => {
+          const off = row.target != null && row.score !== row.target;
+          return `<tr><td>${escapeHtml(row.objectiveId)}</td><td class="num">${escapeHtml(row.unitCount)}</td><td class="num"${off ? ' style="color:var(--danger)"' : ""}>${escapeHtml(row.score)}</td><td class="num">${row.target != null ? escapeHtml(row.target) : "—"}</td></tr>`;
+        }).join("");
+      })()}</tbody>
     </table></div>
     <h3>逐題審核表</h3>
     <div class="table-wrap"><table>
       <thead><tr><th>題號</th><th>題型</th><th>配分</th><th>對應目標</th><th>認知層次</th></tr></thead>
       <tbody>${buildAuditRows(state.items).map((row) => `<tr><td>${escapeHtml(row.itemId)}</td><td>${escapeHtml(row.questionType)}</td><td>${escapeHtml(row.score)}</td><td>${escapeHtml(row.objectiveIds)}</td><td>${escapeHtml(row.cognitiveLevel)}</td></tr>`).join("")}</tbody>
     </table></div>
-    <div class="actions"><button data-next-step="7">前往輸出</button></div>
+    <div class="actions"><button data-next-step="6">前往輸出</button></div>
   </section>`;
 }
 
@@ -548,7 +577,7 @@ function renderOutput() {
   const studentPaper = renderStudentPaper({ project, sections: state.sections, items: state.items });
   const teacherPaper = renderTeacherPaper({ project, sections: state.sections, items: state.items });
   return `<section class="panel">
-    <h2>⑦ 輸出</h2>
+    <h2>⑥ 輸出</h2>
     <h3>學生卷</h3>
     <pre>${escapeHtml(studentPaper)}</pre>
     <h3>教師卷</h3>
@@ -559,10 +588,10 @@ function renderOutput() {
 function renderCurrentStep() {
   if (state.step === 1) return renderStep1();
   if (state.step === 2) return renderStep2();
-  if (state.step === 3 || state.step === 4) return renderStep3Or4();
-  if (state.step === 5) return renderItems();
-  if (state.step === 6) return renderAudit();
-  if (state.step === 7) return renderOutput();
+  if (state.step === 3) return renderStep3Or4();
+  if (state.step === 4) return renderItems();
+  if (state.step === 5) return renderAudit();
+  if (state.step === 6) return renderOutput();
   return renderStep1();
 }
 
@@ -601,6 +630,11 @@ app.addEventListener("input", (event) => {
 
   if (field) {
     state[field] = event.target.value;
+    return;
+  }
+
+  if (itemField === "option" && itemId && event.target.dataset.optionIndex !== undefined) {
+    updateItemOption(itemId, Number(event.target.dataset.optionIndex), event.target.value);
     return;
   }
 
@@ -645,7 +679,7 @@ app.addEventListener("click", (event) => {
 
 // 配題表的題型/題數/配分或科目改變時（blur 觸發），重繪以更新小計與合計。
 app.addEventListener("change", (event) => {
-  if (event.target.dataset.planField || event.target.dataset.field === "planSubject" || event.target.dataset.field === "objectiveInput") {
+  if (event.target.dataset.planField || event.target.dataset.field === "planSubject" || event.target.dataset.field === "objectiveInput" || event.target.dataset.project === "subject") {
     render();
   }
 });
