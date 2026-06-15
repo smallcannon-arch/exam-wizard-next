@@ -44,8 +44,9 @@ export function buildItemIntents({
 
     for (let localIndex = 0; localIndex < count; localIndex += 1) {
       const globalIndex = serial - 1;
+      // 序列模式：題型由配題表決定（含學力檢測題等自訂題型），原樣沿用，空白才退回預設。
       const questionType = useTypeSequence
-        ? normalizeQuestionType(questionTypeSequence[globalIndex], globalIndex)
+        ? (asText(questionTypeSequence[globalIndex]) || normalizeQuestionType(undefined, globalIndex))
         : normalizeQuestionType(questionTypeMix[localIndex % questionTypeMix.length], localIndex);
       const score = useScoreSequence
         ? toPositiveInteger(scoreSequence[globalIndex], unitScore)

@@ -1,15 +1,9 @@
 import { createInitialState } from "./state.js";
 import { makeObjectiveId } from "./core/ids.js";
-import {
-  allocateObjectivePlans,
-  allocateUnitsByPeriod,
-  buildScoreSequence,
-  parseScorePlan,
-  summarizeScoreByObjective,
-  validateScorePlan,
-} from "./core/scoring.js";
-import { buildItemIntents, buildPaperSectionsByTheme, parseQuestionTypeMix } from "./core/blueprint.js";
-import { buildProportionalSequence } from "./core/distribute.js";
+import { allocateUnitsByPeriod, summarizeScoreByObjective } from "./core/scoring.js";
+import { buildItemIntents, buildPaperSectionsByTheme } from "./core/blueprint.js";
+import { buildPlanSequences, getPlanTotals, validatePlan } from "./core/plan.js";
+import { getQuestionTypeOptions, SUBJECT_OPTIONS } from "./core/questionTypes.js";
 import { validateExam } from "./core/validation.js";
 import { replaceItemById } from "./core/replaceItem.js";
 import { renderStudentPaper, renderTeacherPaper } from "./core/renderPaper.js";
@@ -62,56 +56,33 @@ function parseObjectives(input) {
 function buildBlueprint() {
   const objectives = parseObjectives(state.objectiveInput);
   const totalScore = Number(state.project.totalScore);
-  const unitScore = Number(state.project.unitScore);
-  const typeMix = parseQuestionTypeMix(state.questionTypeMixInput);
-  const scorePlan = parseScorePlan(state.scorePlanInput);
-  const useScorePlan = scorePlan.length > 0;
 
-  let objectivePlans;
-  let scoreSequence = null;
-  let totalUnits;
-
-  if (useScorePlan) {
-    const planCheck = validateScorePlan(scorePlan, totalScore);
-    if (!planCheck.ok) {
-      setState({ objectives, objectivePlans: [], intents: [], sections: [], errors: [planCheck.error], messages: [] });
-      return;
-    }
-
-    const alloc = allocateUnitsByPeriod({ objectives, totalUnits: planCheck.totalItems });
-    if (!alloc.ok) {
-      setState({ objectives, objectivePlans: [], intents: [], sections: [], errors: [alloc.error], messages: [] });
-      return;
-    }
-
-    objectivePlans = alloc.counts.map((row) => ({
-      objectiveId: row.objectiveId,
-      targetUnitCount: row.targetUnitCount,
-      targetScore: 0,
-      locked: false,
-      note: "",
-    }));
-    scoreSequence = buildScoreSequence(scorePlan);
-    totalUnits = planCheck.totalItems;
-  } else {
-    const plans = allocateObjectivePlans({ objectives, totalScore, unitScore });
-    if (!plans.ok) {
-      setState({ objectives, objectivePlans: [], intents: [], sections: [], errors: [plans.error], messages: [] });
-      return;
-    }
-    objectivePlans = plans.plans;
-    totalUnits = objectivePlans.reduce((sum, plan) => sum + plan.targetUnitCount, 0);
+  const planCheck = validatePlan(state.planRows, totalScore);
+  if (!planCheck.ok) {
+    setState({ objectives, objectivePlans: [], intents: [], sections: [], errors: [planCheck.error], messages: [] });
+    return;
   }
 
-  const questionTypeSequence = typeMix.length > 0
-    ? buildProportionalSequence(totalUnits, typeMix.map((row) => ({ key: row.questionType, weight: row.percent })))
-    : null;
+  const alloc = allocateUnitsByPeriod({ objectives, totalUnits: planCheck.totalItems });
+  if (!alloc.ok) {
+    setState({ objectives, objectivePlans: [], intents: [], sections: [], errors: [alloc.error], messages: [] });
+    return;
+  }
+
+  let objectivePlans = alloc.counts.map((row) => ({
+    objectiveId: row.objectiveId,
+    targetUnitCount: row.targetUnitCount,
+    targetScore: 0,
+    locked: false,
+    note: "",
+  }));
+
+  const { questionTypeSequence, scoreSequence } = buildPlanSequences(state.planRows);
 
   const intentResult = buildItemIntents({
     objectives,
     objectivePlans,
-    unitScore,
-    questionTypeMix: ["選擇題", "填充題", "應用題"],
+    unitScore: Number(state.project.unitScore),
     questionTypeSequence,
     scoreSequence,
   });
@@ -121,17 +92,12 @@ function buildBlueprint() {
     return;
   }
 
-  if (useScorePlan) {
-    const scoreById = new Map(summarizeScoreByObjective(intentResult.intents).map((row) => [row.objectiveId, row.score]));
-    objectivePlans = objectivePlans.map((plan) => ({ ...plan, targetScore: scoreById.get(plan.objectiveId) ?? 0 }));
-  }
+  const scoreById = new Map(summarizeScoreByObjective(intentResult.intents).map((row) => [row.objectiveId, row.score]));
+  objectivePlans = objectivePlans.map((plan) => ({ ...plan, targetScore: scoreById.get(plan.objectiveId) ?? 0 }));
 
   const sectionResult = buildPaperSectionsByTheme({ intents: intentResult.intents });
-  const totalUnitsActual = intentResult.intents.length;
+  const totalItems = intentResult.intents.length;
   const totalScoreActual = intentResult.intents.reduce((sum, intent) => sum + (Number(intent.score) || 0), 0);
-  const baseMsg = useScorePlan
-    ? `已建立藍圖：${totalUnitsActual} 題，總分 ${totalScoreActual} 分（自訂配分方案）。`
-    : `已建立藍圖：${totalUnitsActual} 個計分單位，每個計分單位 ${unitScore} 分。`;
 
   setState({
     objectives,
@@ -139,7 +105,7 @@ function buildBlueprint() {
     intents: intentResult.intents,
     sections: sectionResult.sections,
     errors: [],
-    messages: [questionTypeSequence ? `${baseMsg}題型已依比例分配。` : baseMsg],
+    messages: [`已建立藍圖：${totalItems} 題，總分 ${totalScoreActual} 分（依配題表）。`],
     step: 4,
   });
 }
@@ -350,11 +316,48 @@ function renderStep1() {
       <label>總分<input type="number" data-project="totalScore" value="${escapeHtml(state.project.totalScore)}"></label>
       <label>每個計分單位分數<input type="number" data-project="unitScore" value="${escapeHtml(state.project.unitScore)}"></label>
     </div>
-    <label>題型比例（選填，例：選擇題:70, 填充題:20, 短答題:10；留空則用預設輪替）<input data-field="questionTypeMixInput" value="${escapeHtml(state.questionTypeMixInput)}"></label>
-    <label>配分方案（選填，例：2分×35題, 3分×10題；填了就改用自訂配分，需與總分相符）<input data-field="scorePlanInput" value="${escapeHtml(state.scorePlanInput)}"></label>
+    ${renderPlanTable()}
     <label>教材內容或摘要<textarea data-field="materialText">${escapeHtml(state.materialText)}</textarea></label>
     <div class="actions"><button data-next-step="2">下一步</button></div>
   </section>`;
+}
+
+function renderPlanTable() {
+  const subject = state.planSubject || state.project.subject;
+  const baseOptions = getQuestionTypeOptions(subject);
+  const totals = getPlanTotals(state.planRows);
+  const totalScore = Number(state.project.totalScore);
+  const balanced = totals.totalScore === totalScore;
+
+  const subjectSelect = ["", ...SUBJECT_OPTIONS]
+    .map((option) => `<option value="${escapeHtml(option)}" ${option === (state.planSubject || "") ? "selected" : ""}>${option === "" ? `跟隨科目（${escapeHtml(state.project.subject)}）` : escapeHtml(option)}</option>`)
+    .join("");
+
+  const rowsHtml = state.planRows.map((row, index) => {
+    const options = baseOptions.includes(row.questionType) ? baseOptions : [...baseOptions, row.questionType];
+    const optionHtml = options
+      .map((type) => `<option value="${escapeHtml(type)}" ${type === row.questionType ? "selected" : ""}>${escapeHtml(type)}</option>`)
+      .join("");
+    const subtotal = (Number(row.count) || 0) * (Number(row.score) || 0);
+    return `<tr>
+      <td><select data-plan-field="questionType" data-plan-index="${index}">${optionHtml}</select></td>
+      <td><input type="number" min="1" data-plan-field="count" data-plan-index="${index}" value="${escapeHtml(row.count)}"></td>
+      <td><input type="number" min="1" data-plan-field="score" data-plan-index="${index}" value="${escapeHtml(row.score)}"></td>
+      <td>${escapeHtml(subtotal)}分</td>
+      <td><button class="secondary" data-action="remove-plan-row" data-plan-index="${index}">刪除</button></td>
+    </tr>`;
+  }).join("");
+
+  return `
+    <h3>配題表（題型／題數／配分）</h3>
+    <p class="notice">題型清單依：<select data-field="planSubject">${subjectSelect}</select>　含「學力檢測題」＝情境素養題組（題幹含生活情境與子題）。</p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>題型</th><th>題數</th><th>每題配分</th><th>小計</th><th></th></tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table></div>
+    <div class="actions"><button class="secondary" data-action="add-plan-row">＋ 新增一列</button></div>
+    <p class="notice ${balanced ? "success" : "error"}">合計：${totals.totalItems} 題、${totals.totalScore} 分　${balanced ? "✓ 與總分相符" : `✗ 與總分 ${totalScore} 不符，建立藍圖前請調整`}</p>
+  `;
 }
 
 function renderStep2() {
@@ -481,6 +484,17 @@ app.addEventListener("input", (event) => {
   const field = event.target.dataset.field;
   const itemField = event.target.dataset.itemField;
   const itemId = event.target.dataset.itemId;
+  const planField = event.target.dataset.planField;
+  const planIndex = event.target.dataset.planIndex;
+
+  if (planField && planIndex !== undefined) {
+    const index = Number(planIndex);
+    if (state.planRows[index]) {
+      const value = planField === "questionType" ? event.target.value : Number(event.target.value);
+      state.planRows[index] = { ...state.planRows[index], [planField]: value };
+    }
+    return;
+  }
 
   if (projectField) {
     setProjectField(projectField, event.target.value);
@@ -519,6 +533,22 @@ app.addEventListener("click", (event) => {
   if (action === "build-blueprint") buildBlueprint();
   if (action === "generate-items") generateItems();
   if (action === "regenerate-item") regenerateItem(actionButton.dataset.itemId);
+  if (action === "add-plan-row") {
+    const subject = state.planSubject || state.project.subject;
+    const options = getQuestionTypeOptions(subject);
+    setState({ planRows: [...state.planRows, { questionType: options[0], count: 5, score: 2 }] });
+  }
+  if (action === "remove-plan-row") {
+    const index = Number(actionButton.dataset.planIndex);
+    setState({ planRows: state.planRows.filter((_, currentIndex) => currentIndex !== index) });
+  }
+});
+
+// 配題表的題型/題數/配分或科目改變時（blur 觸發），重繪以更新小計與合計。
+app.addEventListener("change", (event) => {
+  if (event.target.dataset.planField || event.target.dataset.field === "planSubject") {
+    render();
+  }
 });
 
 render();
