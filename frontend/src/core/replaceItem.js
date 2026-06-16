@@ -13,6 +13,13 @@ export function normalizeRegeneratedItem({ originalItem, regeneratedItem }) {
     return { ok: false, error: "originalItem.itemId 必須是非空白字串。" };
   }
 
+  if (Array.isArray(originalItem.options) && originalItem.options.length > 0) {
+    const optCount = Array.isArray(regeneratedItem.options) ? regeneratedItem.options.length : 0;
+    if (optCount < 2) {
+      return { ok: false, error: `${originalItem.itemId}：原題包含選項，但重出的題目缺少有效的選項（至少需 2 個選項）。` };
+    }
+  }
+
   const normalized = {
     ...originalItem,
     ...regeneratedItem,

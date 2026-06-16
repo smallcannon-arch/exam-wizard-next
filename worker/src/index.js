@@ -36,7 +36,7 @@ async function handleExtractObjectives(request, env) {
   const payload = assertObjectivesPayload(parsed.data);
   if (!payload.ok) return jsonResponse(request, env, { ok: false, error: payload.error }, 502);
 
-  return jsonResponse(request, env, { ok: true, objectives: payload.objectives });
+  return jsonResponse(request, env, { ok: true, objectives: payload.objectives, materialSummary: parsed.data.materialSummary || "" });
 }
 
 async function handleNormalizeObjectives(request, env) {

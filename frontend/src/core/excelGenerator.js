@@ -286,7 +286,7 @@ export function generateExcelXml({ project = {}, objectives = [], items = [], pl
       
       <!-- Row 1: Title -->
       <Row ss:Height="40">
-        <Cell ss:MergeAcross="6" ss:StyleID="Title"><Data ss:Type="String">新竹市香山區內湖國小&#10;${escapeXml(project.schoolYear || "114")}學年度 ${escapeXml(project.semester || "第2學期")} ${escapeXml(project.examType || "定期評量")} 國語領域 試題審核表</Data></Cell>
+        <Cell ss:MergeAcross="6" ss:StyleID="Title"><Data ss:Type="String">${escapeXml(project.schoolName || "新竹市香山區內湖國小")}&#10;${escapeXml(project.schoolYear || "114")}學年度 ${escapeXml(project.semester || "第2學期")} ${escapeXml(project.examType || "定期評量")} 國語領域 試題審核表</Data></Cell>
       </Row>
       
       <!-- Row 2: Meta Row 1 -->
@@ -465,7 +465,7 @@ export function generateExcelXml({ project = {}, objectives = [], items = [], pl
       
       <!-- Row 1: Title -->
       <Row ss:Height="40">
-        <Cell ss:MergeAcross="${totalCols - 1}" ss:StyleID="Title"><Data ss:Type="String">新竹市香山區內湖國小&#10;${escapeXml(project.schoolYear || "114")}學年度 ${escapeXml(project.semester || "第2學期")} ${escapeXml(project.examType || "定期評量")} 試題審核表</Data></Cell>
+        <Cell ss:MergeAcross="${totalCols - 1}" ss:StyleID="Title"><Data ss:Type="String">${escapeXml(project.schoolName || "新竹市香山區內湖國小")}&#10;${escapeXml(project.schoolYear || "114")}學年度 ${escapeXml(project.semester || "第2學期")} ${escapeXml(project.examType || "定期評量")} 試題審核表</Data></Cell>
       </Row>
       
       <!-- Row 2: Metadata 1 -->

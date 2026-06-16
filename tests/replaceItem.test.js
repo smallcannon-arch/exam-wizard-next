@@ -80,4 +80,16 @@ describe("replaceItemById", () => {
     expect(result.ok).toBe(false);
     expect(result.items).toEqual([originalItem]);
   });
+
+  it("若原題有選項但重出的題目選項少於2個時報錯且不修改", () => {
+    const result = replaceItemById({
+      items: [originalItem],
+      itemId: "Q-001",
+      regeneratedItem: { ...originalItem, options: [] },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("缺少有效的選項");
+    expect(result.items).toEqual([originalItem]);
+  });
 });

@@ -472,12 +472,13 @@ async function extractObjectives() {
     state.objectiveInput = objectivesToInputText(objectives);
     
     // 將教材重點彙整成文字存放在教材摘要中
-    const summary = `已從以下檔案自動提取要素：\n${selected.map(sf => `・${sf.file.name}`).join("\n")}`;
+    const fileSummary = `已從以下檔案自動提取要素：\n${selected.map(sf => `・${sf.file.name}`).join("\n")}`;
+    const materialSummary = result.materialSummary ? `${fileSummary}\n\n【教材重點摘要】\n${result.materialSummary}` : fileSummary;
     
     setState({
       errors: [],
       messages: [`成功！AI 已自動提取出 ${objectives.length} 個學習目標，並自動產生教材大意。`],
-      materialText: summary,
+      materialText: materialSummary,
     });
   } catch (error) {
     setState({
@@ -1078,7 +1079,11 @@ function renderAudit() {
 }
 
 function renderOutput() {
-  const project = { ...state.project, examName: examTitle() };
+  const project = {
+    ...state.project,
+    examName: examTitle(),
+    checkedChineseSubcategories: state.checkedChineseSubcategories,
+  };
   const studentPaper = renderStudentPaper({ project, sections: state.sections, items: state.items });
   const teacherPaper = renderTeacherPaper({ project, sections: state.sections, items: state.items, objectives: state.objectives });
   const auditTableHtml = renderAuditTable({

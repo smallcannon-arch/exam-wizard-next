@@ -16,7 +16,8 @@ function showsOptions(item) {
 }
 
 function getSubNumber(itemId) {
-  return String(itemId || "").split("-")[1] || "1";
+  const parts = String(itemId || "").split("-");
+  return parts[parts.length - 1] || "1";
 }
 
 export function renderStudentPaper({ project = {}, sections = [], items = [] } = {}) {

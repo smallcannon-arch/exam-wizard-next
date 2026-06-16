@@ -200,8 +200,8 @@ export function buildExtractObjectivesPrompt({ project = {}, materialText = "", 
     "",
     "# 任務",
     hasFiles
-      ? "請閱讀我隨附的教材檔案（可能多份 PDF），萃取可評量的學習目標。每個目標需具體、可命題、對應一個重點概念。"
-      : "請從教材內容萃取可評量的學習目標。每個目標需具體、可命題、對應一個重點概念。",
+      ? "請閱讀我隨附的教材檔案（可能多份 PDF），萃取可評量的學習目標，並將教材核心重點（包含生字語詞、重要觀念、定理公式或主要事實，視科目而定）彙整成一個簡潔但具代表性的「教材大意與重點摘要」（約 300-600 字）。"
+      : "請從教材內容萃取可評量的學習目標，並將教材核心重點（包含生字語詞、重要觀念、定理公式或主要事實，視科目而定）彙整成一個簡潔但具代表性的「教材大意與重點摘要」（約 300-600 字）。",
     "目標數量依教材內容多寡判斷，一般 3 到 8 個。不得自行假造教材沒有的內容。",
     "",
     "# 節數（重要）",
@@ -212,7 +212,7 @@ export function buildExtractObjectivesPrompt({ project = {}, materialText = "", 
     hasFiles ? "（見隨附檔案）" : text(materialText, "未提供教材內容。"),
     "",
     "# 輸出要求",
-    "只輸出 JSON，不要 Markdown。格式：{\"objectives\":[...]}。",
+    "只輸出 JSON，不要 Markdown。格式：{\"objectives\":[...], \"materialSummary\":\"這裡放教材大意與重點摘要的文字描述\"}。",
     "每個目標必須包含：unitName（單元名稱）, lessonName（課名，可為空字串）, text（目標敘述）, periodCount（建議節數，正整數）。",
   ].join("\n");
 }

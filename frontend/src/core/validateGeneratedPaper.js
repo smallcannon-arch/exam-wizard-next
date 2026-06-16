@@ -82,16 +82,36 @@ export function validateGeneratedPaper({ slots = [], objectives = [], items = []
     }
     seenParentIds.add(parentId);
 
-    const isGroup = groupItems.length > 1 || isGroupItem(groupItems[0].itemId);
+    const expectsGroup = !!slot.isGroup;
+    const isGroup = expectsGroup || groupItems.length > 1 || isGroupItem(groupItems[0].itemId);
 
     if (isGroup) {
       if (normalizeId(slot.questionType) !== "學力檢測題" && !slot.isGroup) {
         errors.push(`${parentId}：該題型為「${slot.questionType}」，不可拆分為子題（請在藍圖中勾選為題組）。`);
       }
 
+      if (expectsGroup && groupItems.length === 1 && !isGroupItem(groupItems[0].itemId)) {
+        errors.push(`${parentId}：該題位設定為題組，但 AI 回傳為單題。`);
+      }
+
       const subItemIds = new Set();
       let totalGroupScore = 0;
       let hasStimulus = false;
+
+      // 檢查 groupId
+      const groupIds = new Set();
+      for (const item of groupItems) {
+        const gid = normalizeId(item.groupId);
+        const subId = normalizeId(item.itemId);
+        if (!gid) {
+          errors.push(`${subId}：題組子題缺少 groupId。`);
+        } else {
+          groupIds.add(gid);
+        }
+      }
+      if (groupIds.size > 1) {
+        errors.push(`${parentId}：題組子題的 groupId 必須相同（目前有：${Array.from(groupIds).join("、")}）。`);
+      }
 
       for (const item of groupItems) {
         const subId = normalizeId(item.itemId);
@@ -99,6 +119,10 @@ export function validateGeneratedPaper({ slots = [], objectives = [], items = []
           errors.push(`${subId}：AI 回傳重複子題號。`);
         }
         subItemIds.add(subId);
+
+        if (!isGroupItem(subId) || getParentId(subId) !== parentId) {
+          errors.push(`${subId}：題組子題的題號格式應為「${parentId}-數字」（如 ${parentId}-1）。`);
+        }
 
         totalGroupScore += Number(item.score || 0);
 
@@ -113,7 +137,7 @@ export function validateGeneratedPaper({ slots = [], objectives = [], items = []
           errors.push(`${subId}：缺少 answer。`);
         }
 
-        const CHOICE_LIKE = ["選擇題", "圖表判讀題", "實驗探究題", "學力檢測題"];
+        const CHOICE_LIKE = ["選擇題", "圖表判讀題", "實驗探究題", "學力檢測題", "閱讀測驗"];
         if (CHOICE_LIKE.includes(normalizeId(item.questionType))) {
           const optionCount = Array.isArray(item.options) ? item.options.length : 0;
           if (optionCount < 2) {
@@ -126,6 +150,8 @@ export function validateGeneratedPaper({ slots = [], objectives = [], items = []
         const primary = getPrimaryObjective(item);
         if (!primary) {
           errors.push(`${subId}：缺少對應學習目標。`);
+        } else if (normalizeId(slot.primaryObjectiveId) && primary !== normalizeId(slot.primaryObjectiveId)) {
+          errors.push(`${subId}：對應學習目標應為「${slot.primaryObjectiveId}」，不可更動。`);
         } else if (objectiveIdSet.size > 0 && !objectiveIdSet.has(primary)) {
           errors.push(`${subId}：對應目標 ${primary} 不在學習目標清單內。`);
         }
@@ -139,12 +165,36 @@ export function validateGeneratedPaper({ slots = [], objectives = [], items = []
         if (objectiveIdSet.has(primary)) covered.add(primary);
       }
 
-      if (totalGroupScore !== Number(slot.score)) {
-        errors.push(`${parentId}：子題配分總和為 ${totalGroupScore} 分，但題位設定配分為 ${slot.score} 分，配分不合。`);
+      // 依子題編號尾碼的數字大小進行排序，避免 lexical 排序（如 10 排在 2 前面）
+      const sortedGroupItems = [...groupItems].sort((a, b) => {
+        const partsA = normalizeId(a.itemId).split("-");
+        const partsB = normalizeId(b.itemId).split("-");
+        const numA = parseInt(partsA[partsA.length - 1], 10) || 0;
+        const numB = parseInt(partsB[partsB.length - 1], 10) || 0;
+        return numA - numB;
+      });
+
+      const expectedSubScores = Array.isArray(slot.subScores) ? slot.subScores : [];
+      if (expectedSubScores.length > 0) {
+        if (sortedGroupItems.length !== expectedSubScores.length) {
+          errors.push(`${parentId}：子題數量為 ${sortedGroupItems.length}，與題位設定的 ${expectedSubScores.length} 子題數不符。`);
+        } else {
+          for (let i = 0; i < expectedSubScores.length; i++) {
+            const expectedScore = Number(expectedSubScores[i]);
+            const actualScore = Number(sortedGroupItems[i].score || 0);
+            if (actualScore !== expectedScore) {
+              errors.push(`${normalizeId(sortedGroupItems[i].itemId)}：子題配分應為 ${expectedScore} 分，但實際為 ${actualScore} 分。`);
+            }
+          }
+        }
+      } else {
+        if (totalGroupScore !== Number(slot.score)) {
+          errors.push(`${parentId}：子題配分總和為 ${totalGroupScore} 分，但題位設定配分為 ${slot.score} 分，配分不合。`);
+        }
       }
 
       if (!hasStimulus) {
-        errors.push(`${parentId}：學力檢測題組缺少共同的 stimulus (引言 / 情境段落)。`);
+        errors.push(`${parentId}：題組缺少共同的 stimulus (引言 / 情境段落)。`);
       }
 
     } else {
@@ -164,7 +214,7 @@ export function validateGeneratedPaper({ slots = [], objectives = [], items = []
         errors.push(`${id}：缺少 answer。`);
       }
 
-      const CHOICE_LIKE = ["選擇題", "圖表判讀題", "實驗探究題"];
+      const CHOICE_LIKE = ["選擇題", "圖表判讀題", "實驗探究題", "閱讀測驗"];
       if (CHOICE_LIKE.includes(normalizeId(item.questionType))) {
         const optionCount = Array.isArray(item.options) ? item.options.length : 0;
         if (optionCount < 2) {
@@ -177,6 +227,8 @@ export function validateGeneratedPaper({ slots = [], objectives = [], items = []
       const primary = getPrimaryObjective(item);
       if (!primary) {
         errors.push(`${id}：缺少對應學習目標。`);
+      } else if (normalizeId(slot.primaryObjectiveId) && primary !== normalizeId(slot.primaryObjectiveId)) {
+        errors.push(`${id}：對應學習目標應為「${slot.primaryObjectiveId}」，不可更動。`);
       } else if (objectiveIdSet.size > 0 && !objectiveIdSet.has(primary)) {
         errors.push(`${id}：對應目標 ${primary} 不在學習目標清單內。`);
       }

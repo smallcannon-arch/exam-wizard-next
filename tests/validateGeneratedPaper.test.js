@@ -105,6 +105,81 @@ describe("validateGeneratedPaper", () => {
       ],
     });
     expect(result.ok).toBe(false);
-    expect(result.errors.some((e) => e.includes("缺少共同的 stimulus"))).toBe(true);
+    expect(result.errors.some((e) => e.includes("題組缺少共同的 stimulus"))).toBe(true);
+  });
+
+  it("題位指定目標與題目不符時報錯", () => {
+    const localSlots = [
+      { itemId: "Q-001", questionType: "選擇題", score: 2, primaryObjectiveId: "O-001" },
+    ];
+    const result = validateGeneratedPaper({
+      slots: localSlots,
+      objectives,
+      items: [
+        item({ itemId: "Q-001", primaryObjectiveId: "O-002" }),
+      ],
+    });
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("對應學習目標應為"))).toBe(true);
+  });
+
+  it("題組題位被 AI 回成單題時報錯", () => {
+    const localSlots = [
+      { itemId: "Q-001", questionType: "選擇題", score: 5, isGroup: true, subScores: [2, 3] },
+    ];
+    const result = validateGeneratedPaper({
+      slots: localSlots,
+      objectives,
+      items: [
+        item({ itemId: "Q-001", score: 5 }),
+      ],
+    });
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("該題位設定為題組，但 AI 回傳為單題"))).toBe(true);
+  });
+
+  it("題組子題缺少 groupId 或不一致時報錯", () => {
+    const localSlots = [
+      { itemId: "Q-001", questionType: "選擇題", score: 5, isGroup: true, subScores: [2, 3] },
+    ];
+    // groupId 缺失
+    const result1 = validateGeneratedPaper({
+      slots: localSlots,
+      objectives,
+      items: [
+        item({ itemId: "Q-001-1", score: 2, groupId: "" }),
+        item({ itemId: "Q-001-2", score: 3, groupId: "G-001" }),
+      ],
+    });
+    expect(result1.ok).toBe(false);
+    expect(result1.errors.some((e) => e.includes("題組子題缺少 groupId"))).toBe(true);
+
+    // groupId 不一致
+    const result2 = validateGeneratedPaper({
+      slots: localSlots,
+      objectives,
+      items: [
+        item({ itemId: "Q-001-1", score: 2, groupId: "G-001" }),
+        item({ itemId: "Q-001-2", score: 3, groupId: "G-002" }),
+      ],
+    });
+    expect(result2.ok).toBe(false);
+    expect(result2.errors.some((e) => e.includes("groupId 必須相同"))).toBe(true);
+  });
+
+  it("子題配分順序/數值與 subScores 不符時報錯", () => {
+    const localSlots = [
+      { itemId: "Q-001", questionType: "選擇題", score: 5, isGroup: true, subScores: [2, 3] },
+    ];
+    const result = validateGeneratedPaper({
+      slots: localSlots,
+      objectives,
+      items: [
+        item({ itemId: "Q-001-1", score: 3, groupId: "G-001" }),
+        item({ itemId: "Q-001-2", score: 2, groupId: "G-001" }),
+      ],
+    });
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("子題配分應為 2 分，但實際為 3 分"))).toBe(true);
   });
 });
