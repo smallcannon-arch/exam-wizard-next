@@ -54,6 +54,9 @@ export function renderStudentPaper({ project = {}, sections = [], items = [] } =
         }
         lines.push("");
       } else {
+        if (item.stimulus && item.stimulus.trim()) {
+          lines.push(`【閱讀下文，回答第 ${questionNumber} 題】：\n${item.stimulus.trim()}`);
+        }
         lines.push(`${answerBlank(item.questionType)}${questionNumber}.（${item.score}分）${item.question}`);
         if (showsOptions(item)) {
           lines.push(item.options.map((option, index) => `(${String.fromCharCode(65 + index)}) ${option}`).join("　"));
@@ -114,6 +117,9 @@ export function renderTeacherPaper({ project = {}, sections = [], items = [], ob
         lines.push(`　　解析：${item.explanation || "未提供"}`);
         lines.push("");
       } else {
+        if (item.stimulus && item.stimulus.trim()) {
+          lines.push(`【閱讀下文，回答第 ${questionNumber} 題】：\n${item.stimulus.trim()}`);
+        }
         lines.push(`${answerBlank(item.questionType)}${questionNumber}.（${item.score}分）${item.question}　${metaTag}`);
         if (showsOptions(item)) {
           lines.push(item.options.map((option, index) => `(${String.fromCharCode(65 + index)}) ${option}`).join("　"));

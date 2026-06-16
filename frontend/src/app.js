@@ -1211,6 +1211,7 @@ function renderItems() {
         ${subCardsHtml}
       </article>`);
     } else {
+      const hasStimulus = !!(item.stimulus && item.stimulus.trim());
       cardsHtml.push(`<article class="item-card" style="border-radius:16px; padding:20px; margin-bottom:20px;">
         <div class="item-meta">${escapeHtml(item.itemId)}｜${escapeHtml(item.questionType)}｜${escapeHtml(item.score)}分｜對應目標 ${(() => {
           const raw = item.objectiveIds || (item.primaryObjectiveId ? [item.primaryObjectiveId] : []);
@@ -1219,6 +1220,15 @@ function renderItems() {
             return obj ? obj.text : id;
           }).filter(Boolean).join("、") || "未標示");
         })()}｜層次 ${escapeHtml(item.cognitiveLevel || "未標示")}</div>
+        ${hasStimulus ? `
+          <label>情境引言 (Stimulus)
+            <textarea data-item-field="stimulus" data-item-id="${escapeHtml(item.itemId)}" style="background:var(--blue-soft); font-weight:500; min-height:60px; margin-bottom:12px;">${escapeHtml(item.stimulus)}</textarea>
+          </label>
+        ` : `
+          <div style="margin-bottom:12px;">
+            <button class="secondary" data-action="add-stimulus" data-item-id="${escapeHtml(item.itemId)}" style="padding:4px 8px; font-size:12px; height:auto;">+ 新增情境引言 (Stimulus)</button>
+          </div>
+        `}
         <label>題幹<textarea data-item-field="question" data-item-id="${escapeHtml(item.itemId)}">${escapeHtml(item.question)}</textarea></label>
         ${Array.isArray(item.options) && item.options.length > 0 ? `<div class="options-edit"><span class="options-label">選項</span>${item.options.map((option, optionIndex) => `<label class="option-row">(${String.fromCharCode(65 + optionIndex)})<input data-item-field="option" data-item-id="${escapeHtml(item.itemId)}" data-option-index="${optionIndex}" value="${escapeHtml(option)}"></label>`).join("")}</div>` : ""}
         <label>答案<input data-item-field="answer" data-item-id="${escapeHtml(item.itemId)}" value="${escapeHtml(item.answer)}"></label>
@@ -1711,6 +1721,15 @@ app.addEventListener("click", (event) => {
       .join("\n");
     setState({ objectiveInput: defaultObjectives });
     render();
+    return;
+  }
+  if (action === "add-stimulus") {
+    const itemId = actionButton.dataset.itemId;
+    const target = state.items.find(item => item.itemId === itemId);
+    if (target) {
+      target.stimulus = "（請在此輸入情境引言/閱讀文章）";
+      render();
+    }
     return;
   }
   if (action === "organize-objectives") organizeObjectives();
