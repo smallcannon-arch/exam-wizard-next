@@ -481,9 +481,19 @@ function renderStep1() {
   return `<section class="panel">
     <div class="grid">
       <label class="field-lg">學校名稱<input data-project="schoolName" value="${escapeHtml(state.project.schoolName)}"></label>
-      <label class="field-lg">學年度<input data-project="schoolYear" value="${escapeHtml(state.project.schoolYear)}"></label>
-      <label class="field-lg">學期<input data-project="semester" value="${escapeHtml(state.project.semester)}"></label>
-      <label class="field-lg">評量次數<input data-project="examType" value="${escapeHtml(state.project.examType)}"></label>
+      <label class="field-lg">學年度<input data-project="schoolYear" placeholder="請輸入學年度" value="${escapeHtml(state.project.schoolYear)}"></label>
+      <label class="field-lg">學期
+        <select data-project="semester">
+          <option value="" ${!state.project.semester ? "selected" : ""}>請選擇</option>
+          ${["第1學期", "第2學期"].map((option) => `<option value="${option}" ${option === state.project.semester ? "selected" : ""}>${option}</option>`).join("")}
+        </select>
+      </label>
+      <label class="field-lg">評量次數
+        <select data-project="examType">
+          <option value="" ${!state.project.examType ? "selected" : ""}>請選擇</option>
+          ${["第1次定期評量", "第2次定期評量", "第3次定期評量"].map((option) => `<option value="${option}" ${option === state.project.examType ? "selected" : ""}>${option}</option>`).join("")}
+        </select>
+      </label>
       <label class="field-lg">科目
         <select data-project="subject">
           <option value="" ${!state.project.subject ? "selected" : ""}>請選擇</option>
@@ -498,7 +508,12 @@ function renderStep1() {
       </label>
       <label class="field-lg">命題教師<input data-project="teacherName" value="${escapeHtml(state.project.teacherName)}"></label>
       <label class="field-lg">版本<input data-project="version" value="${escapeHtml(state.project.version)}"></label>
-      <label class="field-lg" style="grid-column: span 2;">評量範圍<input data-project="range" value="${escapeHtml(state.project.range)}"></label>
+      <label class="field-lg" style="grid-column: span 2;">評量範圍
+        <select data-project="range">
+          <option value="" ${!state.project.range ? "selected" : ""}>請選擇</option>
+          ${["期中考", "期末考"].map((option) => `<option value="${option}" ${option === state.project.range ? "selected" : ""}>${option}</option>`).join("")}
+        </select>
+      </label>
     </div>
     ${renderPlanTable()}
     <div class="actions"><button data-next-step="2">下一步</button></div>
@@ -942,7 +957,7 @@ app.addEventListener("change", (event) => {
     }
   }
 
-  if (event.target.dataset.planField || event.target.dataset.field === "objectiveInput" || event.target.dataset.project === "subject") {
+  if (event.target.dataset.planField || event.target.dataset.field === "objectiveInput" || event.target.dataset.project) {
     render();
   }
 });
