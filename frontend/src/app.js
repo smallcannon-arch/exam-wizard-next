@@ -508,7 +508,7 @@ function renderStep1() {
       </label>
       <label class="field-lg">命題教師<input data-project="teacherName" value="${escapeHtml(state.project.teacherName)}"></label>
       <label class="field-lg">版本<input data-project="version" value="${escapeHtml(state.project.version)}"></label>
-      <label class="field-lg" style="grid-column: span 2;">評量範圍<input data-project="range" value="${escapeHtml(state.project.range)}"></label>
+      <label class="field-lg" style="grid-column: span 2;">評量範圍<input data-project="range" placeholder="請輸入單元範圍（例如：第3單元、第4單元）" value="${escapeHtml(state.project.range)}"></label>
     </div>
     ${renderPlanTable()}
     <div class="actions"><button data-next-step="2">下一步</button></div>
