@@ -773,6 +773,7 @@ function renderStep2() {
     <p class="notice">貼好後按「整理學習目標」，系統會把它整理成帶編號與節數的標準格式（見下方預覽），可再手動微調。</p>
     <div class="actions">
       <button data-action="organize-objectives">整理學習目標</button>
+      ${isChinese ? `<button class="secondary" data-action="chinese-import-checked" style="margin-left:8px; padding:10px 20px; font-size:16px; height:auto; font-weight:600;">📋 載入已勾選的評量項目</button>` : ""}
     </div>
     ${renderObjectivePreview()}
     <label>教材摘要（選填）<textarea data-field="materialText">${escapeHtml(state.materialText)}</textarea></label>
@@ -1384,13 +1385,30 @@ app.addEventListener("click", (event) => {
   }
 
   if (nextStepButton) {
-    setState({ step: Number(nextStepButton.dataset.nextStep) });
+    const targetStep = Number(nextStepButton.dataset.nextStep);
+    if (targetStep === 2 && state.project.subject === "國語") {
+      if (!state.objectiveInput || !state.objectiveInput.trim()) {
+        const defaultObjectives = (state.checkedChineseSubcategories || [])
+          .map((sub) => `${sub}｜1`)
+          .join("\n");
+        setState({ objectiveInput: defaultObjectives });
+      }
+    }
+    setState({ step: targetStep });
     return;
   }
 
   if (!actionButton) return;
 
   const action = actionButton.dataset.action;
+  if (action === "chinese-import-checked") {
+    const defaultObjectives = (state.checkedChineseSubcategories || [])
+      .map((sub) => `${sub}｜1`)
+      .join("\n");
+    setState({ objectiveInput: defaultObjectives });
+    render();
+    return;
+  }
   if (action === "organize-objectives") organizeObjectives();
   if (action === "build-blueprint") buildBlueprint();
   if (action === "generate-items") generateItems();

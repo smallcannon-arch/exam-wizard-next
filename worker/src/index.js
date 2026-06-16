@@ -17,8 +17,8 @@ async function handleExtractObjectives(request, env) {
     return jsonResponse(request, env, { ok: false, error: "請上傳教材 PDF 或填入教材內容。" }, 400);
   }
 
-  if (safeFiles.length > 10) {
-    return jsonResponse(request, env, { ok: false, error: "一次最多上傳 10 個檔案。" }, 400);
+  if (safeFiles.length > 5) {
+    return jsonResponse(request, env, { ok: false, error: "因 AI Token 限制，一次最多只能勾選 5 個檔案提取。" }, 400);
   }
 
   const totalBytes = safeFiles.reduce((sum, file) => sum + Math.ceil((file.data.length * 3) / 4), 0);
