@@ -74,4 +74,27 @@ describe("parseObjectiveInput 結構化容錯", () => {
     expect(result.map((o) => o.text)).toEqual(["1-2-1 了解調節體溫", "1-2-2 了解遷移行為"]);
     expect(result.reduce((sum, o) => sum + o.periodCount, 0)).toBe(2);
   });
+
+  it("解析 Excel/Word 複製貼上的表格，剔除非目標並編序", () => {
+    const text = `1\t單元名稱：4-3 動物的生命延續\t1 節\t2 分
+2\t授課節數：\t4 節\t8 分
+3\t能知道動物為了繁衍下一代會利用聲音光舞蹈打鬥或散發特殊體味等方式來吸引異性以達到求偶交配的目的\t1 節\t2 分
+4\t能經由觀察各種動物或觀看影片圖片了解動物的繁殖方式有卵生胎生並知道兩者不同處\t1 節\t2 分
+5\t能了解動物的保護行為有不同的類型\t1 節\t2 分
+6\t能知道生物個體間的性狀具有差異性子代與親代的性狀具有相似性和相異性\t1 節\t2 分
+7\t單元名稱：3-1 生鏽知多少`;
+
+    const result = parseObjectiveInput(text);
+    expect(result).toHaveLength(4);
+    expect(result[0]).toEqual({
+      text: "4-3-1 能知道動物為了繁衍下一代會利用聲音光舞蹈打鬥或散發特殊體味等方式來吸引異性以達到求偶交配的目的",
+      periodCount: 1,
+      unitName: "動物的生命延續",
+    });
+    expect(result[3]).toEqual({
+      text: "4-3-4 能知道生物個體間的性狀具有差異性子代與親代的性狀具有相似性和相異性",
+      periodCount: 1,
+      unitName: "動物的生命延續",
+    });
+  });
 });

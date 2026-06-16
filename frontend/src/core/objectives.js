@@ -100,6 +100,88 @@ function getUnitNameFromText(text, fallback = "未分單元") {
   return fallback;
 }
 
+function parseTableObjectiveInput(raw) {
+  const lines = raw.split("\n").map((line) => line.trim()).filter(Boolean);
+  const out = [];
+  let currentUnitCode = "";
+  let currentUnitName = "";
+  let currentSubIndex = 1;
+
+  for (const line of lines) {
+    let parts = line.split(/[｜|\t]/).map((p) => p.trim());
+    if (parts.length === 1 && line.includes("  ")) {
+      parts = line.split(/\s{2,}/).map((p) => p.trim());
+    }
+
+    if (parts.length > 1 && /^\d+$/.test(parts[0])) {
+      parts.shift();
+    }
+
+    const mainText = parts[0] || "";
+    if (!mainText) continue;
+
+    // 1) 判斷是否為單元標題
+    if (mainText.includes("單元名稱") || mainText.includes("單元標題") || mainText.includes("單元主題") || /^【?\s*單元/.test(mainText)) {
+      const codeMatch = mainText.match(/([0-9]+(?:[-－.][0-9]+)+)/);
+      const code = codeMatch ? codeMatch[1].replace(/[－.]/g, "-") : "";
+      let name = mainText.replace(/單元名稱：|單元名稱:|單元名稱|單元：|單元:|主題：|主題:|標題：|標題/g, "").trim();
+      if (codeMatch) {
+        name = name.replace(codeMatch[0], "").trim();
+      }
+      name = name.replace(/^[:：\-\s]+/, "").trim();
+
+      currentUnitCode = code;
+      currentUnitName = name || (code ? `第${code}單元` : "未分單元");
+      currentSubIndex = 1;
+      continue;
+    }
+
+    // 2) 判斷是否為節數總結行或非目標行
+    if (mainText.includes("授課節數") || mainText.includes("總節數") || mainText.includes("學習節數") || mainText === "節數：" || mainText === "節數:") {
+      continue;
+    }
+
+    // 3) 目標行
+    let cleanedText = mainText.replace(/^[\-–—•・‧*\s\d.．、]+/, "").trim();
+    if (!cleanedText) continue;
+
+    let period = 1;
+    if (parts.length >= 2) {
+      for (let i = 1; i < parts.length; i++) {
+        const m = parts[i].match(/(\d+)/);
+        if (m) {
+          period = Number(m[1]);
+          break;
+        }
+      }
+    } else {
+      const m = cleanedText.match(/(\d+)\s*節/);
+      if (m) {
+        period = Number(m[1]);
+      }
+    }
+
+    // 編序
+    let finalFormattedText = cleanedText;
+    if (currentUnitCode) {
+      // 避免重複編序
+      const prefix = `${currentUnitCode}-${currentSubIndex}`;
+      if (!cleanedText.startsWith(prefix)) {
+        finalFormattedText = `${prefix} ${cleanedText}`;
+      }
+      currentSubIndex += 1;
+    }
+
+    out.push({
+      text: finalFormattedText,
+      periodCount: period,
+      unitName: currentUnitName || "未分單元"
+    });
+  }
+
+  return out;
+}
+
 export function parseObjectiveInput(input) {
   const raw = String(input || "").trim();
   if (!raw) return [];
@@ -123,6 +205,13 @@ export function parseObjectiveInput(input) {
     } catch {
       // 不是合法 JSON，改用文字解析
     }
+  }
+
+  // 1.5) 表格複製容錯格式（Excel/Word 複製貼上，包含 \t 或多個空格分隔）
+  const isTableFormat = raw.includes("\t") || raw.split("\n").some((l) => l.includes("  ") && (l.includes("單元") || l.includes("節") || l.includes("能")));
+  if (isTableFormat) {
+    const tableResult = parseTableObjectiveInput(raw);
+    if (tableResult.length > 0) return tableResult;
   }
 
   // 2) 文字：逐行辨識「單元標題 / 節數 / 條列指標 / 標準行」
