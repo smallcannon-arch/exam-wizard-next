@@ -491,7 +491,7 @@ function renderStep1() {
       <label class="field-lg">評量次數
         <select data-project="examType">
           <option value="" ${!state.project.examType ? "selected" : ""}>請選擇</option>
-          ${["第1次定期評量", "第2次定期評量", "第3次定期評量"].map((option) => `<option value="${option}" ${option === state.project.examType ? "selected" : ""}>${option}</option>`).join("")}
+          ${["第1次定期評量", "第2次定期評量"].map((option) => `<option value="${option}" ${option === state.project.examType ? "selected" : ""}>${option}</option>`).join("")}
         </select>
       </label>
       <label class="field-lg">科目
