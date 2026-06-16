@@ -82,7 +82,7 @@ async function handleGenerateItems(request, env) {
   const parsed = extractJsonObject(ai.text);
   if (!parsed.ok) return jsonResponse(request, env, { ok: false, error: parsed.error }, 502);
 
-  const payload = assertItemsPayload(parsed.data, intents.length);
+  const payload = assertItemsPayload(parsed.data);
   if (!payload.ok) return jsonResponse(request, env, { ok: false, error: payload.error }, 502);
 
   return jsonResponse(request, env, { ok: true, items: payload.items });

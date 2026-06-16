@@ -636,9 +636,32 @@ function renderStep3Or4() {
     </table></div>
 
     <h3>題位（共 ${intents.length} 題）</h3>
+    <p class="notice" style="margin-bottom:12px;">您可以自由勾選特定題號為「題組」，並設定其子題數量。非選擇題型亦可設定為題組。</p>
     <div class="table-wrap"><table>
-      <thead><tr><th>題號</th><th>題型</th><th>配分</th></tr></thead>
-      <tbody>${intents.slice(0, 80).map((slot) => `<tr><td>${escapeHtml(slot.itemId)}</td><td>${escapeHtml(slot.questionType)}</td><td>${escapeHtml(slot.score)}</td></tr>`).join("")}</tbody>
+      <thead><tr><th>題號</th><th>題型</th><th>配分</th><th>題組與子題設定</th></tr></thead>
+      <tbody>${intents.slice(0, 80).map((slot, index) => {
+        const isGroup = !!slot.isGroup;
+        const rowStyle = isGroup ? `style="background: #f0f7ff; border-left: 4px solid var(--blue);"` : "";
+        const typeLabel = slot.questionType === "學力檢測題"
+          ? `${escapeHtml(slot.questionType)} <span style="background:var(--blue); color:#fff; font-size:11px; padding:2px 6px; border-radius:4px; margin-left:8px; font-weight:600; display:inline-block; vertical-align:middle;">情境題組</span>`
+          : escapeHtml(slot.questionType);
+        return `<tr ${rowStyle}>
+          <td style="font-weight:${isGroup ? "bold" : "normal"};">${escapeHtml(slot.itemId)}</td>
+          <td>${typeLabel}</td>
+          <td>${escapeHtml(slot.score)}分</td>
+          <td>
+            <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; margin:0; font-size:14px; color:var(--ink);">
+              <input type="checkbox" data-slot-index="${index}" data-slot-field="isGroup" ${isGroup ? "checked" : ""} style="width:auto; margin:0;">
+              <span>合併為題組</span>
+            </label>
+            <select data-slot-index="${index}" data-slot-field="subCount" style="width:auto; display:inline-block; padding:2px 6px; font-size:13px; margin-left:12px; height:28px; border-radius:6px;" ${!isGroup ? "disabled" : ""}>
+              <option value="2" ${slot.subCount === 2 ? "selected" : ""}>2 個子題</option>
+              <option value="3" ${slot.subCount === 3 || !slot.subCount ? "selected" : ""}>3 個子題</option>
+              <option value="4" ${slot.subCount === 4 ? "selected" : ""}>4 個子題</option>
+            </select>
+          </td>
+        </tr>`;
+      }).join("")}</tbody>
     </table></div>
     <div class="actions">
       <button data-action="generate-items" ${busy ? "disabled" : ""}>${busy ? "AI 生成中……" : "連線 AI 生成正式草稿"}</button>
@@ -926,6 +949,27 @@ app.addEventListener("click", (event) => {
 
 // 配題表的題型/題數/配分或科目改變時（blur 觸發），重繪以更新小計與合計。
 app.addEventListener("change", (event) => {
+  const slotField = event.target.dataset.slotField;
+  const slotIndex = event.target.dataset.slotIndex;
+  if (slotField && slotIndex !== undefined) {
+    const index = Number(slotIndex);
+    if (state.intents[index]) {
+      let value;
+      if (slotField === "isGroup") {
+        value = event.target.checked;
+      } else {
+        value = Number(event.target.value);
+      }
+      const updatedSlot = { ...state.intents[index], [slotField]: value };
+      if (slotField === "isGroup") {
+        updatedSlot.subCount = value ? (updatedSlot.subCount || 3) : 0;
+      }
+      state.intents[index] = updatedSlot;
+      render();
+    }
+    return;
+  }
+
   if (event.target.id === "fileInput" || event.target.id === "fileInputFiles") {
     if (event.target.files && event.target.files.length > 0) {
       handleSelectedFiles(Array.from(event.target.files));

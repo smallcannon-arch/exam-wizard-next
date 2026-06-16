@@ -113,15 +113,19 @@ export function buildItemSlots({ questionTypeSequence = [], scoreSequence = [] }
   const slots = [];
   for (let index = 0; index < total; index += 1) {
     const serial = index + 1;
+    const type = asText(types[index], DEFAULT_EXAM_CONFIG.defaultQuestionTypes[0]);
+    const isGroup = type === "學力檢測題";
     slots.push({
       intentId: makeIntentId(serial),
       itemId: `Q-${String(serial).padStart(3, "0")}`,
-      questionType: asText(types[index], DEFAULT_EXAM_CONFIG.defaultQuestionTypes[0]),
+      questionType: type,
       score: toPositiveInteger(scores[index], 1),
       cognitiveLevel: "",
       objectiveIds: [],
       primaryObjectiveId: "",
       groupId: "",
+      isGroup,
+      subCount: isGroup ? 3 : 0,
     });
   }
 

@@ -85,8 +85,8 @@ export function validateGeneratedPaper({ slots = [], objectives = [], items = []
     const isGroup = groupItems.length > 1 || isGroupItem(groupItems[0].itemId);
 
     if (isGroup) {
-      if (normalizeId(slot.questionType) !== "學力檢測題") {
-        errors.push(`${parentId}：該題型為「${slot.questionType}」，不可拆分為子題。`);
+      if (normalizeId(slot.questionType) !== "學力檢測題" && !slot.isGroup) {
+        errors.push(`${parentId}：該題型為「${slot.questionType}」，不可拆分為子題（請在藍圖中勾選為題組）。`);
       }
 
       const subItemIds = new Set();
@@ -113,12 +113,13 @@ export function validateGeneratedPaper({ slots = [], objectives = [], items = []
           errors.push(`${subId}：缺少 answer。`);
         }
 
-        if (normalizeId(item.questionType) === "學力檢測題") {
+        const CHOICE_LIKE = ["選擇題", "圖表判讀題", "實驗探究題", "學力檢測題"];
+        if (CHOICE_LIKE.includes(normalizeId(item.questionType))) {
           const optionCount = Array.isArray(item.options) ? item.options.length : 0;
           if (optionCount < 2) {
-            errors.push(`${subId}：學力檢測子題採選擇題形式，缺少選項。`);
+            errors.push(`${subId}：${item.questionType}子題採選擇題形式，缺少選項。`);
           } else if (optionCount < 4) {
-            warnings.push(`提醒：${subId}（學力檢測子題）只有 ${optionCount} 個選項（建議 4 個）。`);
+            warnings.push(`提醒：${subId}（${item.questionType}子題）只有 ${optionCount} 個選項（建議 4 個）。`);
           }
         }
 
