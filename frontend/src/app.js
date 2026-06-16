@@ -537,54 +537,49 @@ function renderPlanTable() {
     let scoreConfigHtml = "";
     if (isGroup) {
       scoreConfigHtml = `
-        <div style="display:flex; flex-direction:column; gap:6px;">
-          <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-            <span style="font-size:13px; color:var(--muted);">其中有</span>
-            <input type="number" min="1" max="${row.count}" data-plan-field="groupCount" data-plan-index="${index}" value="${row.groupCount || 1}" style="width:50px; padding:2px 4px; text-align:center; height:24px; margin:0;">
-            <span style="font-size:13px; color:var(--muted);">組為題組，每組有</span>
-            <select data-plan-field="subCount" data-plan-index="${index}" style="width:auto; display:inline-block; height:24px; font-size:13px; padding:2px 6px; margin:0; line-height:1;">
-              <option value="2" ${subScores.length === 2 ? "selected" : ""}>2</option>
-              <option value="3" ${subScores.length === 3 ? "selected" : ""}>3</option>
-              <option value="4" ${subScores.length === 4 ? "selected" : ""}>4</option>
-            </select>
-            <span style="font-size:13px; color:var(--muted);">子題（配分：</span>
-            <div style="font-size:13px; color:var(--muted); display:inline-flex; align-items:center; gap:2px; margin:0;">
-              ${subScores.map((score, sIdx) => `
-                <input type="number" min="1" data-plan-field="subScore" data-plan-index="${index}" data-sub-index="${sIdx}" value="${score}" style="width:36px; padding:2px; text-align:center; height:20px; margin:0; font-size:12px;">
-                ${sIdx < subScores.length - 1 ? "<span>+</span>" : ""}
-              `).join("")}
-              <span style="font-weight:bold; color:var(--primary); margin-left:2px;">= ${groupScore}分</span>
-            </div>
-            <span style="font-size:13px; color:var(--muted);">)</span>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; min-height:28px;">
+          <span style="font-size:13px; color:var(--muted);">其中</span>
+          <input type="number" min="1" max="${row.count}" data-plan-field="groupCount" data-plan-index="${index}" value="${row.groupCount || 1}" style="width:48px; padding:2px 6px; text-align:center; height:28px; border-radius:8px; border:1px solid var(--line); margin:0;">
+          <span style="font-size:13px; color:var(--muted);">組為題組，每組有</span>
+          <select data-plan-field="subCount" data-plan-index="${index}" style="width:auto; display:inline-block; height:28px; font-size:13px; padding:2px 18px 2px 8px; border-radius:8px; border:1px solid var(--line); margin:0; line-height:1; background-position: right 6px center;">
+            <option value="2" ${subScores.length === 2 ? "selected" : ""}>2</option>
+            <option value="3" ${subScores.length === 3 ? "selected" : ""}>3</option>
+            <option value="4" ${subScores.length === 4 ? "selected" : ""}>4</option>
+          </select>
+          <span style="font-size:13px; color:var(--muted);">子題（配分：</span>
+          <div style="font-size:13px; color:var(--muted); display:inline-flex; align-items:center; gap:2px; margin:0;">
+            ${subScores.map((score, sIdx) => `
+              <input type="number" min="1" data-plan-field="subScore" data-plan-index="${index}" data-sub-index="${sIdx}" value="${score}" style="width:36px; padding:2px; text-align:center; height:28px; border-radius:8px; border:1px solid var(--line); margin:0; font-size:12px;">
+              ${sIdx < subScores.length - 1 ? "<span>+</span>" : ""}
+            `).join("")}
+            <span style="font-weight:bold; color:var(--primary); margin-left:4px;">= ${groupScore}分</span>
           </div>
+          <span style="font-size:13px; color:var(--muted);">)</span>
           ${singleCount > 0 ? `
-            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-              <span style="font-size:13px; color:var(--muted);">其餘 ${singleCount} 題為單題，每題配分：</span>
-              <input type="number" min="1" data-plan-field="score" data-plan-index="${index}" value="${escapeHtml(row.score)}" style="width:50px; padding:2px 4px; text-align:center; height:24px; margin:0;">
-              <span style="font-size:13px; color:var(--muted);">分</span>
-            </div>
-          ` : `
-            <div style="font-size:13px; color:var(--muted); font-style:italic;">（無其餘單題）</div>
-          `}
+            <span style="color:var(--line); margin:0 4px; font-weight:300;">|</span>
+            <span style="font-size:13px; color:var(--muted);">其餘 ${singleCount} 題為單題，每題</span>
+            <input type="number" min="1" data-plan-field="score" data-plan-index="${index}" value="${escapeHtml(row.score)}" style="width:48px; padding:2px 6px; text-align:center; height:28px; border-radius:8px; border:1px solid var(--line); margin:0;">
+            <span style="font-size:13px; color:var(--muted);">分</span>
+          ` : ""}
         </div>
       `;
     } else {
       scoreConfigHtml = `
-        <input type="number" min="1" data-plan-field="score" data-plan-index="${index}" value="${escapeHtml(row.score)}" style="width:80px; margin:0; height:28px;">
+        <input type="number" min="1" data-plan-field="score" data-plan-index="${index}" value="${escapeHtml(row.score)}" style="width:80px; margin:0; height:28px; padding:2px 8px; border-radius:8px; border:1px solid var(--line);">
       `;
     }
 
     return `<tr>
       <td>
         <div style="display:flex; align-items:center; gap:8px;">
-          <select data-plan-field="questionType" data-plan-index="${index}" style="margin:0; height:28px;">${optionHtml}</select>
+          <select data-plan-field="questionType" data-plan-index="${index}" style="margin:0; height:28px; padding:2px 18px 2px 8px; border-radius:8px; border:1px solid var(--line); width:auto;">${optionHtml}</select>
           <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; margin:0; font-size:13px; font-weight:600; color:var(--muted);">
             <input type="checkbox" data-plan-field="isGroup" data-plan-index="${index}" ${isGroup ? "checked" : ""} style="width:auto; margin:0;">
             <span>題組</span>
           </label>
         </div>
       </td>
-      <td><input type="number" min="1" data-plan-field="count" data-plan-index="${index}" value="${escapeHtml(row.count)}" style="margin:0; height:28px; width:80px;"></td>
+      <td><input type="number" min="1" data-plan-field="count" data-plan-index="${index}" value="${escapeHtml(row.count)}" style="margin:0; height:28px; width:80px; padding:2px 8px; border-radius:8px; border:1px solid var(--line);"></td>
       <td>${scoreConfigHtml}</td>
       <td><strong>${escapeHtml(subtotal)}分</strong></td>
       <td><button class="secondary" data-action="remove-plan-row" data-plan-index="${index}" style="padding:4px 8px; margin:0; font-size:13px; height:28px;">刪除</button></td>
