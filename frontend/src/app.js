@@ -460,8 +460,8 @@ async function regenerateItem(itemId) {
       primaryId = slot.primaryObjectiveId || "";
     }
 
-    let objectiveIds = Array.isArray(newItem.objectiveIds) ? newItem.objectiveIds : [];
-    objectiveIds = objectiveIds.map(id => {
+    let newObjectiveIds = Array.isArray(newItem.objectiveIds) ? newItem.objectiveIds : [];
+    newObjectiveIds = newObjectiveIds.map(id => {
       const trimmed = String(id).trim();
       if (state.objectives.some(o => o.objectiveId === trimmed)) return trimmed;
       const matched = state.objectives.find(o => 
@@ -470,15 +470,15 @@ async function regenerateItem(itemId) {
       );
       return matched ? matched.objectiveId : trimmed;
     });
-    if (primaryId && !objectiveIds.includes(primaryId)) {
-      objectiveIds.unshift(primaryId);
+    if (primaryId && !newObjectiveIds.includes(primaryId)) {
+      newObjectiveIds.unshift(primaryId);
     }
 
     const normalizedNewItem = {
       ...newItem,
       itemId,
       primaryObjectiveId: primaryId,
-      objectiveIds,
+      objectiveIds: newObjectiveIds,
       chineseDimension: newItem.chineseDimension || slot?.chineseDimension || getChineseDimension(newItem.questionType),
       chineseSubcategory: newItem.chineseSubcategory || slot?.chineseSubcategory || getChineseSubcategory(newItem.questionType, newItem.chineseDimension || slot?.chineseDimension),
     };
