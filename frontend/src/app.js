@@ -1530,15 +1530,38 @@ app.addEventListener("click", (event) => {
 
   if (nextStepButton) {
     const targetStep = Number(nextStepButton.dataset.nextStep);
-    if (targetStep === 2 && state.project.subject === "國語") {
-      if (!state.objectiveInput || !state.objectiveInput.trim()) {
-        const defaultObjectives = (state.checkedChineseSubcategories || [])
-          .map((sub) => `${sub}｜1`)
-          .join("\n");
-        setState({ objectiveInput: defaultObjectives });
+    if (targetStep === 2) {
+      const errors = [];
+      const p = state.project || {};
+      if (!String(p.schoolYear || "").trim()) errors.push("「學年度」未填寫。");
+      if (!String(p.semester || "").trim()) errors.push("「學期」未選擇。");
+      if (!String(p.examType || "").trim()) errors.push("「評量次數」未選擇。");
+      if (!String(p.subject || "").trim()) errors.push("「科目」未選擇。");
+      if (!String(p.grade || "").trim()) errors.push("「年級」未選擇。");
+      if (!String(p.teacherName || "").trim()) errors.push("「命題教師」未填寫。");
+      if (!String(p.version || "").trim()) errors.push("「版本」未填寫。");
+      if (!String(p.range || "").trim()) errors.push("「評量範圍」未填寫。");
+      
+      const planCheck = validatePlan(state.planRows);
+      if (!planCheck.ok) {
+        errors.push(planCheck.error);
+      }
+
+      if (errors.length > 0) {
+        setState({ errors, messages: [] });
+        return;
+      }
+
+      if (state.project.subject === "國語") {
+        if (!state.objectiveInput || !state.objectiveInput.trim()) {
+          const defaultObjectives = (state.checkedChineseSubcategories || [])
+            .map((sub) => `${sub}｜1`)
+            .join("\n");
+          setState({ objectiveInput: defaultObjectives });
+        }
       }
     }
-    setState({ step: targetStep });
+    setState({ step: targetStep, errors: [], messages: [] });
     return;
   }
 
