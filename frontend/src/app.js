@@ -606,14 +606,12 @@ function renderPlanTable() {
     }
 
     return `<tr>
+      <td><select data-plan-field="questionType" data-plan-index="${index}" style="margin:0; height:38px; padding:6px 28px 6px 10px; border-radius:8px; border:1px solid var(--line); width:auto; font-size:16px;">${optionHtml}</select></td>
       <td>
-        <div style="display:flex; align-items:center; gap:12px;">
-          <select data-plan-field="questionType" data-plan-index="${index}" style="margin:0; height:38px; padding:6px 28px 6px 10px; border-radius:8px; border:1px solid var(--line); width:auto; font-size:16px;">${optionHtml}</select>
-          <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; margin:0; font-size:15px; font-weight:600; color:var(--muted);">
-            <input type="checkbox" data-plan-field="isGroup" data-plan-index="${index}" ${isGroup ? "checked" : ""} style="width:auto; margin:0; transform: scale(1.25);">
-            <span>題組</span>
-          </label>
-        </div>
+        <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer; margin:0; font-size:16px; font-weight:600; color:var(--dark);">
+          <input type="checkbox" data-plan-field="isGroup" data-plan-index="${index}" ${isGroup ? "checked" : ""} style="width:auto; margin:0; transform: scale(1.35); cursor:pointer;">
+          <span>呈現為題組</span>
+        </label>
       </td>
       <td><input type="number" min="1" data-plan-field="count" data-plan-index="${index}" value="${escapeHtml(row.count)}" style="margin:0; height:38px; width:100px; padding:6px 10px; border-radius:8px; border:1px solid var(--line); text-align:center; font-size:16px;"></td>
       <td>${scoreConfigHtml}</td>
@@ -629,7 +627,16 @@ function renderPlanTable() {
       <strong>💡 溫馨提示</strong>：選取「題組」的項目會被 AI 自動拆解為指定數量的子題，並將該題配分由各子題分配，您在此階段可以放心為其配置較高的分數！
     </p>
     <div class="table-wrap"><table style="font-size:16px;">
-      <thead><tr><th style="font-size:16px; padding:10px 8px;">題型</th><th style="font-size:16px; padding:10px 8px;">題數</th><th style="font-size:16px; padding:10px 8px;">每題(答)配分</th><th style="font-size:16px; padding:10px 8px;">小計</th><th style="font-size:16px; padding:10px 8px;"></th></tr></thead>
+      <thead>
+        <tr>
+          <th style="font-size:16px; padding:10px 8px; width:22%;">題型</th>
+          <th style="font-size:16px; padding:10px 8px; width:20%;">呈現方式</th>
+          <th style="font-size:16px; padding:10px 8px; width:12%;">題數</th>
+          <th style="font-size:16px; padding:10px 8px; width:32%;">每題(答)配分</th>
+          <th style="font-size:16px; padding:10px 8px; width:10%;">小計</th>
+          <th style="font-size:16px; padding:10px 8px; width:4%;"></th>
+        </tr>
+      </thead>
       <tbody>${rowsHtml}</tbody>
     </table></div>
     <div class="actions" style="margin-top:12px;"><button class="secondary" data-action="add-plan-row" style="padding:10px 20px; font-size:16px; font-weight: 600; height: auto;">＋ 新增一列</button></div>
