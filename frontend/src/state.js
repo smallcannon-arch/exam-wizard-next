@@ -9,7 +9,7 @@ export function createInitialState() {
       schoolYear: "",
       semester: "",
       examType: "",
-      teacherName: "江志宏",
+      teacherName: "",
       version: "翰林版",
       range: "",
     },
