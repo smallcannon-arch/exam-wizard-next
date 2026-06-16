@@ -750,144 +750,35 @@ function renderChineseSubcategoryChecklist() {
 function renderStep2() {
   const isChinese = (state.project.subject === "國語");
 
-  let topGuideHtml = "";
-  if (isChinese) {
-    let filesListHtml = "";
-    if ((state.scannedFiles || []).length > 0) {
-      const filterText = (state.fileFilterText || "").trim().toLowerCase();
-      const checkedCount = state.scannedFiles.filter(sf => sf.checked).length;
-      const isOverLimit = checkedCount > 5;
+  const topGuideHtml = `
+    <div class="notice" style="background: var(--blue-soft); border-left: 4px solid var(--primary); padding: 16px; border-radius: 12px; margin-bottom: 20px;">
+      <strong style="font-size: 16px; display: block; margin-bottom: 8px; color: var(--primary);">💡 學習目標與教材摘要匯入指引</strong>
+      <p style="font-size: 14px; margin: 0 0 12px 0; color: var(--muted);">${isChinese ? "推薦使用外部特製 Gemini Gems 進行大範圍提取，以獲得最佳出題品質。" : "推薦使用外部 Gemini Gems 進行大範圍提取，或手動填寫。"}</p>
       
-      const visibleFiles = state.scannedFiles.map((sf, index) => ({ sf, index })).filter(({ sf }) => {
-        if (!filterText) return true;
-        const nameMatch = sf.file.name.toLowerCase().includes(filterText);
-        const pathMatch = (sf.file.webkitRelativePath || sf.file.customPath || "").toLowerCase().includes(filterText);
-        return nameMatch || pathMatch;
-      });
-
-      const limitNoticeColor = isOverLimit ? "red" : "var(--muted)";
-      const limitNoticeWeight = isOverLimit ? "bold" : "normal";
-
-      filesListHtml = `
-        <div style="margin-bottom: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; justify-content: space-between;">
-          <div>
-            <h3 style="margin: 0 0 4px 0;">已偵測到的教材檔案：</h3>
-            <span style="font-size: 14px; color: ${limitNoticeColor}; font-weight: ${limitNoticeWeight};">
-              已勾選 ${checkedCount} 個檔案（限制上限 5 個）${isOverLimit ? " ⚠️ 已超出上限，請取消勾選多餘檔案" : ""}
-            </span>
-          </div>
-          <div style="display: flex; gap: 8px;">
-            <button class="secondary" data-action="uncheck-all-files" style="padding: 6px 12px; font-size: 13px; height: auto;">全不選</button>
-            <button class="secondary" data-action="check-filtered-files" style="padding: 6px 12px; font-size: 13px; height: auto;">勾選篩選出的檔案</button>
-          </div>
-        </div>
-        <input type="text" id="fileFilterInput" placeholder="🔍 輸入關鍵字篩選備課檔案 (例如：第一課)..." value="${escapeHtml(state.fileFilterText || "")}" style="margin-bottom: 8px; width: 100%; box-sizing: border-box; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line);">
-        <div class="file-checkbox-list" style="max-height: 250px; overflow-y: auto; border: 1px solid var(--line); padding: 10px; border-radius: 12px; margin-bottom: 12px; background: #fafafa;">
-          ${visibleFiles.length > 0 
-            ? visibleFiles.map(({ sf, index }) => {
-                const folderDisplay = getFolderDisplay(sf.file);
-                return `
-                  <label class="file-checkbox-row" style="display:flex; align-items:center; gap:8px; margin-bottom:4px; font-size:14px; cursor:pointer; color:var(--muted);">
-                    <input type="checkbox" data-file-index="${index}" ${sf.checked ? "checked" : ""} style="width:auto; margin:0;">
-                    <span style="word-break: break-all;">
-                      <strong style="color:var(--primary);">${escapeHtml(folderDisplay)}</strong>${escapeHtml(sf.file.name)} 
-                      <span style="font-size:12px; color:var(--muted);">(${Math.round(sf.file.size / 1024)} KB)</span>
-                    </span>
-                  </label>
-                `;
-              }).join("")
-            : `<div style="text-align: center; color: var(--muted); padding: 20px 0;">沒有符合「${escapeHtml(filterText)}」的檔案</div>`
-          }
-        </div>
-        <div class="actions" style="margin-bottom:16px; display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
-          <button data-action="extract-objectives" ${busy || isOverLimit || checkedCount === 0 ? "disabled" : ""}>🚀 開始 AI 一鍵提取目標與教材</button>
-          <label style="display:inline-flex; align-items:center; gap:6px; font-size:14px; cursor:pointer; color:var(--muted); user-select:none;">
-            <input type="checkbox" id="appendModeCheckbox" ${state.isAppendMode ? "checked" : ""} style="width:auto; margin:0;">
-            追加至現有目標與摘要（不清除舊內容）
-          </label>
-        </div>
-      `;
-    }
-
-    topGuideHtml = `
-      <div class="notice" style="background: var(--blue-soft); border-left: 4px solid var(--primary); padding: 16px; border-radius: 12px; margin-bottom: 20px;">
-        <strong style="font-size: 16px; display: block; margin-bottom: 8px; color: var(--primary);">💡 學習目標與教材摘要匯入指引</strong>
-        
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; margin-bottom: 12px;">
-          <div style="background: #fff; padding: 12px; border-radius: 8px; border: 1px solid var(--line);">
-            <strong style="color: var(--primary); display: block; margin-bottom: 6px; font-size: 14px;">方法一：使用內建 AI 快速提取 (限 5 檔內)</strong>
-            <p style="margin: 0; font-size: 13px; color: var(--muted); line-height: 1.5;">
-              直接在下方拖入 <strong>3~5 個</strong> 核心備課檔案（如個別課次的形音、句型 PDF），使用 <strong>追加模式</strong> 分批提取，最為省時。
-            </p>
-          </div>
-          
-          <div style="background: #fff; padding: 12px; border-radius: 8px; border: 1px solid var(--line);">
-            <strong style="color: var(--primary); display: block; margin-bottom: 6px; font-size: 14px;">方法二：使用外部 Google Gem 批次提取 (適合全冊/大範圍)</strong>
-            <p style="margin: 0; font-size: 13px; color: var(--muted); line-height: 1.5;">
-              開啟外部特製 Gem，一次拖入多達 <strong>20 個</strong> 檔案分析。完成後將文字複製貼回下方的文字框中。
-            </p>
-          </div>
-        </div>
-
-        <div style="padding-top: 12px; border-top: 1px dashed var(--line); font-size: 13px;">
-          <strong style="display: block; margin-bottom: 6px; color: var(--muted);">👉 外部 Gem 具體操作步驟：</strong>
-          <ul style="margin: 0; padding-left: 20px; line-height: 1.6; color: var(--muted);">
-            <li style="margin-bottom: 6px;">
-              <strong>提取學習目標：</strong>點選 
-              <a href="${GEM_OBJECTIVES_URL}" target="_blank" style="color: var(--primary); font-weight: 600; text-decoration: underline;">🔗 開啟「目標提取」Gem</a>
-              。上傳<strong>「課本目錄或單元活動架構」</strong>檔案，並將產生的 <code>目標｜節數</code> 文字貼回下方「學習目標」框。
-              <button class="secondary" data-copy-prompt="objectives" style="padding: 2px 6px; font-size: 11px; height: auto; margin-left: 6px; cursor: pointer;">📋 複製備用提示詞</button>
-            </li>
-            <li>
-              <strong>提取教材重點：</strong>點選 
-              <a href="${GEM_MATERIAL_URL}" target="_blank" style="color: var(--primary); font-weight: 600; text-decoration: underline;">🔗 開啟「教材提取」Gem</a>
-              。上傳<strong>「形音輕鬆學、短語句型練習」</strong>等語句細節檔，將產生的重點文字貼回下方「教材摘要」框。
-              <button class="secondary" data-copy-prompt="material" style="padding: 2px 6px; font-size: 11px; height: auto; margin-left: 6px; cursor: pointer;">📋 複製備用提示詞</button>
-            </li>
-          </ul>
-        </div>
+      <div style="font-size: 13px;">
+        <strong style="display: block; margin-bottom: 6px; color: var(--muted);">👉 具體操作步驟：</strong>
+        <ul style="margin: 0; padding-left: 20px; line-height: 1.6; color: var(--muted);">
+          <li style="margin-bottom: 8px;">
+            <strong>提取學習目標：</strong>點選 
+            <a href="${GEM_OBJECTIVES_URL}" target="_blank" style="color: var(--primary); font-weight: 600; text-decoration: underline;">🔗 開啟「目標提取」Gem</a>
+            。上傳<strong>「課本目錄或單元活動架構」</strong>檔案，並將產生的 <code>目標｜節數</code> 文字貼入下方「學習目標」框。
+            <button class="secondary" data-copy-prompt="objectives" style="padding: 2px 6px; font-size: 11px; height: auto; margin-left: 6px; cursor: pointer;">📋 複製備用提示詞</button>
+          </li>
+          <li>
+            <strong>提取教材重點：</strong>點選 
+            <a href="${GEM_MATERIAL_URL}" target="_blank" style="color: var(--primary); font-weight: 600; text-decoration: underline;">🔗 開啟「教材提取」Gem</a>
+            。上傳<strong>「形音輕鬆學、短語句型練習」</strong>（或其他科目課本內容），將產生的重點摘要文字貼入下方「教材摘要」框。
+            <button class="secondary" data-copy-prompt="material" style="padding: 2px 6px; font-size: 11px; height: auto; margin-left: 6px; cursor: pointer;">📋 複製備用提示詞</button>
+          </li>
+        </ul>
       </div>
-      <div class="drop-zone" id="dropZone" style="border: 2px dashed var(--line); border-radius: 18px; padding: 24px; text-align: center; cursor: pointer; color: var(--muted); background: var(--blue-soft); transition: all 0.2s; margin-bottom: 16px;">
-        <span class="drop-zone-prompt" style="font-weight:600; display:block; margin-bottom:6px;">📂 拖曳備課資料夾或 PDF 檔案至此，或點擊此處選取</span>
-        <span style="font-size:13px;">（建議優先選擇廠商提供的「形音輕鬆學」或「短語型練習」PDF）</span>
-        <input type="file" id="fileInput" webkitdirectory directory multiple style="display: none;">
-        <input type="file" id="fileInputFiles" multiple accept=".pdf,.docx" style="display: none;">
-      </div>
-      ${filesListHtml}
-      ${loadingLine()}
-      <hr style="border:0; border-top:1px solid var(--line); margin:24px 0;">
-    `;
-  } else {
-    topGuideHtml = `
-      <div class="notice" style="background: var(--blue-soft); border-left: 4px solid var(--primary); padding: 16px; border-radius: 12px; margin-bottom: 20px;">
-        <strong style="font-size: 16px; display: block; margin-bottom: 8px; color: var(--primary);">💡 學習目標與教材摘要匯入指引</strong>
-        <p style="font-size: 14px; margin: 0 0 12px 0; color: var(--muted);">推薦使用外部 Gemini Gems 進行大範圍提取，或手動填寫。</p>
-        
-        <div style="font-size: 13px;">
-          <strong style="display: block; margin-bottom: 6px; color: var(--muted);">👉 具體操作步驟：</strong>
-          <ul style="margin: 0; padding-left: 20px; line-height: 1.6; color: var(--muted);">
-            <li style="margin-bottom: 6px;">
-              <strong>學習目標：</strong>點選 
-              <a href="${GEM_OBJECTIVES_URL}" target="_blank" style="color: var(--primary); font-weight: 600; text-decoration: underline;">🔗 開啟「目標提取」Gem</a>
-              。上傳<strong>「課本目錄或單元架構」</strong>，將輸出的每行 <code>目標文字｜節數</code> 貼入下方「學習目標」欄。
-              <button class="secondary" data-copy-prompt="objectives" style="padding: 2px 6px; font-size: 11px; height: auto; margin-left: 6px; cursor: pointer;">📋 複製備用提示詞</button>
-            </li>
-            <li>
-              <strong>教材重點：</strong>點選 
-              <a href="${GEM_MATERIAL_URL}" target="_blank" style="color: var(--primary); font-weight: 600; text-decoration: underline;">🔗 開啟「教材提取」Gem</a>
-              。上傳<strong>「課本內容或單元重點」</strong>，將產生的摘要重點貼入下方「教材摘要」欄。
-              <button class="secondary" data-copy-prompt="material" style="padding: 2px 6px; font-size: 11px; height: auto; margin-left: 6px; cursor: pointer;">📋 複製備用提示詞</button>
-            </li>
-          </ul>
-        </div>
-      </div>
-    `;
-  }
+    </div>
+  `;
 
   return `<section class="panel">
     <h2>② 學習目標</h2>
     ${topGuideHtml}
-    <label>學習目標（把 LLM／Gem 抓回 the 指標整段貼進來即可）<textarea data-field="objectiveInput">${escapeHtml(state.objectiveInput)}</textarea></label>
+    <label>學習目標（把 LLM／Gem 抓回的指標整段貼進來即可）<textarea data-field="objectiveInput">${escapeHtml(state.objectiveInput)}</textarea></label>
     <p class="notice">貼好後按「整理學習目標」，系統會把它整理成帶編號與節數的標準格式（見下方預覽），可再手動微調。</p>
     <div class="actions">
       <button data-action="organize-objectives">整理學習目標</button>
@@ -1497,29 +1388,6 @@ app.addEventListener("click", (event) => {
   const stepButton = event.target.closest("[data-step]");
   const nextStepButton = event.target.closest("[data-next-step]");
   const actionButton = event.target.closest("[data-action]");
-  const selectFilesBtn = event.target.closest("#btnSelectFiles");
-  const selectFolderBtn = event.target.closest("#btnSelectFolder");
-  const dropZone = event.target.closest("#dropZone");
-
-  if (selectFilesBtn) {
-    event.stopPropagation();
-    const fileInputFiles = document.getElementById("fileInputFiles");
-    if (fileInputFiles) fileInputFiles.click();
-    return;
-  }
-
-  if (selectFolderBtn) {
-    event.stopPropagation();
-    const fileInput = document.getElementById("fileInput");
-    if (fileInput) fileInput.click();
-    return;
-  }
-
-  if (dropZone) {
-    const fileInputFiles = document.getElementById("fileInputFiles");
-    if (fileInputFiles) fileInputFiles.click();
-    return;
-  }
 
   const copyPromptBtn = event.target.closest("[data-copy-prompt]");
   if (copyPromptBtn) {
@@ -1674,21 +1542,6 @@ app.addEventListener("change", (event) => {
     return;
   }
 
-  if (event.target.id === "fileInput" || event.target.id === "fileInputFiles") {
-    if (event.target.files && event.target.files.length > 0) {
-      handleSelectedFiles(Array.from(event.target.files));
-    }
-    return;
-  }
-
-  if (event.target.dataset.fileIndex !== undefined) {
-    const index = Number(event.target.dataset.fileIndex);
-    if (state.scannedFiles && state.scannedFiles[index]) {
-      state.scannedFiles[index].checked = event.target.checked;
-      render();
-    }
-    return;
-  }
 
   const itemField = event.target.dataset.itemField;
   const itemId = event.target.dataset.itemId;
@@ -1718,59 +1571,6 @@ app.addEventListener("change", (event) => {
   }
 });
 
-app.addEventListener("dragover", (event) => {
-  const dropZone = event.target.closest("#dropZone");
-  if (dropZone) {
-    event.preventDefault();
-    dropZone.style.borderColor = "var(--primary)";
-    dropZone.style.background = "var(--blue-light)";
-  }
-});
 
-app.addEventListener("dragleave", (event) => {
-  const dropZone = event.target.closest("#dropZone");
-  if (dropZone) {
-    dropZone.style.borderColor = "var(--line)";
-    dropZone.style.background = "var(--blue-soft)";
-  }
-});
-
-app.addEventListener("drop", async (event) => {
-  const dropZone = event.target.closest("#dropZone");
-  if (dropZone) {
-    event.preventDefault();
-    dropZone.style.borderColor = "var(--line)";
-    dropZone.style.background = "var(--blue-soft)";
-
-    const items = event.dataTransfer.items;
-    if (!items) return;
-
-    busy = true;
-    busyLabel = "正在掃描檔案……";
-    render();
-
-    try {
-      const filePromises = [];
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        if (item.kind === "file") {
-          const entry = item.webkitGetAsEntry();
-          if (entry) {
-            filePromises.push(scanFilesFromEntry(entry));
-          }
-        }
-      }
-      const results = await Promise.all(filePromises);
-      const files = results.flat();
-      handleSelectedFiles(files);
-    } catch (err) {
-      setState({ errors: [`掃描檔案失敗: ${err.message}`] });
-    } finally {
-      busy = false;
-      busyLabel = "";
-      render();
-    }
-  }
-});
 
 render();
