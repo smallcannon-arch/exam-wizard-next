@@ -194,6 +194,10 @@ export function buildNormalizeObjectivesPrompt({ text: rawText = "" }) {
 }
 
 export function buildExtractObjectivesPrompt({ project = {}, materialText = "", hasFiles = false }) {
+  const rangePart = project.range
+    ? `\n# 命題範圍限制（極重要）\n本次考試的命題範圍限制為：【${project.range}】。隨附檔案可能包含整冊或超出範圍的內容，請『僅』提取與此命題範圍相關的學習目標與教材重點（生字、語詞、句型等），請忽略此範圍之外的課次與單元。\n`
+    : "";
+
   return [
     "# 角色",
     `你是臺灣國小${text(project.grade, "未指定年級")}${text(project.subject, "未指定科目")}課程設計協助者。`,
@@ -203,6 +207,7 @@ export function buildExtractObjectivesPrompt({ project = {}, materialText = "", 
       ? "請閱讀我隨附的教材檔案（可能多份 PDF），萃取可評量的學習目標，並將教材核心重點（包含生字語詞、重要觀念、定理公式或主要事實，視科目而定）彙整成一個簡潔但具代表性的「教材大意與重點摘要」（約 300-600 字）。"
       : "請從教材內容萃取可評量的學習目標，並將教材核心重點（包含生字語詞、重要觀念、定理公式或主要事實，視科目而定）彙整成一個簡潔但具代表性的「教材大意與重點摘要」（約 300-600 字）。",
     "目標數量依教材內容多寡判斷，一般 3 到 8 個。不得自行假造教材沒有的內容。",
+    rangePart,
     "",
     "# 節數（重要）",
     "請依教材分量，為每個目標估算建議教學節數 periodCount（正整數）。",
