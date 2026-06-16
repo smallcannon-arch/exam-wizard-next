@@ -647,14 +647,14 @@ function renderChineseSubcategoryChecklist() {
 
   const columnsHtml = CHINESE_AUDIT_STRUCTURE.map((dimObj) => {
     const projectHtml = `
-      <div class="sub-column-project" style="margin-bottom:16px;">
-        <h4 style="margin:0 0 8px; font-size:15px; border-bottom: 2px solid var(--primary); padding-bottom: 4px; color: var(--primary);">${dimObj.project}</h4>
-        <div style="display:flex; flex-direction:column; gap:8px;">
+      <div class="sub-column-project" style="margin-bottom:24px;">
+        <h4 style="margin:0 0 12px; font-size:16px; border-bottom: 2px solid var(--primary); padding-bottom: 6px; color: var(--primary); font-weight: bold;">${dimObj.project}</h4>
+        <div style="display:flex; flex-direction:column; gap:12px;">
           ${dimObj.items.map((item) => {
             const checked = checkedSet.has(item);
             return `
-              <label style="display:inline-flex; align-items:center; gap:8px; font-size:15px; cursor:pointer; margin:0; font-weight:normal; color:var(--ink);">
-                <input type="checkbox" data-chinese-sub="${item}" ${checked ? "checked" : ""} style="width:auto; margin:0; transform: scale(1.15);">
+              <label style="display:inline-flex; align-items:center; gap:10px; font-size:17px; cursor:pointer; margin:0; font-weight:normal; color:var(--ink); padding: 2px 0;">
+                <input type="checkbox" data-chinese-sub="${item}" ${checked ? "checked" : ""} style="width:auto; margin:0; transform: scale(1.35); cursor:pointer;">
                 <span>${item}</span>
               </label>
             `;
@@ -669,9 +669,9 @@ function renderChineseSubcategoryChecklist() {
   const gridHtml = dims.map((dim) => {
     const dimHtml = columnsHtml.filter(c => c.dimension === dim).map(c => c.html).join("");
     return `
-      <div style="flex:1; min-width:220px; background:#fff; padding:18px; border-radius:12px; border:1px solid var(--line); box-shadow:0 4px 12px rgba(0,0,0,0.02);">
-        <h3 style="margin:0 0 16px; font-size:17px; font-weight:bold; color:#333; display:flex; align-items:center; gap:6px;">
-          <span style="width:4px; height:18px; background:var(--primary); display:inline-block; border-radius:2px;"></span>
+      <div style="flex:1; min-width:260px; background:#fff; padding:24px; border-radius:16px; border:1px solid var(--line); box-shadow:0 6px 16px rgba(0,0,0,0.02);">
+        <h3 style="margin:0 0 20px; font-size:19px; font-weight:bold; color:#111; display:flex; align-items:center; gap:8px;">
+          <span style="width:5px; height:20px; background:var(--primary); display:inline-block; border-radius:3px;"></span>
           ${dim}
         </h3>
         ${dimHtml}
@@ -680,24 +680,27 @@ function renderChineseSubcategoryChecklist() {
   }).join("");
 
   return `
-    <div class="chinese-sub-checklist" style="margin:24px 0; padding:24px; background:var(--blue-soft); border-radius:16px; border:1px solid var(--line);">
-      <h3 style="margin:0 0 8px; font-size:18px; font-weight:700; color:var(--dark);">📋 國語科評量項目細項篩選</h3>
-      <div style="margin: 12px 0 16px 0; padding: 12px 16px; background: #fff; border: 1px solid var(--line); border-radius: 8px; font-size: 14px; color: #444; line-height: 1.6; text-align: left;">
-        <strong>💡 許育健教授國語科評量向度建議佔分比例：</strong><br>
+    <div class="chinese-sub-checklist" style="margin:24px 0; padding:28px; background:var(--blue-soft); border-radius:20px; border:1px solid var(--line);">
+      <h3 style="margin:0 0 12px; font-size:20px; font-weight:800; color:var(--dark);">📋 國語科評量項目細項篩選</h3>
+      <div style="margin: 16px 0 20px 0; padding: 16px 20px; background: #fff; border: 1px solid var(--line); border-radius: 12px; font-size: 16px; color: #333; line-height: 1.7; text-align: left; box-shadow: 0 4px 10px rgba(0,0,0,0.01);">
+        <strong style="font-size: 17px; color: var(--primary);">💡 許育健教授國語科評量向度建議佔分比例：</strong><br>
         • <strong>低年級</strong>（一、二年級）：字詞短語 50% ｜ 句式語法 30% ｜ 段篇讀寫 20%<br>
         • <strong>中年級</strong>（三、四年級）：字詞短語 30% ｜ 句式語法 50% ｜ 段篇讀寫 20%<br>
         • <strong>高年級</strong>（五、六年級）：字詞短語 20% ｜ 句式語法 30% ｜ 段篇讀寫 50%<br>
-        （當前設定年級：<strong style="color:var(--primary); font-size:15px;">${categoryLabel}</strong>，建議比例 ➔ 字詞短語 ${recs.character} ｜ 句式語法 ${recs.grammar} ｜ 段篇讀寫 ${recs.reading}）
+        <div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #eee; font-weight: 600;">
+          當前設定年級：<span style="color:var(--primary); font-size:17px; font-weight: bold;">${categoryLabel || "（請先選擇年級）"}</span>
+          ${categoryLabel ? `➔ 建議比例：字詞短語 <span style="color:var(--primary); font-size:17px;">${recs.character}</span> ｜ 句式語法 <span style="color:var(--primary); font-size:17px;">${recs.grammar}</span> ｜ 段篇讀寫 <span style="color:var(--primary); font-size:17px;">${recs.reading}</span>` : ""}
+        </div>
       </div>
-      <p style="margin:0 0 16px; font-size:14px; color:var(--muted); line-height: 1.5;">勾選本次評量要涵蓋的細項。AI 將只使用已勾選的項目進行出題與自動對齊，這能讓出題更集中，避免細項過多導致分散。</p>
+      <p style="margin:0 0 20px; font-size:16px; color:var(--muted); line-height: 1.6;">勾選本次評量要涵蓋的細項。AI 將只使用已勾選的項目進行出題與自動對齊，這能讓出題更集中，避免細項過多導致分散。</p>
       
-      <div class="actions" style="margin-bottom:16px; display:flex; gap:8px;">
-        <button class="secondary" data-action="chinese-sub-default" style="padding:6px 12px; font-size:14px; height:auto;">恢復預設選項</button>
-        <button class="secondary" data-action="chinese-sub-all" style="padding:6px 12px; font-size:14px; height:auto;">全選</button>
-        <button class="secondary" data-action="chinese-sub-none" style="padding:6px 12px; font-size:14px; height:auto;">清空</button>
+      <div class="actions" style="margin-bottom:20px; display:flex; gap:10px;">
+        <button class="secondary" data-action="chinese-sub-default" style="padding:8px 16px; font-size:15px; height:auto; font-weight: 600;">恢復預設選項</button>
+        <button class="secondary" data-action="chinese-sub-all" style="padding:8px 16px; font-size:15px; height:auto; font-weight: 600;">全選</button>
+        <button class="secondary" data-action="chinese-sub-none" style="padding:8px 16px; font-size:15px; height:auto; font-weight: 600;">清空</button>
       </div>
 
-      <div style="display:flex; gap:16px; flex-wrap:wrap;">
+      <div style="display:flex; gap:20px; flex-wrap:wrap; align-items:stretch;">
         ${gridHtml}
       </div>
     </div>
@@ -773,7 +776,8 @@ function renderStep2() {
 }
 
 function getGradeCategory(grade) {
-  const g = String(grade || "");
+  const g = String(grade || "").trim();
+  if (!g || g === "請選擇") return "";
   if (g.includes("一") || g.includes("二") || g.includes("1") || g.includes("2")) return "low";
   if (g.includes("三") || g.includes("四") || g.includes("3") || g.includes("4")) return "middle";
   return "high";
@@ -787,7 +791,10 @@ function getMandarinRecommendation(grade) {
   if (category === "middle") {
     return { character: "30%", grammar: "50%", reading: "20%" };
   }
-  return { character: "20%", grammar: "30%", reading: "50%" };
+  if (category === "high") {
+    return { character: "20%", grammar: "30%", reading: "50%" };
+  }
+  return { character: "—", grammar: "—", reading: "—" };
 }
 
 function renderStep3Or4() {

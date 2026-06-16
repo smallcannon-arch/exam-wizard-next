@@ -14,10 +14,11 @@ function numberToChinese(index) {
 }
 
 function getGradeCategory(grade) {
-  const g = String(grade || "");
+  const g = String(grade || "").trim();
+  if (!g || g === "請選擇") return "";
   if (g.includes("一") || g.includes("二") || g.includes("1") || g.includes("2")) return "low";
   if (g.includes("三") || g.includes("四") || g.includes("3") || g.includes("4")) return "middle";
-  return "high"; // default to high (5, 6)
+  return "high";
 }
 
 function getMandarinRecommendation(grade) {
@@ -28,7 +29,10 @@ function getMandarinRecommendation(grade) {
   if (category === "middle") {
     return { character: "30%", grammar: "50%", reading: "20%" };
   }
-  return { character: "20%", grammar: "30%", reading: "50%" };
+  if (category === "high") {
+    return { character: "20%", grammar: "30%", reading: "50%" };
+  }
+  return { character: "—", grammar: "—", reading: "—" };
 }
 
 // Group and format question numbers (e.g., "選擇題第1、2、3題")
@@ -266,7 +270,13 @@ export function renderAuditTable({ project = {}, objectives = [], items = [], pl
           • <strong>低年級</strong>（一、二年級）：字詞短語 50% ｜ 句式語法 30% ｜ 段篇讀寫 20%<br>
           • <strong>中年級</strong>（三、四年級）：字詞短語 30% ｜ 句式語法 50% ｜ 段篇讀寫 20%<br>
           • <strong>高年級</strong>（五、六年級）：字詞短語 20% ｜ 句式語法 30% ｜ 段篇讀寫 50%<br>
-          （目前本份試卷適用年段：<strong style="color:var(--primary); font-size:14px;">${getGradeCategory(project.grade) === "low" ? "低年級" : (getGradeCategory(project.grade) === "middle" ? "中年級" : "高年級")}</strong>）
+          （目前本份試卷適用年段：<strong style="color:var(--primary); font-size:14px;">${(() => {
+            const cat = getGradeCategory(project.grade);
+            if (cat === "low") return "低年級";
+            if (cat === "middle") return "中年級";
+            if (cat === "high") return "高年級";
+            return "（請先選擇年級）";
+          })()}</strong>）
         </div>
         <table style="width:100%; border-collapse:collapse; margin-bottom:24px;">
           <thead>

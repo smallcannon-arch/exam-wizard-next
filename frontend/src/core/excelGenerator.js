@@ -10,7 +10,8 @@ function escapeXml(str) {
 }
 
 function getGradeCategory(grade) {
-  const g = String(grade || "");
+  const g = String(grade || "").trim();
+  if (!g || g === "請選擇") return "";
   if (g.includes("一") || g.includes("二") || g.includes("1") || g.includes("2")) return "low";
   if (g.includes("三") || g.includes("四") || g.includes("3") || g.includes("4")) return "middle";
   return "high";
@@ -24,7 +25,10 @@ function getMandarinRecommendation(grade) {
   if (category === "middle") {
     return { character: "30%", grammar: "50%", reading: "20%" };
   }
-  return { character: "20%", grammar: "30%", reading: "50%" };
+  if (category === "high") {
+    return { character: "20%", grammar: "30%", reading: "50%" };
+  }
+  return { character: "—", grammar: "—", reading: "—" };
 }
 
 function numberToChinese(index) {
