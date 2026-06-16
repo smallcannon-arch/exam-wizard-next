@@ -223,11 +223,19 @@ export function renderAuditTable({ project = {}, objectives = [], items = [], pl
       let rowHtml = "<tr>";
 
       if (r.isFirstDim) {
-        const recPct = r.dimension === "字詞短語" ? recs.character : (r.dimension === "句式語法" ? recs.grammar : recs.reading);
         const dimScore = dimensionScoreMap[r.dimension];
         const dimPct = totalScore > 0 ? Math.round(dimScore / totalScore * 100) : 0;
         
-        rowHtml += `<td rowspan="${r.dimItemCount}" style="border:1px solid #000; padding:6px; text-align:center; font-size:13px; font-weight:bold; background:#fafafa;">建議：${recPct}<br><br>實際：<br>${dimScore}分 (${dimPct}%)</td>`;
+        let ratioText = "";
+        if (r.dimension === "字詞短語") {
+          ratioText = "低年級<br>50％<br><br>中年級<br>30％<br><br>高年級<br>20％";
+        } else if (r.dimension === "句式語法") {
+          ratioText = "低年級<br>30％<br><br>中年級<br>50％<br><br>高年級<br>30％";
+        } else {
+          ratioText = "低年級<br>20％<br><br>中年級<br>20％<br><br>高年級<br>50％";
+        }
+        
+        rowHtml += `<td rowspan="${r.dimItemCount}" style="border:1px solid #000; padding:6px; text-align:center; font-size:13px; background:#fafafa; line-height:1.4;">${ratioText}<br><br><span style="color:var(--primary); font-weight:bold;">實際：<br>${dimScore}分 (${dimPct}%)</span></td>`;
         rowHtml += `<td rowspan="${r.dimItemCount}" style="border:1px solid #000; padding:6px; text-align:center; font-size:13px; font-weight:bold; background:#fafafa;">${r.dimension}</td>`;
       }
 

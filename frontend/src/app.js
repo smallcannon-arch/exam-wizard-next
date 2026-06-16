@@ -641,6 +641,9 @@ function renderChineseSubcategoryChecklist() {
   if (state.project.subject !== "國語") return "";
 
   const checkedSet = new Set(state.checkedChineseSubcategories || []);
+  const recs = getMandarinRecommendation(state.project.grade);
+  const gradeCategory = getGradeCategory(state.project.grade);
+  const categoryLabel = gradeCategory === "low" ? "低年級" : (gradeCategory === "middle" ? "中年級" : "高年級");
 
   const columnsHtml = CHINESE_AUDIT_STRUCTURE.map((dimObj) => {
     const projectHtml = `
@@ -679,6 +682,13 @@ function renderChineseSubcategoryChecklist() {
   return `
     <div class="chinese-sub-checklist" style="margin:24px 0; padding:24px; background:var(--blue-soft); border-radius:16px; border:1px solid var(--line);">
       <h3 style="margin:0 0 8px; font-size:18px; font-weight:700; color:var(--dark);">📋 國語科評量項目細項篩選</h3>
+      <div style="margin: 12px 0 16px 0; padding: 12px 16px; background: #fff; border: 1px solid var(--line); border-radius: 8px; font-size: 14px; color: #444; line-height: 1.6; text-align: left;">
+        <strong>💡 許育健教授國語科評量向度建議佔分比例：</strong><br>
+        • <strong>低年級</strong>（一、二年級）：字詞短語 50% ｜ 句式語法 30% ｜ 段篇讀寫 20%<br>
+        • <strong>中年級</strong>（三、四年級）：字詞短語 30% ｜ 句式語法 50% ｜ 段篇讀寫 20%<br>
+        • <strong>高年級</strong>（五、六年級）：字詞短語 20% ｜ 句式語法 30% ｜ 段篇讀寫 50%<br>
+        （當前設定年級：<strong style="color:var(--primary); font-size:15px;">${categoryLabel}</strong>，建議比例 ➔ 字詞短語 ${recs.character} ｜ 句式語法 ${recs.grammar} ｜ 段篇讀寫 ${recs.reading}）
+      </div>
       <p style="margin:0 0 16px; font-size:14px; color:var(--muted); line-height: 1.5;">勾選本次評量要涵蓋的細項。AI 將只使用已勾選的項目進行出題與自動對齊，這能讓出題更集中，避免細項過多導致分散。</p>
       
       <div class="actions" style="margin-bottom:16px; display:flex; gap:8px;">
