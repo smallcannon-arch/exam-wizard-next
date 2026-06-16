@@ -43,8 +43,17 @@ function escapeHtml(value) {
 }
 
 function setState(patch) {
+  const stepChanged = patch.step !== undefined && patch.step !== state.step;
+  const hasErrors = patch.errors && patch.errors.length > 0;
+
   state = { ...state, ...patch };
   render();
+
+  if (stepChanged || hasErrors) {
+    if (typeof window !== "undefined" && typeof window.scrollTo === "function") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }
 }
 
 function setProjectField(field, value) {
