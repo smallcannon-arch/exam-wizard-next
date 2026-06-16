@@ -526,8 +526,12 @@ function renderPlanTable() {
       .map((type) => `<option value="${escapeHtml(type)}" ${type === row.questionType ? "selected" : ""}>${escapeHtml(type)}</option>`)
       .join("");
     const subtotal = (Number(row.count) || 0) * (Number(row.score) || 0);
+    const isGroup = row.questionType === "學力檢測題";
+    const groupHint = isGroup 
+      ? `<div style="font-size:11.5px; color:var(--primary); margin-top:4px; font-weight:600; line-height:1.3;">💡 題組形式：將自動拆解為 2~4 個子題均分此分數</div>`
+      : "";
     return `<tr>
-      <td><select data-plan-field="questionType" data-plan-index="${index}">${optionHtml}</select></td>
+      <td><select data-plan-field="questionType" data-plan-index="${index}">${optionHtml}</select>${groupHint}</td>
       <td><input type="number" min="1" data-plan-field="count" data-plan-index="${index}" value="${escapeHtml(row.count)}"></td>
       <td><input type="number" min="1" data-plan-field="score" data-plan-index="${index}" value="${escapeHtml(row.score)}"></td>
       <td>${escapeHtml(subtotal)}分</td>
@@ -537,7 +541,10 @@ function renderPlanTable() {
 
   return `
     <h3>配題表（題型／題數／配分）</h3>
-    <p class="notice">題型清單已依您的學科「${escapeHtml(state.project.subject || "預設")}」自動篩選。含「學力檢測題」＝情境素養題組。</p>
+    <p class="notice">
+      題型清單已依您的學科「${escapeHtml(subject || "預設")}」自動篩選。<br>
+      <strong>💡 溫馨提示</strong>：含「學力檢測題」項目為情境素養題組。AI 會自動將其拆解為 2 ~ 4 個子題，並將配分（如 5 分）由子題均分（如 2 分與 3 分），因此您在此階段可以放心為其配置較高的每題分數！
+    </p>
     <div class="table-wrap"><table>
       <thead><tr><th>題型</th><th>題數</th><th>每題(答)配分</th><th>小計</th><th></th></tr></thead>
       <tbody>${rowsHtml}</tbody>
