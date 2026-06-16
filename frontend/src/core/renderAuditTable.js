@@ -6,6 +6,11 @@ function escapeHtml(str) {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
 }
+function numberToChinese(index) {
+  const chars = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
+  return chars[index - 1] || String(index);
+}
+
 
 function getGradeCategory(grade) {
   const g = String(grade || "");
@@ -144,77 +149,6 @@ export function renderAuditTable({ project = {}, objectives = [], items = [], pl
     </div>
   `;
 
-  if (isNatural) {
-    // 2D grid table for Science
-    // Group objectives by unit
-    const unitsMap = new Map();
-    objectives.forEach((obj) => {
-      const uName = obj.unitName || "未分單元";
-      if (!unitsMap.has(uName)) unitsMap.set(uName, []);
-      unitsMap.get(uName).push(obj);
-    });
-
-    const tablesHtml = Array.from(unitsMap.entries()).map(([unitTitle, unitObjectives]) => {
-      // Columns: learning objective, periods, then question types in sections
-      const qTypesHtml = sections.map((sec) => {
-        // Calculate total score of this section
-        const secTotalScore = sec.itemIds.reduce((sum, id) => sum + (Number(itemById.get(id)?.score) || 0), 0);
-        const secPct = totalScore > 0 ? Math.round(secTotalScore / totalScore * 100) : 0;
-        return `<th style="border:1px solid #000; padding:8px; background:#f5f5f5; font-size:13px; min-width:100px;">
-          ${escapeHtml(sec.title.replace(/^\d+\.\s*/, ""))}<br>(${secPct}%)
-        </th>`;
-      }).join("");
-
-      const rowsHtml = unitObjectives.map((obj) => {
-        const cellsHtml = sections.map((sec) => {
-          const matchedNo = [];
-          sec.itemIds.forEach((id) => {
-            const item = itemById.get(id);
-            if (!item) return;
-            const matchesObj = item.primaryObjectiveId === obj.objectiveId || item.objectiveIds?.includes(obj.objectiveId);
-            if (matchesObj) {
-              const localNo = itemNumbers.get(id);
-              if (localNo) matchedNo.push(localNo);
-            }
-          });
-          return `<td style="border:1px solid #000; padding:8px; text-align:center; font-size:13px;">
-            ${matchedNo.length > 0 ? `第 ${matchedNo.join("、")} 題` : "—"}
-          </td>`;
-        }).join("");
-
-        return `<tr>
-          <td style="border:1px solid #000; padding:8px; text-align:left; font-size:13px; line-height:1.4;">${escapeHtml(obj.text)}</td>
-          <td style="border:1px solid #000; padding:8px; text-align:center; font-size:13px; font-weight:bold;">${escapeHtml(obj.periodCount)}節</td>
-          ${cellsHtml}
-        </tr>`;
-      }).join("");
-
-      return `
-        <h4 style="margin:16px 0 8px 0; font-size:15px; color:#333; text-align:left; border-left:4px solid var(--primary); padding-left:8px;">${escapeHtml(unitTitle)}</h4>
-        <table style="width:100%; border-collapse:collapse; margin-bottom:20px;">
-          <thead>
-            <tr>
-              <th style="border:1px solid #000; padding:8px; background:#f5f5f5; text-align:left;">學習目標</th>
-              <th style="border:1px solid #000; padding:8px; background:#f5f5f5; width:80px;">授課節數</th>
-              ${qTypesHtml}
-            </tr>
-          </thead>
-          <tbody>
-            ${rowsHtml}
-          </tbody>
-        </table>
-      `;
-    }).join("");
-
-    return `
-      <div class="audit-table-print" style="font-family:'Microsoft JhengHei', sans-serif; color:#000;">
-        ${headerHtml}
-        ${tablesHtml}
-        ${footerHtml}
-      </div>
-    `;
-  }
-
   if (isChinese) {
     // 3 dimensions analysis table for Chinese (字詞短語, 句式語法, 段篇讀寫)
     const recs = getMandarinRecommendation(project.grade);
@@ -269,7 +203,7 @@ export function renderAuditTable({ project = {}, objectives = [], items = [], pl
     `;
   }
 
-  // Non-Mandarin subjects (Math, Social, English) - 4 column table
+  // 2D grid table (雙向細目表) for all other subjects (Science, Math, Social, English)
   // Group objectives by unit
   const unitsMap = new Map();
   objectives.forEach((obj) => {
@@ -278,55 +212,81 @@ export function renderAuditTable({ project = {}, objectives = [], items = [], pl
     unitsMap.get(uName).push(obj);
   });
 
-  const rowsHtml = Array.from(unitsMap.entries()).map(([unitTitle, unitObjectives]) => {
-    // Sum of periods in this unit
-    const unitPeriods = unitObjectives.reduce((sum, obj) => sum + (obj.periodCount || 0), 0);
+  const tablesHtml = Array.from(unitsMap.entries()).map(([unitTitle, unitObjectives]) => {
+    const objIds = new Set(unitObjectives.map((o) => o.objectiveId));
     
-    // Sum of scores of all items matching objectives in this unit
-    const objIds = new Set(unitObjectives.map((x) => x.objectiveId));
-    const unitItems = items.filter((item) => item.primaryObjectiveId && objIds.has(item.primaryObjectiveId) || item.objectiveIds?.some((id) => objIds.has(id)));
-    const unitScore = unitItems.reduce((sum, item) => sum + (Number(item?.score) || 0), 0);
-    const unitPct = totalScore > 0 ? Math.round(unitScore / totalScore * 100) : 0;
+    // Filter sections that have matched items in this unit
+    const activeSections = sections.filter((sec) => {
+      return sec.itemIds.some((id) => {
+        const item = itemById.get(id);
+        if (!item) return false;
+        return item.primaryObjectiveId && objIds.has(item.primaryObjectiveId) || item.objectiveIds?.some((oId) => objIds.has(oId));
+      });
+    });
 
-    const objLabels = Array.from(objIds)
-      .map((id) => {
-        const obj = objectives.find((x) => x.objectiveId === id);
-        if (!obj) return id;
-        const match = String(obj.text || "").match(/^\s*([0-9]+(?:[-－.][0-9]+)+)/);
-        return match ? match[1].replace(/[－.]/g, "-") : obj.objectiveId;
-      })
-      .join("、");
+    const qTypesHtml = activeSections.map((sec) => {
+      // Calculate total score of this section in this unit
+      const unitSecItems = sec.itemIds.filter((id) => {
+        const item = itemById.get(id);
+        if (!item) return false;
+        return item.primaryObjectiveId && objIds.has(item.primaryObjectiveId) || item.objectiveIds?.some((oId) => objIds.has(oId));
+      });
+      const unitSecScore = unitSecItems.reduce((sum, id) => sum + (Number(itemById.get(id)?.score) || 0), 0);
+      const unitSecPct = totalScore > 0 ? Math.round(unitSecScore / totalScore * 100) : 0;
+      
+      const secIndex = sections.indexOf(sec);
+      const secOrderLabel = secIndex >= 0 ? `${numberToChinese(secIndex + 1)}、` : "";
+      
+      return `<th style="border:1px solid #000; padding:8px; background:#f5f5f5; font-size:13px; min-width:100px;">
+        ${secOrderLabel}${sec.title}(${unitSecPct}%)
+      </th>`;
+    }).join("");
 
-    return `<tr>
-      <td style="border:1px solid #000; padding:10px; font-weight:500; font-size:14px;">${escapeHtml(unitTitle)}</td>
-      <td style="border:1px solid #000; padding:10px; text-align:center; font-size:14px; font-weight:bold;">${unitPeriods} 節</td>
-      <td style="border:1px solid #000; padding:10px; text-align:center; font-size:14px; font-weight:bold;">${unitScore} 分</td>
-      <td style="border:1px solid #000; padding:10px; font-size:13px; text-align:center;">${escapeHtml(objLabels)}</td>
-    </tr>`;
+    const rowsHtml = unitObjectives.map((obj) => {
+      const cellsHtml = activeSections.map((sec) => {
+        const matchedNo = [];
+        sec.itemIds.forEach((id) => {
+          const item = itemById.get(id);
+          if (!item) return;
+          const matchesObj = item.primaryObjectiveId === obj.objectiveId || item.objectiveIds?.includes(obj.objectiveId);
+          if (matchesObj) {
+            const localNo = itemNumbers.get(id);
+            if (localNo) matchedNo.push(localNo);
+          }
+        });
+        return `<td style="border:1px solid #000; padding:8px; text-align:center; font-size:13px;">
+          ${matchedNo.length > 0 ? `第 ${matchedNo.join("、")} 題` : "—"}
+        </td>`;
+      }).join("");
+
+      return `<tr>
+        <td style="border:1px solid #000; padding:8px; text-align:left; font-size:13px; line-height:1.4;">${escapeHtml(obj.text)}</td>
+        <td style="border:1px solid #000; padding:8px; text-align:center; font-size:13px; font-weight:bold;">${escapeHtml(obj.periodCount)}節</td>
+        ${cellsHtml}
+      </tr>`;
+    }).join("");
+
+    return `
+      <h4 style="margin:16px 0 8px 0; font-size:15px; color:#333; text-align:left; border-left:4px solid var(--primary); padding-left:8px;">${escapeHtml(unitTitle)}</h4>
+      <table style="width:100%; border-collapse:collapse; margin-bottom:20px;">
+        <thead>
+          <tr>
+            <th style="border:1px solid #000; padding:8px; background:#f5f5f5; text-align:left;">學習目標</th>
+            <th style="border:1px solid #000; padding:8px; background:#f5f5f5; width:80px;">授課節數</th>
+            ${qTypesHtml}
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml}
+        </tbody>
+      </table>
+    `;
   }).join("");
 
   return `
     <div class="audit-table-print" style="font-family:'Microsoft JhengHei', sans-serif; color:#000;">
       ${headerHtml}
-      <table style="width:100%; border-collapse:collapse; margin-bottom:24px;">
-        <thead>
-          <tr>
-            <th style="border:1px solid #000; padding:10px; background:#f5f5f5; text-align:left;">大單元名稱/小單元(課)名稱</th>
-            <th style="border:1px solid #000; padding:10px; background:#f5f5f5; width:15%;">授課節數</th>
-            <th style="border:1px solid #000; padding:10px; background:#f5f5f5; width:20%;">出題佔分</th>
-            <th style="border:1px solid #000; padding:10px; background:#f5f5f5; width:30%;">教學目標/學習目標<br>(請寫標號即可，不需文字)</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rowsHtml}
-          <tr style="font-weight:bold; background:#f5f5f5;">
-            <td style="border:1px solid #000; padding:10px; text-align:left;">合計</td>
-            <td style="border:1px solid #000; padding:10px; text-align:center;">${objectives.reduce((sum, obj) => sum + (obj.periodCount || 0), 0)} 節</td>
-            <td style="border:1px solid #000; padding:10px; text-align:center;">${totalScore} 分</td>
-            <td style="border:1px solid #000; padding:10px; text-align:center;">共 ${objectives.length} 目標</td>
-          </tr>
-        </tbody>
-      </table>
+      ${tablesHtml}
       ${footerHtml}
     </div>
   `;

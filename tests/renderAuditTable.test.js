@@ -46,16 +46,17 @@ describe("renderAuditTable", () => {
     expect(html).toContain("2 分 (29%)"); // Q-002-1 (2 pts) out of 7 pts (since Q-001 has no chineseDimension)
   });
 
-  it("非國語科目輸出四欄簡表", () => {
+  it("非國語科目輸出雙向細目表", () => {
     const html = renderAuditTable({
       project: { subject: "數學", grade: "五年級", schoolYear: "114", semester: "第2學期", examType: "定期評量", teacherName: "江老師", range: "第一單元", version: "翰林版" },
       objectives,
       items,
       sections,
     });
-    expect(html).toContain("大單元名稱/小單元(課)名稱");
+    expect(html).toContain("學習目標");
     expect(html).toContain("第一單元");
-    expect(html).toContain("5 節"); // 3 + 2 periods
-    expect(html).toContain("3-1-1、3-1-2");
+    expect(html).toContain("3節");
+    expect(html).toContain("第 1 題");
+    expect(html).toContain("第 1(1)、1(2) 題");
   });
 });
