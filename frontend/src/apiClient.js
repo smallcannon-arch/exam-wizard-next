@@ -1,9 +1,10 @@
 import { getApiBaseUrl } from "./config.js";
 import { normalizeGeneratedItems } from "./core/normalizeItem.js";
 
-async function postJson({ apiBaseUrl = getApiBaseUrl(), path, body }) {
+async function postJson({ apiBaseUrl = getApiBaseUrl(), path, body, timeoutMs = 180000 }) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 180000); // 180s timeout
+  const timeout = Math.max(1000, Number(timeoutMs) || 180000);
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
 
   try {
     const response = await fetch(`${apiBaseUrl}${path}`, {
@@ -38,7 +39,7 @@ async function postJson({ apiBaseUrl = getApiBaseUrl(), path, body }) {
     if (error.name === "AbortError") {
       return {
         ok: false,
-        error: "連線超時：AI 伺服器回應時間過長，請確認網路連線或稍後再試。",
+        error: `連線超時：AI 伺服器超過 ${Math.round(timeout / 1000)} 秒仍未回應，請稍後再試。`,
       };
     }
     return {
@@ -66,6 +67,7 @@ export function generateItemsViaApi({
       intents,
       checkedChineseSubcategories,
     },
+    timeoutMs: 300000,
   });
 }
 

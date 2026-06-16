@@ -69,6 +69,52 @@ describe("validateGeneratedPaper", () => {
     expect(result.errors.some((e) => e.includes("不在學習目標清單內"))).toBe(true);
   });
 
+  it("單題閱讀測驗缺少 stimulus 時報錯", () => {
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-001", questionType: "閱讀測驗", score: 2 }],
+      objectives: [objectives[0]],
+      items: [
+        item({
+          questionType: "閱讀測驗",
+          question: "根據本文，下列哪一項最符合主旨？",
+          stimulus: "",
+        }),
+      ],
+    });
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("閱讀測驗必須提供 stimulus"))).toBe(true);
+  });
+
+  it("題目引用上文但缺少 stimulus 時報錯", () => {
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-001", questionType: "選擇題", score: 2 }],
+      objectives: [objectives[0]],
+      items: [
+        item({
+          question: "根據這段文字，阿里山五奇不包括下列哪一項？",
+          stimulus: "",
+        }),
+      ],
+    });
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("缺少 stimulus"))).toBe(true);
+  });
+
+  it("題目引用上文且提供 stimulus 時可通過", () => {
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-001", questionType: "選擇題", score: 2 }],
+      objectives: [objectives[0]],
+      items: [
+        item({
+          question: "根據這段文字，阿里山五奇不包括下列哪一項？",
+          stimulus: "阿里山以日出、雲海、晚霞、森林與鐵道聞名，是臺灣重要的自然景觀。",
+        }),
+      ],
+    });
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
   it("學力檢測題組分群配分加總相符且包含共同引言時通過 (Design B)", () => {
     const result = validateGeneratedPaper({
       slots, objectives,

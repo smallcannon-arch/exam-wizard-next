@@ -229,18 +229,28 @@ async function generateItems() {
   setState({ errors: [], messages: [] });
 
   try {
-    const result = await generateItemsViaApi({
-      apiBaseUrl: getApiBaseUrl(),
-      project: state.project,
-      materialText: state.materialText,
-      objectives: state.objectives,
-      intents: state.intents,
-      checkedChineseSubcategories: state.checkedChineseSubcategories,
-    });
+    // 連線／逾時／格式失敗時自動重試一次（內容檢核失敗不在此重試，交由教師決定）。
+    let result = null;
+    const maxAttempts = 2;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      if (attempt > 1) {
+        busyLabel = "第一次未成功（可能逾時），正在自動重試一次，請再稍候……";
+        render();
+      }
+      result = await generateItemsViaApi({
+        apiBaseUrl: getApiBaseUrl(),
+        project: state.project,
+        materialText: state.materialText,
+        objectives: state.objectives,
+        intents: state.intents,
+        checkedChineseSubcategories: state.checkedChineseSubcategories,
+      });
+      if (result?.ok && Array.isArray(result.items)) break;
+    }
 
     if (!result?.ok || !Array.isArray(result.items)) {
       setState({
-        errors: [result?.error || "AI 回傳格式錯誤。"],
+        errors: [result?.error || "AI 回傳格式錯誤。", "已自動重試一次仍未成功；題目較多時建議減少題數或分批生成。"],
         messages: [],
       });
       return;

@@ -17,25 +17,44 @@ export async function callGemini({ env, prompt, files = [] }) {
       },
     }));
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-goog-api-key": apiKey,
-    },
-    body: JSON.stringify({
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: prompt }, ...fileParts],
-        },
-      ],
-      generationConfig: {
-        temperature: 0.4,
-        responseMimeType: "application/json",
+  // 受控逾時：避免整卷生成拖到 Cloudflare 閘道逾時（約 100 秒）才回應，
+  // 改成在時限內主動中止並回傳清楚的逾時訊息，讓前端能重試。
+  const timeoutMs = Number(env.GEMINI_TIMEOUT_MS) || 90000;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  let response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey,
       },
-    }),
-  });
+      signal: controller.signal,
+      body: JSON.stringify({
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: prompt }, ...fileParts],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.4,
+          responseMimeType: "application/json",
+          // 設足夠大的輸出上限，避免整卷（尤其國語題組長文）被截斷成壞 JSON。
+          maxOutputTokens: Number(env.GEMINI_MAX_OUTPUT_TOKENS) || 32768,
+        },
+      }),
+    });
+  } catch (error) {
+    clearTimeout(timer);
+    if (error?.name === "AbortError") {
+      return { ok: false, status: 504, error: "AI 生成逾時，題目較多時請稍候再重試一次（或減少題數／分批生成）。" };
+    }
+    return { ok: false, status: 502, error: `連線 Gemini 失敗：${error?.message || String(error)}` };
+  }
+  clearTimeout(timer);
 
   const data = await response.json().catch(() => null);
 

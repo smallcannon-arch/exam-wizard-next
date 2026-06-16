@@ -13,6 +13,42 @@ function normalizeId(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+const CONTEXT_REFERENCE_PHRASES = [
+  "根據這段文字",
+  "根據這篇文章",
+  "根據本文",
+  "根據上文",
+  "根據下文",
+  "根據短文",
+  "根據文章",
+  "根據文中",
+  "依據本文",
+  "依據上文",
+  "依據下文",
+  "閱讀下文",
+  "閱讀本文",
+  "讀完本文",
+  "讀完短文",
+  "文中提到",
+  "文章中提到",
+  "短文中",
+  "這段文字",
+  "這篇文章",
+  "上述內容",
+  "以上內容",
+  "下文中",
+  "上文中",
+];
+
+function referencesExternalText(value) {
+  const normalized = normalizeId(value);
+  return CONTEXT_REFERENCE_PHRASES.some((phrase) => normalized.includes(phrase));
+}
+
+function needsStimulus(item) {
+  return normalizeId(item?.questionType) === "閱讀測驗" || referencesExternalText(item?.question);
+}
+
 function getPrimaryObjective(item) {
   if (hasText(item?.primaryObjectiveId)) return item.primaryObjectiveId.trim();
   if (Array.isArray(item?.objectiveIds)) {
@@ -214,6 +250,13 @@ export function validateGeneratedPaper({ slots = [], objectives = [], items = []
       }
       if (!hasText(item.answer)) {
         errors.push(`${id}：缺少 answer。`);
+      }
+      if (!hasText(item.stimulus) && needsStimulus(item)) {
+        if (normalizeId(item.questionType) === "閱讀測驗") {
+          errors.push(`${id}：閱讀測驗必須提供 stimulus（閱讀文本），不可只有題目與選項。`);
+        } else {
+          errors.push(`${id}：題目文字提到上文／本文／這段文字，但缺少 stimulus（閱讀文本）。`);
+        }
       }
 
       const CHOICE_LIKE = ["選擇題", "圖表判讀題", "實驗探究題", "閱讀測驗"];

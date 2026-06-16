@@ -4,7 +4,7 @@ function numberToChinese(index) {
 }
 
 // 選擇題形式（含實驗探究題、圖表判讀題）在題號前加作答括號（如 (      )1.）。
-const CHOICE_LIKE_TYPES = ["選擇題", "是非題", "實驗探究題", "圖表判讀題", "學力檢測題"];
+const CHOICE_LIKE_TYPES = ["選擇題", "是非題", "實驗探究題", "圖表判讀題", "學力檢測題", "閱讀測驗"];
 
 function answerBlank(questionType) {
   return CHOICE_LIKE_TYPES.includes(questionType) ? "(      ) " : "";

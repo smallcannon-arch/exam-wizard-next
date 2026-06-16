@@ -1,0 +1,30 @@
+# 文字檔一律以 LF 儲存於版本庫，消除 Windows CRLF 造成的「整檔假 diff」。
+# 不指定 eol，工作目錄維持各平台原生（Windows 取出仍為 CRLF），不更動你現有檔案內容。
+* text=auto
+
+# 原始碼明確標記為文字
+*.js   text
+*.mjs  text
+*.json text
+*.css  text
+*.html text
+*.md   text
+*.toml text
+*.yml  text
+*.yaml text
+
+# 二進位檔禁止換行轉換，避免損毀（備課教材、簡報、試算表、圖片等）
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.bmp  binary
+*.ico  binary
+*.pdf  binary
+*.xlsx binary
+*.xls  binary
+*.docx binary
+*.doc  binary
+*.pptx binary
+*.ppt  binary
+*.zip  binary
