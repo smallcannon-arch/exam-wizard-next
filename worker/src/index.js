@@ -65,7 +65,7 @@ async function handleGenerateItems(request, env) {
   const body = await readJson(request);
   if (!body.ok) return jsonResponse(request, env, { ok: false, error: body.error }, 400);
 
-  const { project = {}, materialText = "", objectives = [], intents = [] } = body.data;
+  const { project = {}, materialText = "", objectives = [], intents = [], checkedChineseSubcategories = [] } = body.data;
 
   if (!Array.isArray(objectives) || objectives.length === 0) {
     return jsonResponse(request, env, { ok: false, error: "缺少 objectives。" }, 400);
@@ -75,7 +75,7 @@ async function handleGenerateItems(request, env) {
     return jsonResponse(request, env, { ok: false, error: "缺少 intents。" }, 400);
   }
 
-  const prompt = buildGenerateItemsPrompt({ project, materialText, objectives, intents });
+  const prompt = buildGenerateItemsPrompt({ project, materialText, objectives, intents, checkedChineseSubcategories });
   const ai = await callGemini({ env, prompt });
   if (!ai.ok) return jsonResponse(request, env, { ok: false, error: ai.error }, ai.status || 502);
 
@@ -92,13 +92,13 @@ async function handleRegenerateItem(request, env) {
   const body = await readJson(request);
   if (!body.ok) return jsonResponse(request, env, { ok: false, error: body.error }, 400);
 
-  const { project = {}, materialText = "", objectives = [], originalItem, reason = "" } = body.data;
+  const { project = {}, materialText = "", objectives = [], originalItem, reason = "", checkedChineseSubcategories = [] } = body.data;
 
   if (!originalItem || typeof originalItem !== "object") {
     return jsonResponse(request, env, { ok: false, error: "缺少 originalItem。" }, 400);
   }
 
-  const prompt = buildRegenerateItemPrompt({ project, materialText, objectives, originalItem, reason });
+  const prompt = buildRegenerateItemPrompt({ project, materialText, objectives, originalItem, reason, checkedChineseSubcategories });
   const ai = await callGemini({ env, prompt });
   if (!ai.ok) return jsonResponse(request, env, { ok: false, error: ai.error }, ai.status || 502);
 

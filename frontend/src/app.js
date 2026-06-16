@@ -3,7 +3,8 @@ import { makeObjectiveId } from "./core/ids.js";
 import { summarizeScoreByObjective } from "./core/scoring.js";
 import { buildItemSlots, buildSectionsByQuestionType, distributeObjectivesToSlots } from "./core/blueprint.js";
 import { buildPlanSequences, getPlanTotals, validatePlan } from "./core/plan.js";
-import { getQuestionTypeOptions, SUBJECT_OPTIONS } from "./core/questionTypes.js";
+import { getQuestionTypeOptions, SUBJECT_OPTIONS, CHINESE_AUDIT_STRUCTURE, getChineseDimension, getChineseSubcategory } from "./core/questionTypes.js";
+import { generateExcelXml } from "./core/excelGenerator.js";
 import { validateExam } from "./core/validation.js";
 import { replaceItemById } from "./core/replaceItem.js";
 import { renderStudentPaper, renderTeacherPaper } from "./core/renderPaper.js";
@@ -138,6 +139,11 @@ function buildBlueprint() {
   });
 
   const distributedSlots = distributeObjectivesToSlots(slotResult.slots, objectives, scoreById);
+  if (state.project.subject === "國語") {
+    distributedSlots.forEach((slot) => {
+      slot.chineseDimension = getChineseDimension(slot.questionType);
+    });
+  }
 
   setState({
     objectives,
@@ -173,6 +179,7 @@ async function generateItems() {
       materialText: state.materialText,
       objectives: state.objectives,
       intents: state.intents,
+      checkedChineseSubcategories: state.checkedChineseSubcategories,
     });
 
     if (!result?.ok || !Array.isArray(result.items)) {
@@ -301,6 +308,7 @@ async function regenerateItem(itemId) {
       objectives: relatedObjectives.length > 0 ? relatedObjectives : state.objectives,
       originalItem,
       reason: reason.trim() || "請重新設計此題，避免只是改寫原題。",
+      checkedChineseSubcategories: state.checkedChineseSubcategories,
     });
 
     if (!result?.ok || !Array.isArray(result.items) || result.items.length !== 1) {
@@ -502,6 +510,9 @@ function renderSteps() {
 }
 
 function renderStep1() {
+  const isChinese = (state.project.subject === "國語");
+  const subChecklistHtml = isChinese ? renderChineseSubcategoryChecklist() : "";
+
   return `<section class="panel">
     <div class="grid">
       <label class="field-lg">學校名稱<input data-project="schoolName" value="${escapeHtml(state.project.schoolName)}"></label>
@@ -535,6 +546,7 @@ function renderStep1() {
       <label class="field-lg" style="grid-column: span 2;">評量範圍<input data-project="range" placeholder="請輸入單元範圍（例如：第3單元、第4單元）" value="${escapeHtml(state.project.range)}"></label>
     </div>
     ${renderPlanTable()}
+    ${subChecklistHtml}
     <div class="actions"><button data-next-step="2">下一步</button></div>
   </section>`;
 }
@@ -625,6 +637,63 @@ function renderPlanTable() {
   `;
 }
 
+function renderChineseSubcategoryChecklist() {
+  if (state.project.subject !== "國語") return "";
+
+  const checkedSet = new Set(state.checkedChineseSubcategories || []);
+
+  const columnsHtml = CHINESE_AUDIT_STRUCTURE.map((dimObj) => {
+    const projectHtml = `
+      <div class="sub-column-project" style="margin-bottom:16px;">
+        <h4 style="margin:0 0 8px; font-size:14px; border-bottom: 2px solid var(--primary); padding-bottom: 4px; color: var(--primary);">${dimObj.project}</h4>
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          ${dimObj.items.map((item) => {
+            const checked = checkedSet.has(item);
+            return `
+              <label style="display:inline-flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; margin:0; font-weight:normal; color:var(--ink);">
+                <input type="checkbox" data-chinese-sub="${item}" ${checked ? "checked" : ""} style="width:auto; margin:0;">
+                <span>${item}</span>
+              </label>
+            `;
+          }).join("")}
+        </div>
+      </div>
+    `;
+    return { dimension: dimObj.dimension, html: projectHtml };
+  });
+
+  const dims = ["字詞短語", "句式語法", "段篇讀寫"];
+  const gridHtml = dims.map((dim) => {
+    const dimHtml = columnsHtml.filter(c => c.dimension === dim).map(c => c.html).join("");
+    return `
+      <div style="flex:1; min-width:200px; background:#fff; padding:16px; border-radius:12px; border:1px solid var(--line); box-shadow:0 4px 12px rgba(0,0,0,0.02);">
+        <h3 style="margin:0 0 16px; font-size:15px; color:#333; display:flex; align-items:center; gap:6px;">
+          <span style="width:4px; height:16px; background:var(--primary); display:inline-block; border-radius:2px;"></span>
+          ${dim}
+        </h3>
+        ${dimHtml}
+      </div>
+    `;
+  }).join("");
+
+  return `
+    <div class="chinese-sub-checklist" style="margin:24px 0; padding:24px; background:var(--blue-soft); border-radius:16px; border:1px solid var(--line);">
+      <h3 style="margin:0 0 8px; font-size:16px; font-weight:600; color:var(--dark);">📋 國語科評量項目細項篩選</h3>
+      <p style="margin:0 0 16px; font-size:13px; color:var(--muted);">勾選本次評量要涵蓋的細項。AI 將只使用已勾選的項目進行出題與自動對齊，這能讓出題更集中，避免細項過多導致分散。</p>
+      
+      <div class="actions" style="margin-bottom:16px; display:flex; gap:8px;">
+        <button class="secondary" data-action="chinese-sub-default" style="padding:6px 12px; font-size:13px; height:auto;">恢復預設選項</button>
+        <button class="secondary" data-action="chinese-sub-all" style="padding:6px 12px; font-size:13px; height:auto;">全選</button>
+        <button class="secondary" data-action="chinese-sub-none" style="padding:6px 12px; font-size:13px; height:auto;">清空</button>
+      </div>
+
+      <div style="display:flex; gap:16px; flex-wrap:wrap;">
+        ${gridHtml}
+      </div>
+    </div>
+  `;
+}
+
 function renderStep2() {
   const isChinese = (state.project.subject === "國語");
 
@@ -693,19 +762,81 @@ function renderStep2() {
   </section>`;
 }
 
+function getGradeCategory(grade) {
+  const g = String(grade || "");
+  if (g.includes("一") || g.includes("二") || g.includes("1") || g.includes("2")) return "low";
+  if (g.includes("三") || g.includes("四") || g.includes("3") || g.includes("4")) return "middle";
+  return "high";
+}
+
+function getMandarinRecommendation(grade) {
+  const category = getGradeCategory(grade);
+  if (category === "low") {
+    return { character: "50%", grammar: "30%", reading: "20%" };
+  }
+  if (category === "middle") {
+    return { character: "30%", grammar: "50%", reading: "20%" };
+  }
+  return { character: "20%", grammar: "30%", reading: "50%" };
+}
+
 function renderStep3Or4() {
+  const isChinese = (state.project.subject === "國語");
   const targets = state.objectiveTargets || [];
   const intents = state.intents;
   const planRows = state.planRows;
+
+  let targetsSectionHtml = "";
+  if (isChinese) {
+    const dimScores = { "字詞短語": 0, "句式語法": 0, "段篇讀寫": 0 };
+    intents.forEach((slot) => {
+      const dim = slot.chineseDimension || getChineseDimension(slot.questionType);
+      if (dimScores[dim] !== undefined) {
+        dimScores[dim] += Number(slot.score) || 0;
+      }
+    });
+
+    const totalIntentsScore = Object.values(dimScores).reduce((a, b) => a + b, 0);
+    const recs = getMandarinRecommendation(state.project.grade);
+
+    targetsSectionHtml = `
+      <h3>國語科評量向度配分比例（點選下方題位向度可即時調整）</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>評量向度</th><th>建議佔分比</th><th>預估配分 (比例)</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>字詞短語</td>
+            <td>${recs.character}</td>
+            <td style="font-weight:bold; color:var(--primary);">${dimScores["字詞短語"]} 分 (${totalIntentsScore > 0 ? Math.round(dimScores["字詞短語"] / totalIntentsScore * 100) : 0}%)</td>
+          </tr>
+          <tr>
+            <td>句式語法</td>
+            <td>${recs.grammar}</td>
+            <td style="font-weight:bold; color:var(--primary);">${dimScores["句式語法"]} 分 (${totalIntentsScore > 0 ? Math.round(dimScores["句式語法"] / totalIntentsScore * 100) : 0}%)</td>
+          </tr>
+          <tr>
+            <td>段篇讀寫</td>
+            <td>${recs.reading}</td>
+            <td style="font-weight:bold; color:var(--primary);">${dimScores["段篇讀寫"]} 分 (${totalIntentsScore > 0 ? Math.round(dimScores["段篇讀寫"] / totalIntentsScore * 100) : 0}%)</td>
+          </tr>
+        </tbody>
+      </table></div>
+    `;
+  } else {
+    targetsSectionHtml = `
+      <h3>學習目標與配分占比（依節數）</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>目標</th><th>文字</th><th>節數</th><th>占總時數</th><th>目標配分(約)</th></tr></thead>
+        <tbody>${targets.map((row) => `<tr><td>${escapeHtml(row.objectiveId)}</td><td>${escapeHtml(row.text)}</td><td>${escapeHtml(row.periodCount)}</td><td>${escapeHtml(formatPercent(row.share))}</td><td>${escapeHtml(row.targetScore)}</td></tr>`).join("")}</tbody>
+      </table></div>
+    `;
+  }
+
   return `<section class="panel">
     <h2>③ 配題與藍圖</h2>
-    <p class="notice">藍圖只鎖定每題的題型與配分；各題對應哪個學習目標、認知層次與出題順序，交由 AI 依下列節數比例與整卷整體性編排。</p>
+    <p class="notice">${isChinese ? "藍圖鎖定每題題型、配分與評量向度；AI 生成時將嚴格遵循指定的向度命題，以確保向度佔分精準。" : "藍圖只鎖定每題的題型與配分；各題對應哪個學習目標、認知層次與出題順序，交由 AI 依下列節數比例與整卷整體性編排。"}</p>
 
-    <h3>學習目標與配分占比（依節數）</h3>
-    <div class="table-wrap"><table>
-      <thead><tr><th>目標</th><th>文字</th><th>節數</th><th>占總時數</th><th>目標配分(約)</th></tr></thead>
-      <tbody>${targets.map((row) => `<tr><td>${escapeHtml(row.objectiveId)}</td><td>${escapeHtml(row.text)}</td><td>${escapeHtml(row.periodCount)}</td><td>${escapeHtml(formatPercent(row.share))}</td><td>${escapeHtml(row.targetScore)}</td></tr>`).join("")}</tbody>
-    </table></div>
+    ${targetsSectionHtml}
 
     <h3>配題分布（題型與配分固定）</h3>
     <div class="table-wrap"><table>
@@ -716,7 +847,7 @@ function renderStep3Or4() {
     <h3>題位（共 ${intents.length} 題）</h3>
     <p class="notice" style="margin-bottom:12px;">您可以自由勾選特定題號為「題組」，並設定其子題數量。非選擇題型亦可設定為題組。</p>
     <div class="table-wrap"><table>
-      <thead><tr><th>題號</th><th>題型</th><th>配分</th><th>題組與子題設定</th></tr></thead>
+      <thead><tr><th>題號</th><th>題型</th><th>配分</th><th>題組與設定</th></tr></thead>
       <tbody>${intents.slice(0, 80).map((slot, index) => {
         const isGroup = !!slot.isGroup;
         const rowStyle = isGroup ? `style="background: #f0f7ff; border-left: 4px solid var(--blue);"` : "";
@@ -728,15 +859,24 @@ function renderStep3Or4() {
           <td>${typeLabel}</td>
           <td>${escapeHtml(slot.score)}分</td>
           <td>
-            <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; margin:0; font-size:14px; color:var(--ink);">
-              <input type="checkbox" data-slot-index="${index}" data-slot-field="isGroup" ${isGroup ? "checked" : ""} style="width:auto; margin:0;">
-              <span>合併為題組</span>
-            </label>
-            <select data-slot-index="${index}" data-slot-field="subCount" style="width:auto; display:inline-block; padding:2px 6px; font-size:13px; margin-left:12px; height:28px; border-radius:6px;" ${!isGroup ? "disabled" : ""}>
-              <option value="2" ${slot.subCount === 2 ? "selected" : ""}>2 個子題</option>
-              <option value="3" ${slot.subCount === 3 || !slot.subCount ? "selected" : ""}>3 個子題</option>
-              <option value="4" ${slot.subCount === 4 ? "selected" : ""}>4 個子題</option>
-            </select>
+            <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+              <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; margin:0; font-size:14px; color:var(--ink);">
+                <input type="checkbox" data-slot-index="${index}" data-slot-field="isGroup" ${isGroup ? "checked" : ""} style="width:auto; margin:0;">
+                <span>合併為題組</span>
+              </label>
+              <select data-slot-index="${index}" data-slot-field="subCount" style="width:auto; display:inline-block; padding:2px 6px; font-size:13px; height:28px; border-radius:6px;" ${!isGroup ? "disabled" : ""}>
+                <option value="2" ${slot.subCount === 2 ? "selected" : ""}>2 個子題</option>
+                <option value="3" ${slot.subCount === 3 || !slot.subCount ? "selected" : ""}>3 個子題</option>
+                <option value="4" ${slot.subCount === 4 ? "selected" : ""}>4 個子題</option>
+              </select>
+              ${isChinese ? `
+                <select data-slot-index="${index}" data-slot-field="chineseDimension" style="width:auto; display:inline-block; padding:2px 6px; font-size:13px; height:28px; border-radius:6px; border:1px solid var(--primary); background: #fff;">
+                  <option value="字詞短語" ${(slot.chineseDimension || getChineseDimension(slot.questionType)) === "字詞短語" ? "selected" : ""}>字詞短語</option>
+                  <option value="句式語法" ${(slot.chineseDimension || getChineseDimension(slot.questionType)) === "句式語法" ? "selected" : ""}>句式語法</option>
+                  <option value="段篇讀寫" ${(slot.chineseDimension || getChineseDimension(slot.questionType)) === "段篇讀寫" ? "selected" : ""}>段篇讀寫</option>
+                </select>
+              ` : ""}
+            </div>
           </td>
         </tr>`;
       }).join("")}</tbody>
@@ -759,13 +899,34 @@ function renderItems() {
 
     const getChineseDimSelect = (subItem) => {
       if (state.project.subject !== "國語") return "";
-      return `<label style="display:block; margin-top:8px;">評量向度
-        <select data-item-field="chineseDimension" data-item-id="${escapeHtml(subItem.itemId)}">
-          <option value="字詞短語" ${subItem.chineseDimension === "字詞短語" ? "selected" : ""}>字詞短語</option>
-          <option value="句式語法" ${subItem.chineseDimension === "句式語法" ? "selected" : ""}>句式語法</option>
-          <option value="段篇讀寫" ${subItem.chineseDimension === "段篇讀寫" ? "selected" : ""}>段篇讀寫</option>
-        </select>
-      </label>`;
+      
+      const currentDim = subItem.chineseDimension || "字詞短語";
+      const currentSub = subItem.chineseSubcategory || getChineseSubcategory(subItem.questionType, currentDim);
+      
+      const dimStructure = CHINESE_AUDIT_STRUCTURE.filter(d => d.dimension === currentDim);
+      const allSubForDim = dimStructure.flatMap(d => d.items);
+
+      const checkedSet = new Set(state.checkedChineseSubcategories || []);
+      const visibleSubs = allSubForDim.filter(sub => checkedSet.has(sub) || sub === currentSub);
+
+      const subOptions = visibleSubs.map(sub => 
+        `<option value="${sub}" ${sub === currentSub ? "selected" : ""}>${sub}</option>`
+      ).join("");
+
+      return `<div style="display:flex; gap:12px; margin-top:8px;">
+        <label style="flex:1; margin:0;">評量向度
+          <select data-item-field="chineseDimension" data-item-id="${escapeHtml(subItem.itemId)}">
+            <option value="字詞短語" ${currentDim === "字詞短語" ? "selected" : ""}>字詞短語</option>
+            <option value="句式語法" ${currentDim === "句式語法" ? "selected" : ""}>句式語法</option>
+            <option value="段篇讀寫" ${currentDim === "段篇讀寫" ? "selected" : ""}>段篇讀寫</option>
+          </select>
+        </label>
+        <label style="flex:1; margin:0;">評量項目(細項)
+          <select data-item-field="chineseSubcategory" data-item-id="${escapeHtml(subItem.itemId)}">
+            ${subOptions}
+          </select>
+        </label>
+      </div>`;
     };
 
     if (groupId) {
@@ -905,6 +1066,24 @@ function renderOutput() {
   });
 
   window.downloadWordAudit = () => {
+    const isChinese = (state.project.subject === "國語");
+    const cleanHtmlForExport = (html) => {
+      let cleaned = html;
+      cleaned = cleaned.replace(/var\(--primary\)/g, "#000000");
+      cleaned = cleaned.replace(/var\(--danger\)/g, "#d32f2f");
+      cleaned = cleaned.replace(/var\(--dark\)/g, "#000000");
+      cleaned = cleaned.replace(/var\(--line\)/g, "#000000");
+      cleaned = cleaned.replace(/#000(?!000)/g, "#000000");
+      cleaned = cleaned.replace(/#fff/g, "#ffffff");
+      cleaned = cleaned.replace(/#fafafa/g, "#fafafa");
+      cleaned = cleaned.replace(/#f5f5f5/g, "#f5f5f5");
+
+      // Inject native border properties to all tables for Word compatibility
+      cleaned = cleaned.replace(/<table/g, '<table border="1" cellspacing="0" cellpadding="6" bordercolor="#000000"');
+      return cleaned;
+    };
+
+    const exportedHtml = cleanHtmlForExport(auditTableHtml);
     const styledHtml = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
       <head>
@@ -919,21 +1098,32 @@ function renderOutput() {
         </xml>
         <![endif]-->
         <style>
+          @page Section1 {
+            size: ${isChinese ? "21.0cm 29.7cm" : "29.7cm 21.0cm"};
+            mso-page-orientation: ${isChinese ? "portrait" : "landscape"};
+            margin: 2.0cm 2.0cm 2.0cm 2.0cm;
+            mso-header-margin: 36pt;
+            mso-footer-margin: 36pt;
+            mso-paper-source: 0;
+          }
+          div.Section1 { page: Section1; }
           body { font-family: "Microsoft JhengHei", Arial, sans-serif; font-size: 14px; }
           h2, h3 { text-align: center; margin: 4px 0; }
           table { border-collapse: collapse; width: 100%; margin-top: 10px; margin-bottom: 15px; }
-          th, td { border: 1px solid #000; padding: 6px; font-size: 13px; }
+          th, td { border: 1px solid #000000; padding: 6px; font-size: 13px; }
           th { background-color: #f5f5f5; font-weight: bold; }
           .num { text-align: center; }
           .self-audit-table td { padding: 4px 8px; }
         </style>
       </head>
       <body>
-        ${auditTableHtml}
+        <div class="Section1">
+          ${exportedHtml}
+        </div>
       </body>
       </html>
     `;
-    const blob = new Blob([styledHtml], { type: "application/msword;charset=utf-8" });
+    const blob = new Blob(["\ufeff", styledHtml], { type: "application/msword;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -943,38 +1133,14 @@ function renderOutput() {
   };
 
   window.downloadExcelAudit = () => {
-    const styledHtml = `
-      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-      <head>
-        <meta charset="utf-8">
-        <title>試題審核表</title>
-        <!--[if gte mso 9]>
-        <xml>
-          <x:ExcelWorkbook>
-            <x:ExcelWorksheets>
-              <x:ExcelWorksheet>
-                <x:Name>試題審核表</x:Name>
-                <x:WorksheetOptions>
-                  <x:DisplayGridlines/>
-                </x:WorksheetOptions>
-              </x:ExcelWorksheet>
-            </x:ExcelWorksheets>
-          </x:ExcelWorkbook>
-        </xml>
-        <![endif]-->
-        <style>
-          body { font-family: "Microsoft JhengHei", Arial, sans-serif; }
-          table { border-collapse: collapse; }
-          th, td { border: 0.5pt solid #000; padding: 6px; font-size: 11pt; }
-          th { background-color: #f5f5f5; font-weight: bold; }
-        </style>
-      </head>
-      <body>
-        ${auditTableHtml}
-      </body>
-      </html>
-    `;
-    const blob = new Blob([styledHtml], { type: "application/vnd.ms-excel;charset=utf-8" });
+    const excelXml = generateExcelXml({
+      project,
+      objectives: state.objectives,
+      items: state.items,
+      planRows: state.planRows,
+      sections: state.sections,
+    });
+    const blob = new Blob([excelXml], { type: "application/vnd.ms-excel;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -1023,10 +1189,19 @@ function loadingLine() {
 }
 
 function render() {
-  app.innerHTML = `${renderSteps()}${renderMessages()}${renderCurrentStep()}`;
+  try {
+    app.innerHTML = `${renderSteps()}${renderMessages()}${renderCurrentStep()}`;
+  } catch (err) {
+    console.error("Render error:", err);
+    app.innerHTML = `<div style="padding: 24px; color: red; background: #fff1f0; border: 1px solid #ffa39e; border-radius: 8px; margin: 20px;">
+      <h3>頁面渲染發生錯誤 (Render Error)</h3>
+      <p><strong>錯誤訊息：</strong>${err.message}</p>
+      <pre style="background: #fafafa; padding: 12px; border-radius: 4px; overflow: auto; font-size: 12px;">${err.stack}</pre>
+    </div>`;
+  }
 }
 
-app.addEventListener("input", (event) => {
+function updateStateFromEvent(event) {
   const projectField = event.target.dataset.project;
   const field = event.target.dataset.field;
   const itemField = event.target.dataset.itemField;
@@ -1041,7 +1216,7 @@ app.addEventListener("input", (event) => {
         item.stimulus = event.target.value;
       }
     });
-    return;
+    return true;
   }
 
   if (planField && planIndex !== undefined) {
@@ -1110,26 +1285,39 @@ app.addEventListener("input", (event) => {
         }
       }
     }
-    return;
+    return true;
   }
 
   if (projectField) {
     setProjectField(projectField, event.target.value);
-    return;
+    return true;
   }
 
   if (field) {
     state[field] = event.target.value;
-    return;
+    return true;
   }
 
   if (itemField === "option" && itemId && event.target.dataset.optionIndex !== undefined) {
     updateItemOption(itemId, Number(event.target.dataset.optionIndex), event.target.value);
-    return;
+    return true;
   }
 
   if (itemField && itemId) {
     updateItemField(itemId, itemField, event.target.value);
+    return true;
+  }
+
+  return false;
+}
+
+app.addEventListener("input", (event) => {
+  const handled = updateStateFromEvent(event);
+  if (!handled) return;
+
+  const projectField = event.target.dataset.project;
+  if (projectField === "subject" || projectField === "grade" || projectField === "semester" || projectField === "examType") {
+    render();
   }
 });
 
@@ -1188,18 +1376,31 @@ app.addEventListener("click", (event) => {
     const index = Number(actionButton.dataset.planIndex);
     setState({ planRows: state.planRows.filter((_, currentIndex) => currentIndex !== index) });
   }
+  if (action === "chinese-sub-default") {
+    setState({ checkedChineseSubcategories: ["正確字音", "確認字形", "分辨部首", "字詞釋義", "句型辨識", "文句組成", "常用修辭", "提取訊息", "推論訊息", "主題習寫"] });
+  }
+  if (action === "chinese-sub-all") {
+    const allItems = CHINESE_AUDIT_STRUCTURE.flatMap(d => d.items);
+    setState({ checkedChineseSubcategories: allItems });
+  }
+  if (action === "chinese-sub-none") {
+    setState({ checkedChineseSubcategories: [] });
+  }
 });
 
 // 配題表的題型/題數/配分或科目改變時（blur 觸發），重繪以更新小計與合計。
 app.addEventListener("change", (event) => {
   const slotField = event.target.dataset.slotField;
   const slotIndex = event.target.dataset.slotIndex;
+  
   if (slotField && slotIndex !== undefined) {
     const index = Number(slotIndex);
     if (state.intents[index]) {
       let value;
       if (slotField === "isGroup") {
         value = event.target.checked;
+      } else if (slotField === "chineseDimension") {
+        value = event.target.value;
       } else {
         value = Number(event.target.value);
       }
@@ -1210,6 +1411,13 @@ app.addEventListener("change", (event) => {
       state.intents[index] = updatedSlot;
       render();
     }
+    return;
+  }
+
+  if (event.target.dataset.chineseSub !== undefined) {
+    const checkedBoxes = Array.from(app.querySelectorAll("input[data-chinese-sub]:checked"));
+    state.checkedChineseSubcategories = checkedBoxes.map(cb => cb.dataset.chineseSub);
+    render();
     return;
   }
 
@@ -1236,10 +1444,23 @@ app.addEventListener("change", (event) => {
       updateItemOption(itemId, Number(event.target.dataset.optionIndex), event.target.value);
     } else {
       updateItemField(itemId, itemField, event.target.value);
+      if (itemField === "chineseDimension") {
+        const target = state.items.find((item) => item.itemId === itemId);
+        if (target) {
+          const subcategoriesByDim = {
+            "字詞短語": "正確字音",
+            "句式語法": "句型辨識",
+            "段篇讀寫": "提取訊息"
+          };
+          target.chineseSubcategory = subcategoriesByDim[event.target.value] || "正確字音";
+        }
+      }
     }
   }
 
-  if (event.target.dataset.planField || event.target.dataset.field === "objectiveInput" || event.target.dataset.project) {
+  // 確保 select / checkbox 在 change 時能正確更新狀態並重繪
+  const handled = updateStateFromEvent(event);
+  if (handled) {
     render();
   }
 });

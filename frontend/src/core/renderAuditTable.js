@@ -1,3 +1,5 @@
+import { CHINESE_AUDIT_STRUCTURE, getChineseSubcategory } from "./questionTypes.js";
+
 function escapeHtml(str) {
   return String(str || "")
     .replace(/&/g, "&amp;")
@@ -10,7 +12,6 @@ function numberToChinese(index) {
   const chars = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
   return chars[index - 1] || String(index);
 }
-
 
 function getGradeCategory(grade) {
   const g = String(grade || "");
@@ -28,6 +29,23 @@ function getMandarinRecommendation(grade) {
     return { character: "30%", grammar: "50%", reading: "20%" };
   }
   return { character: "20%", grammar: "30%", reading: "50%" };
+}
+
+// Group and format question numbers (e.g., "選擇題第1、2、3題")
+function formatItemDistribution(matchedItems, itemNumbers) {
+  if (matchedItems.length === 0) return "—";
+  
+  const typeMap = new Map();
+  matchedItems.forEach((item) => {
+    const type = item.questionType;
+    if (!typeMap.has(type)) typeMap.set(type, []);
+    const no = itemNumbers.get(item.itemId);
+    if (no) typeMap.get(type).push(no);
+  });
+
+  return Array.from(typeMap.entries()).map(([type, nos]) => {
+    return `${type}第${nos.join("、")}題`;
+  }).join("、");
 }
 
 export function renderAuditTable({ project = {}, objectives = [], items = [], planRows = [], sections = [] } = {}) {
@@ -110,17 +128,17 @@ export function renderAuditTable({ project = {}, objectives = [], items = [], pl
             <td style="border:1px solid #000; padding:12px; width:33.3%;">
               <strong>一審</strong><br>
               □傳閱 □共同討論<br><br>
-              審題教師：_________________
+              審審教師：_________________
             </td>
             <td style="border:1px solid #000; padding:12px; width:33.3%;">
               <strong>二審</strong><br>
               □傳閱 □共同討論<br><br>
-              審題教師：_________________
+              審審教師：_________________
             </td>
             <td style="border:1px solid #000; padding:12px; width:33.3%;">
               <strong>三審</strong><br>
               □傳閱 □共同討論<br><br>
-              審題教師：_________________
+              審審教師：_________________
             </td>
           </tr>
         </tbody>
@@ -150,29 +168,86 @@ export function renderAuditTable({ project = {}, objectives = [], items = [], pl
   `;
 
   if (isChinese) {
-    // 3 dimensions analysis table for Chinese (字詞短語, 句式語法, 段篇讀寫)
+    // Chinese (國語): 49-row Detailed Audit Table matching the DOCX template
     const recs = getMandarinRecommendation(project.grade);
-    const dimensions = ["字詞短語", "句式語法", "段篇讀寫"];
-    
-    const rowsHtml = dimensions.map((dim) => {
-      // Find all items belonging to this dimension
-      const dimItems = items.filter((x) => x.chineseDimension === dim);
-      const dimScore = dimItems.reduce((sum, x) => sum + (Number(x.score) || 0), 0);
-      const dimPct = totalScore > 0 ? Math.round(dimScore / totalScore * 100) : 0;
-      
-      const recPct = dim === "字詞短語" ? recs.character : (dim === "句式語法" ? recs.grammar : recs.reading);
-      
-      const itemNos = dimItems.map((item) => {
-        const no = itemNumbers.get(item.itemId);
-        return no ? `${item.questionType}第${no}題` : "";
-      }).filter(Boolean);
+    const checkedSubs = new Set(project.checkedChineseSubcategories || ["正確字音", "確認字形", "分辨部首", "字詞釋義", "句型辨識", "文句組成", "常用修辭", "提取訊息", "推論訊息", "主題習寫"]);
 
-      return `<tr>
-        <td style="border:1px solid #000; padding:10px; font-weight:bold; font-size:14px; text-align:center; background:#fafafa;">${dim}</td>
-        <td style="border:1px solid #000; padding:10px; text-align:center; font-size:14px; font-weight:bold; color:#555;">${recPct}</td>
-        <td style="border:1px solid #000; padding:10px; text-align:center; font-size:14px; font-weight:bold; color:var(--primary);">${dimScore} 分 (${dimPct}%)</td>
-        <td style="border:1px solid #000; padding:10px; font-size:13px; line-height:1.4;">${itemNos.length > 0 ? itemNos.join("、") : "無出題"}</td>
-      </tr>`;
+    let rowsHtml = "";
+
+    // Flat structure for rendering
+    let structureRows = [];
+    CHINESE_AUDIT_STRUCTURE.forEach((dimObj) => {
+      dimObj.items.forEach((item, itemIdx) => {
+        const dimItemCount = CHINESE_AUDIT_STRUCTURE
+          .filter(d => d.dimension === dimObj.dimension)
+          .reduce((sum, d) => sum + d.items.length, 0);
+
+        const projItemCount = dimObj.items.length;
+        const isFirstDim = (dimObj.project === CHINESE_AUDIT_STRUCTURE.find(d => d.dimension === dimObj.dimension).project && itemIdx === 0);
+        const isFirstProj = (itemIdx === 0);
+
+        structureRows.push({
+          dimension: dimObj.dimension,
+          project: dimObj.project,
+          item: item,
+          dimItemCount,
+          projItemCount,
+          isFirstDim,
+          isFirstProj
+        });
+      });
+    });
+
+    let dimensionScoreMap = { "字詞短語": 0, "句式語法": 0, "段篇讀寫": 0 };
+    let projectScoreMap = {};
+    
+    // Precalculate scores
+    structureRows.forEach((r) => {
+      const matchedItems = items.filter((x) => {
+        const sub = x.chineseSubcategory || getChineseSubcategory(x.questionType, x.chineseDimension);
+        return sub === r.item;
+      });
+      const score = matchedItems.reduce((sum, x) => sum + (Number(x.score) || 0), 0);
+      dimensionScoreMap[r.dimension] += score;
+      projectScoreMap[r.dimension + "_" + r.project] = (projectScoreMap[r.dimension + "_" + r.project] || 0) + score;
+    });
+
+    rowsHtml = structureRows.map((r) => {
+      const matchedItems = items.filter((x) => {
+        const sub = x.chineseSubcategory || getChineseSubcategory(x.questionType, x.chineseDimension);
+        return sub === r.item;
+      });
+      const itemScore = matchedItems.reduce((sum, x) => sum + (Number(x.score) || 0), 0);
+      const itemDist = formatItemDistribution(matchedItems, itemNumbers);
+
+      let rowHtml = "<tr>";
+
+      if (r.isFirstDim) {
+        const recPct = r.dimension === "字詞短語" ? recs.character : (r.dimension === "句式語法" ? recs.grammar : recs.reading);
+        const dimScore = dimensionScoreMap[r.dimension];
+        const dimPct = totalScore > 0 ? Math.round(dimScore / totalScore * 100) : 0;
+        
+        rowHtml += `<td rowspan="${r.dimItemCount}" style="border:1px solid #000; padding:6px; text-align:center; font-size:12px; font-weight:bold; background:#fafafa;">建議：${recPct}<br><br>實際：<br>${dimScore}分 (${dimPct}%)</td>`;
+        rowHtml += `<td rowspan="${r.dimItemCount}" style="border:1px solid #000; padding:6px; text-align:center; font-size:12px; font-weight:bold; background:#fafafa;">${r.dimension}</td>`;
+      }
+
+      if (r.isFirstProj) {
+        rowHtml += `<td rowspan="${r.projItemCount}" style="border:1px solid #000; padding:6px; text-align:center; font-size:12px; font-weight:bold; background:#fafafa;">${r.project}</td>`;
+      }
+
+      const isChecked = checkedSubs.has(r.item);
+      const checkMark = isChecked ? "☑" : "☐";
+      rowHtml += `<td style="border:1px solid #000; padding:6px; font-size:12px; text-align:left;">${checkMark} ${r.item}</td>`;
+      rowHtml += `<td style="border:1px solid #000; padding:6px; font-size:12px; text-align:left;">${escapeHtml(itemDist)}</td>`;
+      rowHtml += `<td style="border:1px solid #000; padding:6px; font-size:12px; text-align:center;">${itemScore || ""}</td>`;
+
+      if (r.isFirstProj) {
+        const projScore = projectScoreMap[r.dimension + "_" + r.project];
+        rowHtml += `<td rowspan="${r.projItemCount}" style="border:1px solid #000; padding:6px; text-align:center; font-size:12px; font-weight:bold;">${projScore || ""}</td>`;
+      }
+
+      rowHtml += "</tr>";
+      return rowHtml;
     }).join("");
 
     return `
@@ -182,19 +257,21 @@ export function renderAuditTable({ project = {}, objectives = [], items = [], pl
         <table style="width:100%; border-collapse:collapse; margin-bottom:24px;">
           <thead>
             <tr>
-              <th style="border:1px solid #000; padding:10px; background:#f5f5f5; width:20%;">評量向度</th>
-              <th style="border:1px solid #000; padding:10px; background:#f5f5f5; width:20%;">建議佔分比</th>
-              <th style="border:1px solid #000; padding:10px; background:#f5f5f5; width:20%;">實際佔分 (比例)</th>
-              <th style="border:1px solid #000; padding:10px; background:#f5f5f5; text-align:left;">出題分佈</th>
+              <th style="border:1px solid #000; padding:6px; background:#f5f5f5; width:15%;">分數佔比</th>
+              <th style="border:1px solid #000; padding:6px; background:#f5f5f5; width:10%;">評量向度</th>
+              <th style="border:1px solid #000; padding:6px; background:#f5f5f5; width:10%;">評量項目</th>
+              <th style="border:1px solid #000; padding:6px; background:#f5f5f5; width:18%;">細項舉例</th>
+              <th style="border:1px solid #000; padding:6px; background:#f5f5f5; text-align:left;">入題</th>
+              <th style="border:1px solid #000; padding:6px; background:#f5f5f5; width:8%;">佔分</th>
+              <th style="border:1px solid #000; padding:6px; background:#f5f5f5; width:8%;">小計</th>
             </tr>
           </thead>
           <tbody>
             ${rowsHtml}
             <tr style="font-weight:bold; background:#f5f5f5;">
-              <td style="border:1px solid #000; padding:10px; text-align:center;">總分</td>
-              <td style="border:1px solid #000; padding:10px; text-align:center;">100%</td>
-              <td style="border:1px solid #000; padding:10px; text-align:center; color:var(--primary);">${totalScore} 分 (100%)</td>
-              <td style="border:1px solid #000; padding:10px; text-align:left;">共 ${items.length} 題</td>
+              <td colspan="5" style="border:1px solid #000; padding:8px; text-align:center;">總分</td>
+              <td style="border:1px solid #000; padding:8px; text-align:center;">${totalScore}分</td>
+              <td style="border:1px solid #000; padding:8px; text-align:center;">${totalScore}分</td>
             </tr>
           </tbody>
         </table>
@@ -220,7 +297,7 @@ export function renderAuditTable({ project = {}, objectives = [], items = [], pl
       return sec.itemIds.some((id) => {
         const item = itemById.get(id);
         if (!item) return false;
-        return item.primaryObjectiveId && objIds.has(item.primaryObjectiveId) || item.objectiveIds?.some((oId) => objIds.has(oId));
+        return (item.primaryObjectiveId && objIds.has(item.primaryObjectiveId)) || item.objectiveIds?.some((oId) => objIds.has(oId));
       });
     });
 
@@ -229,7 +306,7 @@ export function renderAuditTable({ project = {}, objectives = [], items = [], pl
       const unitSecItems = sec.itemIds.filter((id) => {
         const item = itemById.get(id);
         if (!item) return false;
-        return item.primaryObjectiveId && objIds.has(item.primaryObjectiveId) || item.objectiveIds?.some((oId) => objIds.has(oId));
+        return (item.primaryObjectiveId && objIds.has(item.primaryObjectiveId)) || item.objectiveIds?.some((oId) => objIds.has(oId));
       });
       const unitSecScore = unitSecItems.reduce((sum, id) => sum + (Number(itemById.get(id)?.score) || 0), 0);
       const unitSecPct = totalScore > 0 ? Math.round(unitSecScore / totalScore * 100) : 0;
@@ -237,7 +314,7 @@ export function renderAuditTable({ project = {}, objectives = [], items = [], pl
       const secIndex = sections.indexOf(sec);
       const secOrderLabel = secIndex >= 0 ? `${numberToChinese(secIndex + 1)}、` : "";
       
-      return `<th style="border:1px solid #000; padding:8px; background:#f5f5f5; font-size:13px; min-width:100px;">
+      return `<th style="border:1px solid #000; padding:8px; background:#f5f5f5; font-size:13px; width:100px;">
         ${secOrderLabel}${sec.title}(${unitSecPct}%)
       </th>`;
     }).join("");
@@ -271,7 +348,7 @@ export function renderAuditTable({ project = {}, objectives = [], items = [], pl
       <table style="width:100%; border-collapse:collapse; margin-bottom:20px;">
         <thead>
           <tr>
-            <th style="border:1px solid #000; padding:8px; background:#f5f5f5; text-align:left;">學習目標</th>
+            <th style="border:1px solid #000; padding:8px; background:#f5f5f5; text-align:left; width: 350px;">學習目標</th>
             <th style="border:1px solid #000; padding:8px; background:#f5f5f5; width:80px;">授課節數</th>
             ${qTypesHtml}
           </tr>

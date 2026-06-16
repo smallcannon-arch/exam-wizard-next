@@ -34,6 +34,7 @@ export function generateItemsViaApi({
   materialText,
   objectives,
   intents,
+  checkedChineseSubcategories,
 }) {
   return postJson({
     apiBaseUrl,
@@ -43,6 +44,7 @@ export function generateItemsViaApi({
       materialText,
       objectives,
       intents,
+      checkedChineseSubcategories,
     },
   });
 }
@@ -54,6 +56,7 @@ export function regenerateItemViaApi({
   objectives,
   originalItem,
   reason,
+  checkedChineseSubcategories,
 }) {
   return postJson({
     apiBaseUrl,
@@ -64,6 +67,7 @@ export function regenerateItemViaApi({
       objectives,
       originalItem,
       reason,
+      checkedChineseSubcategories,
     },
   });
 }

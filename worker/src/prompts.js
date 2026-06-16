@@ -2,7 +2,9 @@ function text(value, fallback = "未提供") {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
 
-export function buildGenerateItemsPrompt({ project = {}, materialText = "", objectives = [], intents = [] }) {
+export function buildGenerateItemsPrompt({ project = {}, materialText = "", objectives = [], intents = [], checkedChineseSubcategories = [] }) {
+  const isChinese = (project.subject === "國語");
+
   const slots = (Array.isArray(intents) ? intents : []).map((slot) => {
     const base = {
       itemId: slot.itemId,
@@ -15,10 +17,11 @@ export function buildGenerateItemsPrompt({ project = {}, materialText = "", obje
       base.subCount = slot.subCount || (Array.isArray(slot.subScores) ? slot.subScores.length : 2);
       base.subScores = slot.subScores || [];
     }
+    if (isChinese) {
+      base.chineseDimension = slot.chineseDimension || "";
+    }
     return base;
   });
-
-  const isChinese = (project.subject === "國語");
 
   const promptParts = [
     "# 角色",
@@ -63,13 +66,19 @@ export function buildGenerateItemsPrompt({ project = {}, materialText = "", obje
   ];
 
   if (isChinese) {
+    const listStr = Array.isArray(checkedChineseSubcategories) && checkedChineseSubcategories.length > 0
+      ? `特別注意：本次教師僅勾選了以下細項，因此產出的國語科題目中，其 \`chineseSubcategory\` 欄位值「只允許且必須」在以下這組已勾選的細項中選擇：${checkedChineseSubcategories.map(s => `"${s}"`).join(", ")}。請務必在這些已勾選的細項範圍內為各題命題，不可使用未勾選的細項。`
+      : "";
     promptParts.push(
-      "# 國語科評量向度特別要求",
-      "- 本考卷科目為國語，產出的每一題（包含一般題與學力檢測題的所有子題）皆必須新增 `chineseDimension` 欄位，其值必須為 `\"字詞短語\"`、`\"句式語法\"` 或 `\"段篇讀寫\"` 之一。",
-      "- 設計國語科題目時，整卷三個評量向度的題目總配分比例要大致符合：",
-      "  - 「字詞短語」占 30%~40%",
-      "  - 「句式語法」占 20%~30%",
-      "  - 「段篇讀寫」占 30%~50%",
+      "# 國語科評量向度與細項特別要求",
+      "- 本考卷科目為國語，產出的每一題（包含一般題與學力檢測題的所有子題）皆必須新增 `chineseDimension` 欄位與 `chineseSubcategory` 欄位。",
+      "- 每一題的 `chineseDimension` 必須與該題在題位 JSON 中所指定的 `chineseDimension` 欄位值完全一致，不可擅自更改。",
+      "- `chineseSubcategory` 必須為該題最合適的細項項目，且其值必須為以下可用項目之一：",
+      "  - 「字詞短語」向度細項：\"正確字音\", \"近音字\", \"多音字\", \"變音字\", \"確認字形\", \"筆畫筆順\", \"分辨部首\", \"部件組合\", \"造字原則\", \"書法字體\", \"書法故事\", \"字詞釋義\", \"近義字詞\", \"反義字詞\", \"類詞應用\"",
+      "  - 「句式語法」向度細項：\"句意理解\", \"文句組成\", \"句型辨識\", \"句式變化\", \"標點符號\", \"句群關係\", \"四字詞語\", \"結構詞語\", \"常用修辭\"",
+      "  - 「段篇讀寫」向度細項：\"提取訊息\", \"推論訊息\", \"整合詮釋\", \"比較評估\", \"閱讀技巧\", \"預測推論\", \"摘要整合\", \"推估主旨\", \"辨識文類\", \"詳略閱讀\", \"文體應用\", \"語文工具\", \"句子變化\", \"看圖寫作\", \"限制習寫\", \"主題習寫\", \"感想心得\", \"寫作技巧\"",
+      listStr,
+      "- 命題應密切符合該細項意旨。例如若為「正確字音」，應考查正確注音拼寫或辨識；若為「常用修辭」，應考查設問/譬喻/擬人等修辭辨識；若為「提取訊息」，應針對閱讀測驗文本直接可提取的細節進行提問。",
       ""
     );
   }
@@ -79,12 +88,12 @@ export function buildGenerateItemsPrompt({ project = {}, materialText = "", obje
     "- 選項要有誘答力：誘答選項針對學生常見『迷思概念』或易混淆處設計，看似合理但其實錯誤；不要放明顯錯誤、無關或可一眼刪去的選項。",
     "- 答案不可一眼看出，難度適中且符合年級；正確選項不刻意最長或最短，選項長度相近。",
     "- 選擇題每題提供 4 個選項；正確答案在 A、B、C、D 間分布均勻，不要集中在某一個。",
-    "- 是非題：敘述明確、可清楚判斷對錯，避免雙重否定或模稜兩可；is_true 概念請放在 answer（O 或 X）。",
+    "- 是非題：敘述明確、可清楚判斷對錯，避免雙重否定或模稜為可；is_true 概念請放在 answer（O 或 X）。",
     "- 填充與簡答：答案具體唯一或評分規準清楚；解析說明為什麼，並點出常見錯誤。",
     "",
     "# 輸出要求",
     "只輸出 JSON，不要 Markdown。格式：{\"items\":[...]}。items 的排列順序就是考卷的出題順序，請依編排原則排好。",
-    `每題必須包含：itemId（沿用題位或子題題號）, questionType（沿用題位）, score（配分）, primaryObjectiveId, objectiveIds, cognitiveLevel, stimulus, question, options, answer, explanation${isChinese ? ", chineseDimension" : ""}。如果是學力檢測題的子題，必須包含 groupId，其他題型 groupId 填空字串即可。`
+    `每題必須包含：itemId（沿用題位或子題題號）, questionType（沿用題位）, score（配分）, primaryObjectiveId, objectiveIds, cognitiveLevel, stimulus, question, options, answer, explanation${isChinese ? ", chineseDimension, chineseSubcategory" : ""}。如果是學力檢測題的子題，必須包含 groupId，其他題型 groupId 填空字串即可。`
   );
 
   return promptParts.join("\n");

@@ -40,10 +40,10 @@ describe("renderAuditTable", () => {
       sections,
     });
     expect(html).toContain("評量向度");
-    expect(html).toContain("建議佔分比");
+    expect(html).toContain("分數佔比");
     expect(html).toContain("字詞短語");
     expect(html).toContain("段篇讀寫");
-    expect(html).toContain("2 分 (29%)"); // Q-002-1 (2 pts) out of 7 pts (since Q-001 has no chineseDimension)
+    expect(html).toContain("4分 (57%)"); // Q-001 and Q-002-1 both map to 字詞短語 (total 4 pts out of 7 pts)
   });
 
   it("非國語科目輸出雙向細目表", () => {
