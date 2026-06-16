@@ -8,6 +8,7 @@ export function buildGenerateItemsPrompt({ project = {}, materialText = "", obje
       itemId: slot.itemId,
       questionType: slot.questionType,
       score: slot.score,
+      primaryObjectiveId: slot.primaryObjectiveId || "",
     };
     if (slot.isGroup) {
       base.isGroup = true;
@@ -24,7 +25,7 @@ export function buildGenerateItemsPrompt({ project = {}, materialText = "", obje
     `你是臺灣國小${text(project.grade, "未指定年級")}${text(project.subject, "未指定科目")}命題協助者。`,
     "",
     "# 任務",
-    "我已決定整卷的「題位」：每個題位的題型與配分固定，不可更動。請為每個題位命題，並自行決定每題對應哪一個學習目標與認知層次，讓整份考卷有良好的整體性。",
+    "我已決定整卷的「題位」：每個題位的題型、配分與對應學習目標（primaryObjectiveId）固定，不可更動。請為每個題位命題，並採用該題位中所指定的學習目標，以確保配分與指標精準對齊。",
     "題目需符合國小學生程度，答案與解析需正確。每個題位只出一題，不要備選題。",
     "",
     "# 學習目標（含節數）JSON",
@@ -39,7 +40,7 @@ export function buildGenerateItemsPrompt({ project = {}, materialText = "", obje
     text(materialText, "未提供教材重點。請只依學習目標命題，不得假造課本專有內容。"),
     "",
     "# 編排原則（整卷整體性）",
-    "- 每題指派一個 primaryObjectiveId（必填，須為上方學習目標的 objectiveId）；如有次要目標可放入 objectiveIds。",
+    "- 每題的 primaryObjectiveId 必須與該題位所指定的 primaryObjectiveId 欄位值完全一致，不可擅自更改，以確保配分與指標精準對齊；如有次要目標可放入 objectiveIds。",
     "- 每題標註 cognitiveLevel（記憶／理解／應用／分析／評鑑／創造）。",
     "- 讓各學習目標的「總配分」盡量貼近其節數比例；所有目標都要有題目。",
     "- 請依題型分「大題」排列：相同 questionType 的題目放在一起（例如所有選擇題相鄰、所有填充題相鄰、所有學力檢測題相鄰），不要把同題型打散。",

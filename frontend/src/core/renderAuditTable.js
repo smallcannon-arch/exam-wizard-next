@@ -288,7 +288,14 @@ export function renderAuditTable({ project = {}, objectives = [], items = [], pl
     const unitScore = unitItems.reduce((sum, item) => sum + (Number(item?.score) || 0), 0);
     const unitPct = totalScore > 0 ? Math.round(unitScore / totalScore * 100) : 0;
 
-    const objLabels = Array.from(objIds).join("、");
+    const objLabels = Array.from(objIds)
+      .map((id) => {
+        const obj = objectives.find((x) => x.objectiveId === id);
+        if (!obj) return id;
+        const match = String(obj.text || "").match(/^\s*([0-9]+(?:[-－.][0-9]+)+)/);
+        return match ? match[1].replace(/[－.]/g, "-") : obj.objectiveId;
+      })
+      .join("、");
 
     return `<tr>
       <td style="border:1px solid #000; padding:10px; font-weight:500; font-size:14px;">${escapeHtml(unitTitle)}</td>

@@ -1,7 +1,7 @@
 import { createInitialState } from "./state.js";
 import { makeObjectiveId } from "./core/ids.js";
 import { summarizeScoreByObjective } from "./core/scoring.js";
-import { buildItemSlots, buildSectionsByQuestionType } from "./core/blueprint.js";
+import { buildItemSlots, buildSectionsByQuestionType, distributeObjectivesToSlots } from "./core/blueprint.js";
 import { buildPlanSequences, getPlanTotals, validatePlan } from "./core/plan.js";
 import { getQuestionTypeOptions, SUBJECT_OPTIONS } from "./core/questionTypes.js";
 import { validateExam } from "./core/validation.js";
@@ -137,11 +137,13 @@ function buildBlueprint() {
     };
   });
 
+  const distributedSlots = distributeObjectivesToSlots(slotResult.slots, objectives, scoreById);
+
   setState({
     objectives,
     objectiveTargets,
     objectivePlans: [],
-    intents: slotResult.slots,
+    intents: distributedSlots,
     sections: [],
     items: [],
     errors: [],
@@ -776,7 +778,13 @@ function renderItems() {
         const subId = subItem.itemId;
         return `<div class="sub-item-edit" style="border-top:1px dashed var(--line); padding-top:16px; margin-top:16px;">
           <div class="item-meta" style="font-weight:600; color:var(--primary); margin-bottom:8px;">
-            子題號：${escapeHtml(subId)} ｜ 配分：${escapeHtml(subItem.score)}分 ｜ 對應目標：${escapeHtml(subItem.objectiveIds?.join("、") || subItem.primaryObjectiveId || "未標示")} ｜ 層次：${escapeHtml(subItem.cognitiveLevel || "未標示")}
+            子題號：${escapeHtml(subId)} ｜ 配分：${escapeHtml(subItem.score)}分 ｜ 對應目標：${(() => {
+              const raw = subItem.objectiveIds || (subItem.primaryObjectiveId ? [subItem.primaryObjectiveId] : []);
+              return escapeHtml(raw.map((id) => {
+                const obj = state.objectives.find((o) => o.objectiveId === id);
+                return obj ? obj.text : id;
+              }).filter(Boolean).join("、") || "未標示");
+            })()} ｜ 層次：${escapeHtml(subItem.cognitiveLevel || "未標示")}
           </div>
           <label>子題幹<textarea data-item-field="question" data-item-id="${escapeHtml(subId)}">${escapeHtml(subItem.question)}</textarea></label>
           ${Array.isArray(subItem.options) && subItem.options.length > 0 ? `<div class="options-edit"><span class="options-label">選項</span>${subItem.options.map((option, optionIndex) => `<label class="option-row">(${String.fromCharCode(65 + optionIndex)})<input data-item-field="option" data-item-id="${escapeHtml(subId)}" data-option-index="${optionIndex}" value="${escapeHtml(option)}"></label>`).join("")}</div>` : ""}
@@ -798,7 +806,13 @@ function renderItems() {
       </article>`);
     } else {
       cardsHtml.push(`<article class="item-card" style="border-radius:16px; padding:20px; margin-bottom:20px;">
-        <div class="item-meta">${escapeHtml(item.itemId)}｜${escapeHtml(item.questionType)}｜${escapeHtml(item.score)}分｜對應目標 ${escapeHtml(item.objectiveIds?.join("、") || item.primaryObjectiveId || "未標示")}｜層次 ${escapeHtml(item.cognitiveLevel || "未標示")}</div>
+        <div class="item-meta">${escapeHtml(item.itemId)}｜${escapeHtml(item.questionType)}｜${escapeHtml(item.score)}分｜對應目標 ${(() => {
+          const raw = item.objectiveIds || (item.primaryObjectiveId ? [item.primaryObjectiveId] : []);
+          return escapeHtml(raw.map((id) => {
+            const obj = state.objectives.find((o) => o.objectiveId === id);
+            return obj ? obj.text : id;
+          }).filter(Boolean).join("、") || "未標示");
+        })()}｜層次 ${escapeHtml(item.cognitiveLevel || "未標示")}</div>
         <label>題幹<textarea data-item-field="question" data-item-id="${escapeHtml(item.itemId)}">${escapeHtml(item.question)}</textarea></label>
         ${Array.isArray(item.options) && item.options.length > 0 ? `<div class="options-edit"><span class="options-label">選項</span>${item.options.map((option, optionIndex) => `<label class="option-row">(${String.fromCharCode(65 + optionIndex)})<input data-item-field="option" data-item-id="${escapeHtml(item.itemId)}" data-option-index="${optionIndex}" value="${escapeHtml(option)}"></label>`).join("")}</div>` : ""}
         <label>答案<input data-item-field="answer" data-item-id="${escapeHtml(item.itemId)}" value="${escapeHtml(item.answer)}"></label>
@@ -816,7 +830,11 @@ function renderItems() {
     <p class="notice">這裡沒有備選池。題目就是正式草稿；不滿意的題目，直接重出該題。</p>
     <div class="table-wrap"><table>
       <thead><tr><th>目標</th><th>計分單位數</th><th>分數</th></tr></thead>
-      <tbody>${summary.map((row) => `<tr><td>${row.objectiveId}</td><td>${row.unitCount}</td><td>${row.score}</td></tr>`).join("")}</tbody>
+      <tbody>${summary.map((row) => {
+        const obj = state.objectives.find((o) => o.objectiveId === row.objectiveId);
+        const displayObj = obj ? obj.text : row.objectiveId;
+        return `<tr><td>${escapeHtml(displayObj)}</td><td>${escapeHtml(row.unitCount)}</td><td>${escapeHtml(row.score)}</td></tr>`;
+      }).join("")}</tbody>
     </table></div>
     ${cardsHtml.join("")}
     ${loadingLine()}
@@ -853,14 +871,22 @@ function renderAudit() {
           : result.summary.map((row) => ({ ...row, target: null }));
         return rows.map((row) => {
           const off = row.target != null && row.score !== row.target;
-          return `<tr><td>${escapeHtml(row.objectiveId)}</td><td class="num">${escapeHtml(row.unitCount)}</td><td class="num"${off ? ' style="color:var(--danger)"' : ""}>${escapeHtml(row.score)}</td><td class="num">${row.target != null ? escapeHtml(row.target) : "—"}</td></tr>`;
+          const obj = state.objectives.find((o) => o.objectiveId === row.objectiveId);
+          const displayObj = obj ? obj.text : row.objectiveId;
+          return `<tr><td>${escapeHtml(displayObj)}</td><td class="num">${escapeHtml(row.unitCount)}</td><td class="num"${off ? ' style="color:var(--danger)"' : ""}>${escapeHtml(row.score)}</td><td class="num">${row.target != null ? escapeHtml(row.target) : "—"}</td></tr>`;
         }).join("");
       })()}</tbody>
     </table></div>
     <h3>逐題審核表</h3>
     <div class="table-wrap"><table>
       <thead><tr><th>題號</th><th>題型</th><th>配分</th><th>對應目標</th><th>認知層次</th></tr></thead>
-      <tbody>${buildAuditRows(state.items).map((row) => `<tr><td>${escapeHtml(row.itemId)}</td><td>${escapeHtml(row.questionType)}</td><td>${escapeHtml(row.score)}</td><td>${escapeHtml(row.objectiveIds)}</td><td>${escapeHtml(row.cognitiveLevel)}</td></tr>`).join("")}</tbody>
+      <tbody>${buildAuditRows(state.items).map((row) => {
+        const labels = row.objectiveIds.split("、").map((id) => {
+          const obj = state.objectives.find((o) => o.objectiveId === id);
+          return obj ? obj.text : id;
+        }).join("、");
+        return `<tr><td>${escapeHtml(row.itemId)}</td><td>${escapeHtml(row.questionType)}</td><td>${escapeHtml(row.score)}</td><td>${escapeHtml(labels)}</td><td>${escapeHtml(row.cognitiveLevel)}</td></tr>`;
+      }).join("")}</tbody>
     </table></div>
     <div class="actions"><button data-next-step="6">前往輸出</button></div>
   </section>`;
@@ -869,7 +895,7 @@ function renderAudit() {
 function renderOutput() {
   const project = { ...state.project, examName: examTitle() };
   const studentPaper = renderStudentPaper({ project, sections: state.sections, items: state.items });
-  const teacherPaper = renderTeacherPaper({ project, sections: state.sections, items: state.items });
+  const teacherPaper = renderTeacherPaper({ project, sections: state.sections, items: state.items, objectives: state.objectives });
   const auditTableHtml = renderAuditTable({
     project,
     objectives: state.objectives,

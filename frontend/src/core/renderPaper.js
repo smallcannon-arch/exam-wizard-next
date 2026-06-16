@@ -66,8 +66,9 @@ export function renderStudentPaper({ project = {}, sections = [], items = [] } =
   return lines.join("\n");
 }
 
-export function renderTeacherPaper({ project = {}, sections = [], items = [] } = {}) {
+export function renderTeacherPaper({ project = {}, sections = [], items = [], objectives = [] } = {}) {
   const itemById = new Map(items.map((item) => [item.itemId, item]));
+  const objectiveMap = new Map((objectives || []).map((obj) => [obj.objectiveId, obj.text]));
   const lines = [`${project.examName || "未命名評量"}　教師卷`, ""];
 
   sections.forEach((section, sectionIndex) => {
@@ -79,7 +80,11 @@ export function renderTeacherPaper({ project = {}, sections = [], items = [] } =
       const item = itemById.get(itemId);
       if (!item) return;
 
-      const objectiveTag = item.objectiveIds?.join("、") || item.primaryObjectiveId || "未標示";
+      const rawObjectives = item.objectiveIds || (item.primaryObjectiveId ? [item.primaryObjectiveId] : []);
+      const objectiveTag = rawObjectives
+        .map((id) => objectiveMap.get(id) || id)
+        .filter(Boolean)
+        .join("、") || "未標示";
       const chineseDimTag = item.chineseDimension ? `｜${item.chineseDimension}` : "";
       const metaTag = `【${item.questionType || "未標示"}${chineseDimTag}｜${objectiveTag}｜${item.cognitiveLevel || "未標示"}｜${item.score}分】`;
 

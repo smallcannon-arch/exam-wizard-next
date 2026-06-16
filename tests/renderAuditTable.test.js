@@ -56,6 +56,6 @@ describe("renderAuditTable", () => {
     expect(html).toContain("大單元名稱/小單元(課)名稱");
     expect(html).toContain("第一單元");
     expect(html).toContain("5 節"); // 3 + 2 periods
-    expect(html).toContain("O-001、O-002");
+    expect(html).toContain("3-1-1、3-1-2");
   });
 });

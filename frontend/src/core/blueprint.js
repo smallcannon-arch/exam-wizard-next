@@ -174,3 +174,57 @@ export function buildSectionsByQuestionType({ items = [], typeOrder = [] } = {})
 
   return { ok: true, sections };
 }
+
+export function distributeObjectivesToSlots(slots, objectives = [], scoreById = new Map()) {
+  if (!Array.isArray(slots) || slots.length === 0) return [];
+  if (!Array.isArray(objectives) || objectives.length === 0) return slots;
+
+  const allocatedScoreMap = new Map();
+  objectives.forEach((obj) => allocatedScoreMap.set(obj.objectiveId, 0));
+
+  const allocatedSlots = slots.map((slot) => ({ ...slot }));
+
+  const sortedObjectives = [...objectives].sort((a, b) => {
+    const targetA = scoreById.get(a.objectiveId) || 0;
+    const targetB = scoreById.get(b.objectiveId) || 0;
+    return targetB - targetA;
+  });
+
+  const assignedSlotIds = new Set();
+
+  for (const obj of sortedObjectives) {
+    const slot = allocatedSlots.find((s) => !assignedSlotIds.has(s.itemId));
+    if (slot) {
+      slot.primaryObjectiveId = obj.objectiveId;
+      slot.objectiveIds = [obj.objectiveId];
+      assignedSlotIds.add(slot.itemId);
+      allocatedScoreMap.set(obj.objectiveId, slot.score);
+    }
+  }
+
+  for (const slot of allocatedSlots) {
+    if (assignedSlotIds.has(slot.itemId)) continue;
+
+    let bestObj = null;
+    let maxDeficit = -Infinity;
+
+    for (const obj of sortedObjectives) {
+      const target = scoreById.get(obj.objectiveId) || 0;
+      const allocated = allocatedScoreMap.get(obj.objectiveId) || 0;
+      const deficit = target - allocated;
+      if (deficit > maxDeficit) {
+        maxDeficit = deficit;
+        bestObj = obj;
+      }
+    }
+
+    if (bestObj) {
+      slot.primaryObjectiveId = bestObj.objectiveId;
+      slot.objectiveIds = [bestObj.objectiveId];
+      assignedSlotIds.add(slot.itemId);
+      allocatedScoreMap.set(bestObj.objectiveId, (allocatedScoreMap.get(bestObj.objectiveId) || 0) + slot.score);
+    }
+  }
+
+  return allocatedSlots;
+}

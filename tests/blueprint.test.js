@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildItemIntents, buildPaperSectionsByTheme, parseQuestionTypeMix } from "../frontend/src/core/blueprint.js";
+import { buildItemIntents, buildPaperSectionsByTheme, parseQuestionTypeMix, distributeObjectivesToSlots } from "../frontend/src/core/blueprint.js";
 
 describe("buildItemIntents", () => {
   it("依 objectivePlans 產生一題一個意圖", () => {
@@ -111,5 +111,38 @@ describe("buildSectionsByQuestionType 圖表/實驗併入選擇題", () => {
     });
     expect(result.sections.map((s) => s.title)).toEqual(["選擇題", "填充題"]);
     expect(result.sections[0].itemIds).toEqual(["Q-001", "Q-002", "Q-003"]);
+  });
+});
+
+describe("distributeObjectivesToSlots", () => {
+  it("數學化分配目標至題位，且保證至少每個目標有題並貼近預估配分", () => {
+    const slots = [
+      { itemId: "Q-001", score: 2 },
+      { itemId: "Q-002", score: 2 },
+      { itemId: "Q-003", score: 2 },
+      { itemId: "Q-004", score: 2 },
+      { itemId: "Q-005", score: 2 },
+    ];
+    const objectives = [
+      { objectiveId: "O-001", periodCount: 3 },
+      { objectiveId: "O-002", periodCount: 2 },
+    ];
+    const scoreById = new Map([
+      ["O-001", 6],
+      ["O-002", 4],
+    ]);
+
+    const result = distributeObjectivesToSlots(slots, objectives, scoreById);
+    expect(result).toHaveLength(5);
+    // Every slot should have a primaryObjectiveId assigned
+    expect(result.every((r) => r.primaryObjectiveId)).toBe(true);
+
+    const counts = {};
+    result.forEach((r) => {
+      counts[r.primaryObjectiveId] = (counts[r.primaryObjectiveId] || 0) + r.score;
+    });
+
+    expect(counts["O-001"]).toBe(6);
+    expect(counts["O-002"]).toBe(4);
   });
 });
