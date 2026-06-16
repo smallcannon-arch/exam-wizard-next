@@ -175,10 +175,12 @@ export function validateGeneratedPaper({ slots = [], objectives = [], items = []
       });
 
       const expectedSubScores = Array.isArray(slot.subScores) ? slot.subScores : [];
-      if (expectedSubScores.length > 0) {
-        if (sortedGroupItems.length !== expectedSubScores.length) {
-          errors.push(`${parentId}：子題數量為 ${sortedGroupItems.length}，與題位設定的 ${expectedSubScores.length} 子題數不符。`);
-        } else {
+      const expectedSubCount = Number(slot.subCount) || expectedSubScores.length || 2;
+
+      if (sortedGroupItems.length !== expectedSubCount) {
+        errors.push(`${parentId}：子題數量為 ${sortedGroupItems.length}，與題位設定的 ${expectedSubCount} 子題數不符。`);
+      } else {
+        if (expectedSubScores.length > 0 && sortedGroupItems.length === expectedSubScores.length) {
           for (let i = 0; i < expectedSubScores.length; i++) {
             const expectedScore = Number(expectedSubScores[i]);
             const actualScore = Number(sortedGroupItems[i].score || 0);
@@ -186,10 +188,10 @@ export function validateGeneratedPaper({ slots = [], objectives = [], items = []
               errors.push(`${normalizeId(sortedGroupItems[i].itemId)}：子題配分應為 ${expectedScore} 分，但實際為 ${actualScore} 分。`);
             }
           }
-        }
-      } else {
-        if (totalGroupScore !== Number(slot.score)) {
-          errors.push(`${parentId}：子題配分總和為 ${totalGroupScore} 分，但題位設定配分為 ${slot.score} 分，配分不合。`);
+        } else {
+          if (totalGroupScore !== Number(slot.score)) {
+            errors.push(`${parentId}：子題配分總和為 ${totalGroupScore} 分，但題位設定配分為 ${slot.score} 分，配分不合。`);
+          }
         }
       }
 

@@ -84,7 +84,7 @@ const QUESTION_TYPE_GUIDELINES = `
   - **所有子題預設皆為 4 選項選擇題形式**，提供 options、單一 answer、explanation。
 - **單題模式（isGroup 為 false）**：
   - 若該題為單一題目，其 \`stimulus\` 欄位仍須提供一段較短的閱讀文本（約 100-200 字），\`question\` 對該文本進行提問，並提供 4 個 options、單一 answer、explanation。
-\`;
+`;
 
 export function buildGenerateItemsPrompt({ project = {}, materialText = "", objectives = [], intents = [], checkedChineseSubcategories = [] }) {
   const isChinese = (project.subject === "國語");

@@ -182,4 +182,20 @@ describe("validateGeneratedPaper", () => {
     expect(result.ok).toBe(false);
     expect(result.errors.some((e) => e.includes("子題配分應為 2 分，但實際為 3 分"))).toBe(true);
   });
+
+  it("子題數量與 subCount 不符時報錯", () => {
+    const localSlots = [
+      { itemId: "Q-001", questionType: "選擇題", score: 5, isGroup: true, subCount: 3, subScores: [2, 3] },
+    ];
+    const result = validateGeneratedPaper({
+      slots: localSlots,
+      objectives,
+      items: [
+        item({ itemId: "Q-001-1", score: 2, groupId: "G-001" }),
+        item({ itemId: "Q-001-2", score: 3, groupId: "G-001" }),
+      ],
+    });
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("與題位設定的 3 子題數不符"))).toBe(true);
+  });
 });
