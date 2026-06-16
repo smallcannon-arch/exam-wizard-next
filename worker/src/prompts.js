@@ -92,7 +92,7 @@ export function buildNormalizeObjectivesPrompt({ text: rawText = "" }) {
     text(rawText, "（空）"),
     "",
     "# 輸出要求",
-    "只輸出 JSON：{\"objectives\":[{\"text\":\"4-3-1 能…\",\"periodCount\":1}, ...]}。text 開頭盡量含指標編號；periodCount 為正整數。",
+    "只輸出 JSON：{\"objectives\":[{\"text\":\"4-3-1 能…\",\"periodCount\":1,\"unitName\":\"動物的生命延續\"}, ...]}。text 開頭盡量含指標編號；periodCount 為正整數；unitName 為該目標所屬的單元名稱，若無法辨識則為『未分單元』。",
   ].join("\n");
 }
 

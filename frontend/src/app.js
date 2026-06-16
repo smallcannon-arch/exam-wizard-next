@@ -7,7 +7,7 @@ import { getQuestionTypeOptions, SUBJECT_OPTIONS } from "./core/questionTypes.js
 import { validateExam } from "./core/validation.js";
 import { replaceItemById } from "./core/replaceItem.js";
 import { renderStudentPaper, renderTeacherPaper } from "./core/renderPaper.js";
-import { generateItemsViaApi, regenerateItemViaApi, extractObjectivesViaApi } from "./apiClient.js";
+import { generateItemsViaApi, regenerateItemViaApi, extractObjectivesViaApi, normalizeObjectivesViaApi } from "./apiClient.js";
 import { parseObjectiveInput, normalizeExtractedObjectives, objectivesToInputText } from "./core/objectives.js";
 import { computeObjectiveShares, formatPercent } from "./core/periods.js";
 import { largestRemainder } from "./core/distribute.js";
@@ -237,22 +237,44 @@ setState({
   }
 }
 
-// 一鍵整理：用本機智慧解析，把貼上的雜亂指標轉成標準格式（含編號與節數）填回欄位。
-function organizeObjectives() {
-  const parsed = parseObjectiveInput(state.objectiveInput);
-  if (parsed.length === 0) {
-    setState({ errors: ["沒有可整理的內容，請先把 LLM／Gem 抓回的指標貼進「學習目標」欄。"], messages: [] });
+// 一鍵整理：用 AI 智慧解析整理學習指標（若失敗則使用本機容錯解析）
+async function organizeObjectives() {
+  if (!state.objectiveInput || !state.objectiveInput.trim()) {
+    setState({ errors: ["沒有可整理的內容，請先把指標貼進「學習目標」欄。"], messages: [] });
     return;
   }
-  state.objectiveInput = parsed
-    .map((objective) => `${objective.text}｜${toPositiveIntegerSafe(objective.periodCount)}`)
-    .join("\n");
-  setState({ errors: [], messages: [`已整理出 ${parsed.length} 個學習指標，請確認下方預覽，沒問題就往下建立藍圖。`] });
-}
 
-function toPositiveIntegerSafe(value) {
-  const number = Number(value);
-  return Number.isInteger(number) && number > 0 ? number : 1;
+  busy = true;
+  busyItemId = null;
+  busyLabel = "AI 正在整理學習目標，請稍候……";
+  render();
+
+  try {
+    const result = await normalizeObjectivesViaApi({
+      apiBaseUrl: getApiBaseUrl(),
+      text: state.objectiveInput,
+    });
+    if (result.ok && Array.isArray(result.objectives) && result.objectives.length > 0) {
+      state.objectiveInput = objectivesToInputText(result.objectives);
+      setState({ errors: [], messages: [`已透過 AI 整理並編序了 ${result.objectives.length} 個學習指標，請確認下方預覽。`] });
+      return;
+    } else {
+      throw new Error(result.error || "API returned empty objectives");
+    }
+  } catch (err) {
+    console.warn("AI 整理失敗，改用本機模式解析：", err);
+    const parsed = parseObjectiveInput(state.objectiveInput);
+    if (parsed.length === 0) {
+      setState({ errors: ["整理學習目標失敗。沒有可辨識的指標，請確認輸入內容。"], messages: [] });
+      return;
+    }
+    state.objectiveInput = objectivesToInputText(parsed);
+    setState({ errors: [], messages: [`已透過本機模式整理出 ${parsed.length} 個學習指標（AI 整理暫不可用），請確認下方預覽。`] });
+  } finally {
+    busy = false;
+    busyLabel = "";
+    render();
+  }
 }
 
 async function regenerateItem(itemId) {
