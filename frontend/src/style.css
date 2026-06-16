@@ -261,6 +261,44 @@ pre {
   color: var(--primary) !important;
 }
 
+/* ─── Site Footer ─── */
+.site-footer {
+  background: var(--blue);
+  color: #a8b8d4;
+  padding: 32px max(24px, calc((100vw - 1600px) / 2));
+  margin-top: 48px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.footer-inner {
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+.footer-copyright {
+  margin: 0 0 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #c8d6ef;
+  letter-spacing: 0.04em;
+}
+
+.footer-meta {
+  border-top: 1px solid rgba(200, 214, 239, 0.15);
+  padding-top: 16px;
+}
+
+.footer-meta p {
+  margin: 0 0 6px;
+  color: #8a9bbd;
+  font-size: 12.5px;
+}
+
+.footer-meta p:last-child {
+  margin-bottom: 0;
+}
+
 /* 審核表列印專用 A4 最佳化樣式 */
 @media print {
   body {
@@ -271,6 +309,7 @@ pre {
   
   /* 隱藏不必要的 UI 元素 */
   .site-header, 
+  .site-footer,
   .step-list, 
   .panel:not(.panel:has(#auditTablePrintArea)), 
   .panel h2,
