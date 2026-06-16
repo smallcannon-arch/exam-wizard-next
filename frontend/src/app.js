@@ -491,7 +491,7 @@ function renderStep1() {
       <label class="field-lg">評量次數
         <select data-project="examType">
           <option value="" ${!state.project.examType ? "selected" : ""}>請選擇</option>
-          ${["第1次定期評量", "第2次定期評量"].map((option) => `<option value="${option}" ${option === state.project.examType ? "selected" : ""}>${option}</option>`).join("")}
+          ${["期中考", "期末考"].map((option) => `<option value="${option}" ${option === state.project.examType ? "selected" : ""}>${option}</option>`).join("")}
         </select>
       </label>
       <label class="field-lg">科目
@@ -508,12 +508,7 @@ function renderStep1() {
       </label>
       <label class="field-lg">命題教師<input data-project="teacherName" value="${escapeHtml(state.project.teacherName)}"></label>
       <label class="field-lg">版本<input data-project="version" value="${escapeHtml(state.project.version)}"></label>
-      <label class="field-lg" style="grid-column: span 2;">評量範圍
-        <select data-project="range">
-          <option value="" ${!state.project.range ? "selected" : ""}>請選擇</option>
-          ${["期中考", "期末考"].map((option) => `<option value="${option}" ${option === state.project.range ? "selected" : ""}>${option}</option>`).join("")}
-        </select>
-      </label>
+      <label class="field-lg" style="grid-column: span 2;">評量範圍<input data-project="range" value="${escapeHtml(state.project.range)}"></label>
     </div>
     ${renderPlanTable()}
     <div class="actions"><button data-next-step="2">下一步</button></div>
