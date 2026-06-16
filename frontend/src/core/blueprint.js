@@ -101,9 +101,10 @@ export function buildPaperSectionsByTheme({ intents } = {}) {
 
 // 題位制：只鎖每題的題型與配分（來自配題表），不預先綁定學習目標。
 // 學習目標、認知層次與排序交由 LLM 在生成時依節數比例與整卷整體性編排。
-export function buildItemSlots({ questionTypeSequence = [], scoreSequence = [] } = {}) {
+export function buildItemSlots({ questionTypeSequence = [], scoreSequence = [], configSequence = [] } = {}) {
   const types = Array.isArray(questionTypeSequence) ? questionTypeSequence : [];
   const scores = Array.isArray(scoreSequence) ? scoreSequence : [];
+  const configs = Array.isArray(configSequence) ? configSequence : [];
   const total = Math.max(types.length, scores.length);
 
   if (total === 0) {
@@ -114,7 +115,7 @@ export function buildItemSlots({ questionTypeSequence = [], scoreSequence = [] }
   for (let index = 0; index < total; index += 1) {
     const serial = index + 1;
     const type = asText(types[index], DEFAULT_EXAM_CONFIG.defaultQuestionTypes[0]);
-    const isGroup = type === "學力檢測題";
+    const config = configs[index] || { isGroup: type === "學力檢測題", subScores: type === "學力檢測題" ? [2, 3] : [] };
     slots.push({
       intentId: makeIntentId(serial),
       itemId: `Q-${String(serial).padStart(3, "0")}`,
@@ -124,8 +125,9 @@ export function buildItemSlots({ questionTypeSequence = [], scoreSequence = [] }
       objectiveIds: [],
       primaryObjectiveId: "",
       groupId: "",
-      isGroup,
-      subCount: isGroup ? 3 : 0,
+      isGroup: config.isGroup,
+      subCount: config.isGroup ? config.subScores.length : 0,
+      subScores: config.subScores || [],
     });
   }
 

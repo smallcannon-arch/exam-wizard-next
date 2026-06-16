@@ -117,8 +117,8 @@ function buildBlueprint() {
     return;
   }
 
-  const { questionTypeSequence, scoreSequence } = buildPlanSequences(state.planRows);
-  const slotResult = buildItemSlots({ questionTypeSequence, scoreSequence });
+  const { questionTypeSequence, scoreSequence, configSequence } = buildPlanSequences(state.planRows);
+  const slotResult = buildItemSlots({ questionTypeSequence, scoreSequence, configSequence });
   if (!slotResult.ok) {
     setState({ objectives, objectiveTargets: [], objectivePlans: [], intents: [], sections: [], errors: [slotResult.error], messages: [] });
     return;
@@ -526,16 +526,48 @@ function renderPlanTable() {
       .map((type) => `<option value="${escapeHtml(type)}" ${type === row.questionType ? "selected" : ""}>${escapeHtml(type)}</option>`)
       .join("");
     const subtotal = (Number(row.count) || 0) * (Number(row.score) || 0);
-    const isGroup = row.questionType === "學力檢測題";
-    const groupHint = isGroup 
-      ? `<div style="font-size:11.5px; color:var(--primary); margin-top:4px; font-weight:600; line-height:1.3;">💡 題組形式：將自動拆解為 2~4 個子題均分此分數</div>`
-      : "";
+    const isGroup = !!row.isGroup;
+
+    let scoreConfigHtml = "";
+    if (isGroup) {
+      const subScores = Array.isArray(row.subScores) ? row.subScores : [2, 3];
+      scoreConfigHtml = `
+        <div style="display:flex; align-items:center; gap:8px;">
+          <select data-plan-field="subCount" data-plan-index="${index}" style="width:auto; display:inline-block; height:28px; font-size:13px; padding:2px 6px; margin:0;">
+            <option value="2" ${subScores.length === 2 ? "selected" : ""}>2 子題</option>
+            <option value="3" ${subScores.length === 3 ? "selected" : ""}>3 子題</option>
+            <option value="4" ${subScores.length === 4 ? "selected" : ""}>4 子題</option>
+          </select>
+          <div style="font-size:13px; color:var(--muted); display:flex; align-items:center; gap:4px; margin:0;">
+            <span>子題配分：</span>
+            ${subScores.map((score, sIdx) => `
+              <input type="number" min="1" data-plan-field="subScore" data-plan-index="${index}" data-sub-index="${sIdx}" value="${score}" style="width:40px; padding:2px 4px; text-align:center; height:24px; margin:0;">
+              ${sIdx < subScores.length - 1 ? "<span>+</span>" : ""}
+            `).join("")}
+            <span style="font-weight:bold; color:var(--primary); margin-left:4px;">= ${row.score} 分</span>
+          </div>
+        </div>
+      `;
+    } else {
+      scoreConfigHtml = `
+        <input type="number" min="1" data-plan-field="score" data-plan-index="${index}" value="${escapeHtml(row.score)}" style="width:80px; margin:0; height:28px;">
+      `;
+    }
+
     return `<tr>
-      <td><select data-plan-field="questionType" data-plan-index="${index}">${optionHtml}</select>${groupHint}</td>
-      <td><input type="number" min="1" data-plan-field="count" data-plan-index="${index}" value="${escapeHtml(row.count)}"></td>
-      <td><input type="number" min="1" data-plan-field="score" data-plan-index="${index}" value="${escapeHtml(row.score)}"></td>
-      <td>${escapeHtml(subtotal)}分</td>
-      <td><button class="secondary" data-action="remove-plan-row" data-plan-index="${index}">刪除</button></td>
+      <td>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <select data-plan-field="questionType" data-plan-index="${index}" style="margin:0; height:28px;">${optionHtml}</select>
+          <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; margin:0; font-size:13px; font-weight:600; color:var(--muted);">
+            <input type="checkbox" data-plan-field="isGroup" data-plan-index="${index}" ${isGroup ? "checked" : ""} style="width:auto; margin:0;">
+            <span>題組</span>
+          </label>
+        </div>
+      </td>
+      <td><input type="number" min="1" data-plan-field="count" data-plan-index="${index}" value="${escapeHtml(row.count)}" style="margin:0; height:28px; width:80px;"></td>
+      <td>${scoreConfigHtml}</td>
+      <td><strong>${escapeHtml(subtotal)}分</strong></td>
+      <td><button class="secondary" data-action="remove-plan-row" data-plan-index="${index}" style="padding:4px 8px; margin:0; font-size:13px; height:28px;">刪除</button></td>
     </tr>`;
   }).join("");
 
@@ -543,7 +575,7 @@ function renderPlanTable() {
     <h3>配題表（題型／題數／配分）</h3>
     <p class="notice">
       題型清單已依您的學科「${escapeHtml(subject || "預設")}」自動篩選。<br>
-      <strong>💡 溫馨提示</strong>：含「學力檢測題」項目為情境素養題組。AI 會自動將其拆解為 2 ~ 4 個子題，並將配分（如 5 分）由子題均分（如 2 分與 3 分），因此您在此階段可以放心為其配置較高的每題分數！
+      <strong>💡 溫馨提示</strong>：選取「題組」的項目會被 AI 自動拆解為指定數量的子題，並將該題配分由各子題分配，您在此階段可以放心為其配置較高的分數！
     </p>
     <div class="table-wrap"><table>
       <thead><tr><th>題型</th><th>題數</th><th>每題(答)配分</th><th>小計</th><th></th></tr></thead>
@@ -870,9 +902,50 @@ app.addEventListener("input", (event) => {
 
   if (planField && planIndex !== undefined) {
     const index = Number(planIndex);
+    const subIndex = event.target.dataset.subIndex;
     if (state.planRows[index]) {
-      const value = planField === "questionType" ? event.target.value : Number(event.target.value);
-      state.planRows[index] = { ...state.planRows[index], [planField]: value };
+      if (planField === "subScore" && subIndex !== undefined) {
+        const sIdx = Number(subIndex);
+        const val = Math.max(1, Number(event.target.value) || 1);
+        if (state.planRows[index].subScores) {
+          state.planRows[index].subScores[sIdx] = val;
+          state.planRows[index].score = state.planRows[index].subScores.reduce((sum, s) => sum + s, 0);
+        }
+      } else if (planField === "subCount") {
+        const count = Number(event.target.value);
+        let subScores = state.planRows[index].subScores || [];
+        if (subScores.length < count) {
+          while (subScores.length < count) subScores.push(2);
+        } else if (subScores.length > count) {
+          subScores = subScores.slice(0, count);
+        }
+        state.planRows[index].subScores = subScores;
+        state.planRows[index].score = subScores.reduce((sum, s) => sum + s, 0);
+      } else if (planField === "isGroup") {
+        const checked = event.target.checked;
+        state.planRows[index].isGroup = checked;
+        if (checked) {
+          state.planRows[index].subScores = [2, 3];
+          state.planRows[index].score = 5;
+        } else {
+          state.planRows[index].subScores = [];
+          state.planRows[index].score = 2;
+        }
+      } else {
+        const value = planField === "questionType" ? event.target.value : Number(event.target.value);
+        state.planRows[index] = { ...state.planRows[index], [planField]: value };
+        if (planField === "questionType") {
+          if (value === "學力檢測題") {
+            state.planRows[index].isGroup = true;
+            state.planRows[index].subScores = [2, 3];
+            state.planRows[index].score = 5;
+          } else {
+            state.planRows[index].isGroup = false;
+            state.planRows[index].subScores = [];
+            state.planRows[index].score = 2;
+          }
+        }
+      }
     }
     return;
   }
@@ -946,7 +1019,7 @@ app.addEventListener("click", (event) => {
   if (action === "add-plan-row") {
     const subject = state.project.subject;
     const options = getQuestionTypeOptions(subject);
-    setState({ planRows: [...state.planRows, { questionType: options[0], count: 5, score: 2 }] });
+    setState({ planRows: [...state.planRows, { questionType: options[0], count: 5, score: 2, isGroup: false, subScores: [] }] });
   }
   if (action === "remove-plan-row") {
     const index = Number(actionButton.dataset.planIndex);

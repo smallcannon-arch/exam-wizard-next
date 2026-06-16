@@ -15,7 +15,7 @@ describe("normalizePlanRows", () => {
       { questionType: "", count: 5, score: 2 },
       { questionType: "填充題", count: 0, score: 2 },
       { questionType: "簡答題", count: 3, score: 0 },
-    ])).toEqual([{ questionType: "選擇題", count: 20, score: 2 }]);
+    ])).toEqual([{ questionType: "選擇題", count: 20, score: 2, isGroup: false, subScores: [] }]);
   });
 });
 

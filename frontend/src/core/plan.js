@@ -14,11 +14,20 @@ export function normalizePlanRows(rows) {
   if (!Array.isArray(rows)) return [];
 
   return rows
-    .map((row) => ({
-      questionType: asText(row?.questionType),
-      count: toPositiveInteger(row?.count),
-      score: toPositiveInteger(row?.score),
-    }))
+    .map((row) => {
+      const isGroup = !!row?.isGroup;
+      const subScores = Array.isArray(row?.subScores) ? row.subScores.map(Number).filter((x) => x > 0) : [];
+      const score = isGroup 
+        ? subScores.reduce((sum, s) => sum + s, 0)
+        : toPositiveInteger(row?.score);
+      return {
+        questionType: asText(row?.questionType),
+        count: toPositiveInteger(row?.count),
+        score,
+        isGroup,
+        subScores,
+      };
+    })
     .filter((row) => row.questionType && row.count > 0 && row.score > 0);
 }
 
@@ -52,14 +61,19 @@ export function buildPlanSequences(rows) {
   const normalized = normalizePlanRows(rows);
   const questionTypeSequence = [];
   const scoreSequence = [];
+  const configSequence = [];
 
   // 依配題表的列順序分組展開：同題型相鄰（不打散），方便整卷分大題。
   for (const row of normalized) {
     for (let index = 0; index < row.count; index += 1) {
       questionTypeSequence.push(row.questionType);
       scoreSequence.push(row.score);
+      configSequence.push({
+        isGroup: row.isGroup,
+        subScores: row.subScores,
+      });
     }
   }
 
-  return { questionTypeSequence, scoreSequence };
+  return { questionTypeSequence, scoreSequence, configSequence };
 }
