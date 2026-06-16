@@ -525,27 +525,47 @@ function renderPlanTable() {
     const optionHtml = options
       .map((type) => `<option value="${escapeHtml(type)}" ${type === row.questionType ? "selected" : ""}>${escapeHtml(type)}</option>`)
       .join("");
-    const subtotal = (Number(row.count) || 0) * (Number(row.score) || 0);
     const isGroup = !!row.isGroup;
+    const groupCount = isGroup ? Math.min(Number(row.count) || 0, Number(row.groupCount) || 1) : 0;
+    const singleCount = isGroup ? Math.max(0, (Number(row.count) || 0) - groupCount) : Number(row.count) || 0;
+    const subScores = Array.isArray(row.subScores) ? row.subScores : [2, 3];
+    const groupScore = subScores.reduce((sum, s) => sum + Number(s) || 0, 0);
+    const subtotal = isGroup 
+      ? (groupCount * groupScore) + (singleCount * (Number(row.score) || 0))
+      : (Number(row.count) || 0) * (Number(row.score) || 0);
 
     let scoreConfigHtml = "";
     if (isGroup) {
-      const subScores = Array.isArray(row.subScores) ? row.subScores : [2, 3];
       scoreConfigHtml = `
-        <div style="display:flex; align-items:center; gap:8px;">
-          <select data-plan-field="subCount" data-plan-index="${index}" style="width:auto; display:inline-block; height:28px; font-size:13px; padding:2px 6px; margin:0;">
-            <option value="2" ${subScores.length === 2 ? "selected" : ""}>2 子題</option>
-            <option value="3" ${subScores.length === 3 ? "selected" : ""}>3 子題</option>
-            <option value="4" ${subScores.length === 4 ? "selected" : ""}>4 子題</option>
-          </select>
-          <div style="font-size:13px; color:var(--muted); display:flex; align-items:center; gap:4px; margin:0;">
-            <span>子題配分：</span>
-            ${subScores.map((score, sIdx) => `
-              <input type="number" min="1" data-plan-field="subScore" data-plan-index="${index}" data-sub-index="${sIdx}" value="${score}" style="width:40px; padding:2px 4px; text-align:center; height:24px; margin:0;">
-              ${sIdx < subScores.length - 1 ? "<span>+</span>" : ""}
-            `).join("")}
-            <span style="font-weight:bold; color:var(--primary); margin-left:4px;">= ${row.score} 分</span>
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+            <span style="font-size:13px; color:var(--muted);">其中有</span>
+            <input type="number" min="1" max="${row.count}" data-plan-field="groupCount" data-plan-index="${index}" value="${row.groupCount || 1}" style="width:50px; padding:2px 4px; text-align:center; height:24px; margin:0;">
+            <span style="font-size:13px; color:var(--muted);">組為題組，每組有</span>
+            <select data-plan-field="subCount" data-plan-index="${index}" style="width:auto; display:inline-block; height:24px; font-size:13px; padding:2px 6px; margin:0; line-height:1;">
+              <option value="2" ${subScores.length === 2 ? "selected" : ""}>2</option>
+              <option value="3" ${subScores.length === 3 ? "selected" : ""}>3</option>
+              <option value="4" ${subScores.length === 4 ? "selected" : ""}>4</option>
+            </select>
+            <span style="font-size:13px; color:var(--muted);">子題（配分：</span>
+            <div style="font-size:13px; color:var(--muted); display:inline-flex; align-items:center; gap:2px; margin:0;">
+              ${subScores.map((score, sIdx) => `
+                <input type="number" min="1" data-plan-field="subScore" data-plan-index="${index}" data-sub-index="${sIdx}" value="${score}" style="width:36px; padding:2px; text-align:center; height:20px; margin:0; font-size:12px;">
+                ${sIdx < subScores.length - 1 ? "<span>+</span>" : ""}
+              `).join("")}
+              <span style="font-weight:bold; color:var(--primary); margin-left:2px;">= ${groupScore}分</span>
+            </div>
+            <span style="font-size:13px; color:var(--muted);">)</span>
           </div>
+          ${singleCount > 0 ? `
+            <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+              <span style="font-size:13px; color:var(--muted);">其餘 ${singleCount} 題為單題，每題配分：</span>
+              <input type="number" min="1" data-plan-field="score" data-plan-index="${index}" value="${escapeHtml(row.score)}" style="width:50px; padding:2px 4px; text-align:center; height:24px; margin:0;">
+              <span style="font-size:13px; color:var(--muted);">分</span>
+            </div>
+          ` : `
+            <div style="font-size:13px; color:var(--muted); font-style:italic;">（無其餘單題）</div>
+          `}
         </div>
       `;
     } else {
@@ -909,7 +929,6 @@ app.addEventListener("input", (event) => {
         const val = Math.max(1, Number(event.target.value) || 1);
         if (state.planRows[index].subScores) {
           state.planRows[index].subScores[sIdx] = val;
-          state.planRows[index].score = state.planRows[index].subScores.reduce((sum, s) => sum + s, 0);
         }
       } else if (planField === "subCount") {
         const count = Number(event.target.value);
@@ -920,27 +939,47 @@ app.addEventListener("input", (event) => {
           subScores = subScores.slice(0, count);
         }
         state.planRows[index].subScores = subScores;
-        state.planRows[index].score = subScores.reduce((sum, s) => sum + s, 0);
       } else if (planField === "isGroup") {
         const checked = event.target.checked;
         state.planRows[index].isGroup = checked;
         if (checked) {
+          state.planRows[index].groupCount = 1;
           state.planRows[index].subScores = [2, 3];
-          state.planRows[index].score = 5;
+          if (!state.planRows[index].score) {
+            state.planRows[index].score = 2;
+          }
         } else {
+          state.planRows[index].groupCount = 1;
           state.planRows[index].subScores = [];
-          state.planRows[index].score = 2;
+          if (!state.planRows[index].score) {
+            state.planRows[index].score = 2;
+          }
         }
+      } else if (planField === "count") {
+        const val = Math.max(1, Number(event.target.value) || 1);
+        state.planRows[index].count = val;
+        if (state.planRows[index].isGroup) {
+          state.planRows[index].groupCount = Math.min(state.planRows[index].groupCount || 1, val);
+        }
+      } else if (planField === "groupCount") {
+        const count = state.planRows[index].count || 1;
+        const val = Math.max(1, Math.min(count, Number(event.target.value) || 1));
+        state.planRows[index].groupCount = val;
+      } else if (planField === "score") {
+        const val = Math.max(1, Number(event.target.value) || 1);
+        state.planRows[index].score = val;
       } else {
         const value = planField === "questionType" ? event.target.value : Number(event.target.value);
         state.planRows[index] = { ...state.planRows[index], [planField]: value };
         if (planField === "questionType") {
           if (value === "學力檢測題") {
             state.planRows[index].isGroup = true;
+            state.planRows[index].groupCount = state.planRows[index].count || 4;
             state.planRows[index].subScores = [2, 3];
-            state.planRows[index].score = 5;
+            state.planRows[index].score = 2;
           } else {
             state.planRows[index].isGroup = false;
+            state.planRows[index].groupCount = 1;
             state.planRows[index].subScores = [];
             state.planRows[index].score = 2;
           }
@@ -1019,7 +1058,7 @@ app.addEventListener("click", (event) => {
   if (action === "add-plan-row") {
     const subject = state.project.subject;
     const options = getQuestionTypeOptions(subject);
-    setState({ planRows: [...state.planRows, { questionType: options[0], count: 5, score: 2, isGroup: false, subScores: [] }] });
+    setState({ planRows: [...state.planRows, { questionType: options[0], count: 5, score: 2, isGroup: false, groupCount: 1, subScores: [] }] });
   }
   if (action === "remove-plan-row") {
     const index = Number(actionButton.dataset.planIndex);

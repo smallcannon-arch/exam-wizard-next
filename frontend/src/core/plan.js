@@ -17,26 +17,47 @@ export function normalizePlanRows(rows) {
     .map((row) => {
       const isGroup = !!row?.isGroup;
       const subScores = Array.isArray(row?.subScores) ? row.subScores.map(Number).filter((x) => x > 0) : [];
-      const score = isGroup 
-        ? subScores.reduce((sum, s) => sum + s, 0)
-        : toPositiveInteger(row?.score);
+      const groupCount = toPositiveInteger(row?.groupCount || 1);
       return {
         questionType: asText(row?.questionType),
         count: toPositiveInteger(row?.count),
-        score,
+        score: toPositiveInteger(row?.score),
         isGroup,
+        groupCount,
         subScores,
       };
     })
-    .filter((row) => row.questionType && row.count > 0 && row.score > 0);
+    .filter((row) => {
+      if (!row.questionType || row.count <= 0) return false;
+      if (row.isGroup) {
+        const groupCount = Math.min(row.count, row.groupCount);
+        const groupScore = row.subScores.reduce((sum, s) => sum + s, 0);
+        const singleCount = row.count - groupCount;
+        const total = (groupCount * groupScore) + (singleCount * row.score);
+        return total > 0;
+      }
+      return row.score > 0;
+    });
 }
 
 export function getPlanTotals(rows) {
   const normalized = normalizePlanRows(rows);
-  return {
-    totalItems: normalized.reduce((sum, row) => sum + row.count, 0),
-    totalScore: normalized.reduce((sum, row) => sum + row.count * row.score, 0),
-  };
+  let totalItems = 0;
+  let totalScore = 0;
+
+  for (const row of normalized) {
+    totalItems += row.count;
+    if (row.isGroup) {
+      const groupCount = Math.min(row.count, row.groupCount);
+      const singleCount = Math.max(0, row.count - groupCount);
+      const groupScore = row.subScores.reduce((sum, s) => sum + s, 0);
+      totalScore += (groupCount * groupScore) + (singleCount * row.score);
+    } else {
+      totalScore += row.count * row.score;
+    }
+  }
+
+  return { totalItems, totalScore };
 }
 
 export function validatePlan(rows, totalScore = null) {
@@ -63,14 +84,28 @@ export function buildPlanSequences(rows) {
   const scoreSequence = [];
   const configSequence = [];
 
-  // 依配題表的列順序分組展開：同題型相鄰（不打散），方便整卷分大題。
   for (const row of normalized) {
-    for (let index = 0; index < row.count; index += 1) {
+    const groupCount = row.isGroup ? Math.min(row.count, row.groupCount) : 0;
+    const singleCount = row.count - groupCount;
+    const groupScore = row.isGroup ? row.subScores.reduce((sum, s) => sum + s, 0) : 0;
+
+    // 先推入題組題位
+    for (let index = 0; index < groupCount; index += 1) {
+      questionTypeSequence.push(row.questionType);
+      scoreSequence.push(groupScore);
+      configSequence.push({
+        isGroup: true,
+        subScores: row.subScores,
+      });
+    }
+
+    // 再推入單題題位
+    for (let index = 0; index < singleCount; index += 1) {
       questionTypeSequence.push(row.questionType);
       scoreSequence.push(row.score);
       configSequence.push({
-        isGroup: row.isGroup,
-        subScores: row.subScores,
+        isGroup: false,
+        subScores: [],
       });
     }
   }

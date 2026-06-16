@@ -15,7 +15,7 @@ describe("normalizePlanRows", () => {
       { questionType: "", count: 5, score: 2 },
       { questionType: "填充題", count: 0, score: 2 },
       { questionType: "簡答題", count: 3, score: 0 },
-    ])).toEqual([{ questionType: "選擇題", count: 20, score: 2, isGroup: false, subScores: [] }]);
+    ])).toEqual([{ questionType: "選擇題", count: 20, score: 2, isGroup: false, groupCount: 1, subScores: [] }]);
   });
 });
 
@@ -55,6 +55,45 @@ describe("buildPlanSequences", () => {
     expect(questionTypeSequence.filter((type) => type === "選擇題")).toHaveLength(20);
     expect(questionTypeSequence.filter((type) => type === "學力檢測題")).toHaveLength(4);
     expect(scoreSequence.reduce((sum, score) => sum + score, 0)).toBe(80);
+  });
+});
+
+describe("normalizePlanRows 混合題組與單題", () => {
+  it("應正確帶出 groupCount 與 subScores", () => {
+    const inputRows = [
+      { questionType: "選擇題", count: 5, score: 2, isGroup: true, groupCount: 2, subScores: [3, 4] }
+    ];
+    expect(normalizePlanRows(inputRows)).toEqual([
+      { questionType: "選擇題", count: 5, score: 2, isGroup: true, groupCount: 2, subScores: [3, 4] }
+    ]);
+  });
+});
+
+describe("getPlanTotals 混合題組與單題", () => {
+  it("應正確計算混合題組與單題之總配分", () => {
+    const inputRows = [
+      { questionType: "選擇題", count: 5, score: 2, isGroup: true, groupCount: 2, subScores: [3, 4] }
+    ];
+    // 2 組題組 (每組 3+4=7分) + 3 題單題 (每題 2分) = 14 + 6 = 20分
+    expect(getPlanTotals(inputRows)).toEqual({ totalItems: 5, totalScore: 20 });
+  });
+});
+
+describe("buildPlanSequences 混合題組與單題", () => {
+  it("導出之題型、配分與設定序列應正確，且題組排在前面", () => {
+    const inputRows = [
+      { questionType: "選擇題", count: 5, score: 2, isGroup: true, groupCount: 2, subScores: [3, 4] }
+    ];
+    const { questionTypeSequence, scoreSequence, configSequence } = buildPlanSequences(inputRows);
+    expect(questionTypeSequence).toEqual(["選擇題", "選擇題", "選擇題", "選擇題", "選擇題"]);
+    expect(scoreSequence).toEqual([7, 7, 2, 2, 2]);
+    expect(configSequence).toEqual([
+      { isGroup: true, subScores: [3, 4] },
+      { isGroup: true, subScores: [3, 4] },
+      { isGroup: false, subScores: [] },
+      { isGroup: false, subScores: [] },
+      { isGroup: false, subScores: [] }
+    ]);
   });
 });
 
