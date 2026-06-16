@@ -647,14 +647,14 @@ function renderChineseSubcategoryChecklist() {
 
   const columnsHtml = CHINESE_AUDIT_STRUCTURE.map((dimObj) => {
     const projectHtml = `
-      <div class="sub-column-project" style="margin-bottom:28px;">
-        <h4 style="margin:0 0 16px; font-size:19px; border-bottom: 2px solid var(--primary); padding-bottom: 8px; color: var(--primary); font-weight: bold;">${dimObj.project}</h4>
-        <div style="display:flex; flex-direction:column; gap:14px;">
+      <div class="sub-column-project" style="margin-bottom:36px;">
+        <h4 style="margin:0 0 18px; font-size:21px; border-bottom: 2px solid var(--primary); padding-bottom: 10px; color: var(--primary); font-weight: bold;">${dimObj.project}</h4>
+        <div style="display:flex; flex-direction:column; gap:16px;">
           ${dimObj.items.map((item) => {
             const checked = checkedSet.has(item);
             return `
-              <label class="chinese-sub-label" style="display:inline-flex; align-items:center; gap:12px; font-size:19px; cursor:pointer; margin:0; font-weight:500; color:var(--ink); padding: 6px 10px; border-radius: 8px; transition: background 0.2s;">
-                <input type="checkbox" data-chinese-sub="${item}" ${checked ? "checked" : ""} style="width:auto; margin:0; transform: scale(1.5); cursor:pointer;">
+              <label class="chinese-sub-label" style="display:inline-flex; align-items:center; gap:14px; font-size:21px; cursor:pointer; margin:0; font-weight:500; color:var(--ink); padding: 8px 12px; border-radius: 8px; transition: background 0.2s;">
+                <input type="checkbox" data-chinese-sub="${item}" ${checked ? "checked" : ""} style="width:auto; margin:0; transform: scale(1.75); cursor:pointer;">
                 <span>${item}</span>
               </label>
             `;
@@ -669,9 +669,9 @@ function renderChineseSubcategoryChecklist() {
   const gridHtml = dims.map((dim) => {
     const dimHtml = columnsHtml.filter(c => c.dimension === dim).map(c => c.html).join("");
     return `
-      <div style="flex:1; min-width:260px; background:#fff; padding:32px; border-radius:20px; border:1px solid var(--line); box-shadow:0 6px 16px rgba(0,0,0,0.02);">
-        <h3 style="margin:0 0 24px; font-size:22px; font-weight:bold; color:#111; display:flex; align-items:center; gap:10px;">
-          <span style="width:6px; height:24px; background:var(--primary); display:inline-block; border-radius:3px;"></span>
+      <div style="flex:1; min-width:260px; background:#fff; padding:38px; border-radius:20px; border:1px solid var(--line); box-shadow:0 6px 16px rgba(0,0,0,0.02);">
+        <h3 style="margin:0 0 28px; font-size:25px; font-weight:bold; color:#111; display:flex; align-items:center; gap:12px;">
+          <span style="width:7px; height:28px; background:var(--primary); display:inline-block; border-radius:3px;"></span>
           ${dim}
         </h3>
         ${dimHtml}
