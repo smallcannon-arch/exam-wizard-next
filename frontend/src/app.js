@@ -645,13 +645,13 @@ function renderChineseSubcategoryChecklist() {
   const columnsHtml = CHINESE_AUDIT_STRUCTURE.map((dimObj) => {
     const projectHtml = `
       <div class="sub-column-project" style="margin-bottom:16px;">
-        <h4 style="margin:0 0 8px; font-size:14px; border-bottom: 2px solid var(--primary); padding-bottom: 4px; color: var(--primary);">${dimObj.project}</h4>
-        <div style="display:flex; flex-direction:column; gap:6px;">
+        <h4 style="margin:0 0 8px; font-size:15px; border-bottom: 2px solid var(--primary); padding-bottom: 4px; color: var(--primary);">${dimObj.project}</h4>
+        <div style="display:flex; flex-direction:column; gap:8px;">
           ${dimObj.items.map((item) => {
             const checked = checkedSet.has(item);
             return `
-              <label style="display:inline-flex; align-items:center; gap:6px; font-size:13px; cursor:pointer; margin:0; font-weight:normal; color:var(--ink);">
-                <input type="checkbox" data-chinese-sub="${item}" ${checked ? "checked" : ""} style="width:auto; margin:0;">
+              <label style="display:inline-flex; align-items:center; gap:8px; font-size:15px; cursor:pointer; margin:0; font-weight:normal; color:var(--ink);">
+                <input type="checkbox" data-chinese-sub="${item}" ${checked ? "checked" : ""} style="width:auto; margin:0; transform: scale(1.15);">
                 <span>${item}</span>
               </label>
             `;
@@ -666,9 +666,9 @@ function renderChineseSubcategoryChecklist() {
   const gridHtml = dims.map((dim) => {
     const dimHtml = columnsHtml.filter(c => c.dimension === dim).map(c => c.html).join("");
     return `
-      <div style="flex:1; min-width:200px; background:#fff; padding:16px; border-radius:12px; border:1px solid var(--line); box-shadow:0 4px 12px rgba(0,0,0,0.02);">
-        <h3 style="margin:0 0 16px; font-size:15px; color:#333; display:flex; align-items:center; gap:6px;">
-          <span style="width:4px; height:16px; background:var(--primary); display:inline-block; border-radius:2px;"></span>
+      <div style="flex:1; min-width:220px; background:#fff; padding:18px; border-radius:12px; border:1px solid var(--line); box-shadow:0 4px 12px rgba(0,0,0,0.02);">
+        <h3 style="margin:0 0 16px; font-size:17px; font-weight:bold; color:#333; display:flex; align-items:center; gap:6px;">
+          <span style="width:4px; height:18px; background:var(--primary); display:inline-block; border-radius:2px;"></span>
           ${dim}
         </h3>
         ${dimHtml}
@@ -678,13 +678,13 @@ function renderChineseSubcategoryChecklist() {
 
   return `
     <div class="chinese-sub-checklist" style="margin:24px 0; padding:24px; background:var(--blue-soft); border-radius:16px; border:1px solid var(--line);">
-      <h3 style="margin:0 0 8px; font-size:16px; font-weight:600; color:var(--dark);">📋 國語科評量項目細項篩選</h3>
-      <p style="margin:0 0 16px; font-size:13px; color:var(--muted);">勾選本次評量要涵蓋的細項。AI 將只使用已勾選的項目進行出題與自動對齊，這能讓出題更集中，避免細項過多導致分散。</p>
+      <h3 style="margin:0 0 8px; font-size:18px; font-weight:700; color:var(--dark);">📋 國語科評量項目細項篩選</h3>
+      <p style="margin:0 0 16px; font-size:14px; color:var(--muted); line-height: 1.5;">勾選本次評量要涵蓋的細項。AI 將只使用已勾選的項目進行出題與自動對齊，這能讓出題更集中，避免細項過多導致分散。</p>
       
       <div class="actions" style="margin-bottom:16px; display:flex; gap:8px;">
-        <button class="secondary" data-action="chinese-sub-default" style="padding:6px 12px; font-size:13px; height:auto;">恢復預設選項</button>
-        <button class="secondary" data-action="chinese-sub-all" style="padding:6px 12px; font-size:13px; height:auto;">全選</button>
-        <button class="secondary" data-action="chinese-sub-none" style="padding:6px 12px; font-size:13px; height:auto;">清空</button>
+        <button class="secondary" data-action="chinese-sub-default" style="padding:6px 12px; font-size:14px; height:auto;">恢復預設選項</button>
+        <button class="secondary" data-action="chinese-sub-all" style="padding:6px 12px; font-size:14px; height:auto;">全選</button>
+        <button class="secondary" data-action="chinese-sub-none" style="padding:6px 12px; font-size:14px; height:auto;">清空</button>
       </div>
 
       <div style="display:flex; gap:16px; flex-wrap:wrap;">

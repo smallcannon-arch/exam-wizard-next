@@ -227,23 +227,23 @@ export function renderAuditTable({ project = {}, objectives = [], items = [], pl
         const dimScore = dimensionScoreMap[r.dimension];
         const dimPct = totalScore > 0 ? Math.round(dimScore / totalScore * 100) : 0;
         
-        rowHtml += `<td rowspan="${r.dimItemCount}" style="border:1px solid #000; padding:6px; text-align:center; font-size:12px; font-weight:bold; background:#fafafa;">建議：${recPct}<br><br>實際：<br>${dimScore}分 (${dimPct}%)</td>`;
-        rowHtml += `<td rowspan="${r.dimItemCount}" style="border:1px solid #000; padding:6px; text-align:center; font-size:12px; font-weight:bold; background:#fafafa;">${r.dimension}</td>`;
+        rowHtml += `<td rowspan="${r.dimItemCount}" style="border:1px solid #000; padding:6px; text-align:center; font-size:13px; font-weight:bold; background:#fafafa;">建議：${recPct}<br><br>實際：<br>${dimScore}分 (${dimPct}%)</td>`;
+        rowHtml += `<td rowspan="${r.dimItemCount}" style="border:1px solid #000; padding:6px; text-align:center; font-size:13px; font-weight:bold; background:#fafafa;">${r.dimension}</td>`;
       }
 
       if (r.isFirstProj) {
-        rowHtml += `<td rowspan="${r.projItemCount}" style="border:1px solid #000; padding:6px; text-align:center; font-size:12px; font-weight:bold; background:#fafafa;">${r.project}</td>`;
+        rowHtml += `<td rowspan="${r.projItemCount}" style="border:1px solid #000; padding:6px; text-align:center; font-size:13px; font-weight:bold; background:#fafafa;">${r.project}</td>`;
       }
 
       const isChecked = checkedSubs.has(r.item);
       const checkMark = isChecked ? "☑" : "☐";
-      rowHtml += `<td style="border:1px solid #000; padding:6px; font-size:12px; text-align:left;">${checkMark} ${r.item}</td>`;
-      rowHtml += `<td style="border:1px solid #000; padding:6px; font-size:12px; text-align:left;">${escapeHtml(itemDist)}</td>`;
-      rowHtml += `<td style="border:1px solid #000; padding:6px; font-size:12px; text-align:center;">${itemScore || ""}</td>`;
+      rowHtml += `<td style="border:1px solid #000; padding:6px; font-size:13px; text-align:left;">${checkMark} ${r.item}</td>`;
+      rowHtml += `<td style="border:1px solid #000; padding:6px; font-size:13px; text-align:left;">${escapeHtml(itemDist)}</td>`;
+      rowHtml += `<td style="border:1px solid #000; padding:6px; font-size:13px; text-align:center;">${itemScore || ""}</td>`;
 
       if (r.isFirstProj) {
         const projScore = projectScoreMap[r.dimension + "_" + r.project];
-        rowHtml += `<td rowspan="${r.projItemCount}" style="border:1px solid #000; padding:6px; text-align:center; font-size:12px; font-weight:bold;">${projScore || ""}</td>`;
+        rowHtml += `<td rowspan="${r.projItemCount}" style="border:1px solid #000; padding:6px; text-align:center; font-size:13px; font-weight:bold;">${projScore || ""}</td>`;
       }
 
       rowHtml += "</tr>";
@@ -253,17 +253,23 @@ export function renderAuditTable({ project = {}, objectives = [], items = [], pl
     return `
       <div class="audit-table-print" style="font-family:'Microsoft JhengHei', sans-serif; color:#000;">
         ${headerHtml}
-        <h4 style="margin:12px 0 8px 0; font-size:14px; color:#555; text-align:left;">（參照許育健教授國語科評量向度佔分比例建議擬定，目前年級分類：<strong>${getGradeCategory(project.grade) === "low" ? "低年級" : (getGradeCategory(project.grade) === "middle" ? "中年級" : "高年級")}</strong>）</h4>
+        <div style="margin: 12px 0; padding: 10px 14px; background: #fafafa; border: 1px solid #eee; border-radius: 6px; font-size: 13px; color: #444; line-height: 1.6; text-align: left;">
+          <strong>💡 許育健教授國語科評量向度佔分比例建議：</strong><br>
+          • <strong>低年級</strong>（一、二年級）：字詞短語 50% ｜ 句式語法 30% ｜ 段篇讀寫 20%<br>
+          • <strong>中年級</strong>（三、四年級）：字詞短語 30% ｜ 句式語法 50% ｜ 段篇讀寫 20%<br>
+          • <strong>高年級</strong>（五、六年級）：字詞短語 20% ｜ 句式語法 30% ｜ 段篇讀寫 50%<br>
+          （目前本份試卷適用年段：<strong style="color:var(--primary); font-size:14px;">${getGradeCategory(project.grade) === "low" ? "低年級" : (getGradeCategory(project.grade) === "middle" ? "中年級" : "高年級")}</strong>）
+        </div>
         <table style="width:100%; border-collapse:collapse; margin-bottom:24px;">
           <thead>
             <tr>
-              <th style="border:1px solid #000; padding:6px; background:#f5f5f5; width:15%;">分數佔比</th>
-              <th style="border:1px solid #000; padding:6px; background:#f5f5f5; width:10%;">評量向度</th>
-              <th style="border:1px solid #000; padding:6px; background:#f5f5f5; width:10%;">評量項目</th>
-              <th style="border:1px solid #000; padding:6px; background:#f5f5f5; width:18%;">細項舉例</th>
-              <th style="border:1px solid #000; padding:6px; background:#f5f5f5; text-align:left;">入題</th>
-              <th style="border:1px solid #000; padding:6px; background:#f5f5f5; width:8%;">佔分</th>
-              <th style="border:1px solid #000; padding:6px; background:#f5f5f5; width:8%;">小計</th>
+              <th style="border:1px solid #000; padding:6px; background:#f5f5f5; width:15%; font-size:13px;">分數佔比</th>
+              <th style="border:1px solid #000; padding:6px; background:#f5f5f5; width:10%; font-size:13px;">評量向度</th>
+              <th style="border:1px solid #000; padding:6px; background:#f5f5f5; width:10%; font-size:13px;">評量項目</th>
+              <th style="border:1px solid #000; padding:6px; background:#f5f5f5; width:18%; font-size:13px;">細項舉例</th>
+              <th style="border:1px solid #000; padding:6px; background:#f5f5f5; text-align:left; font-size:13px;">入題</th>
+              <th style="border:1px solid #000; padding:6px; background:#f5f5f5; width:8%; font-size:13px;">佔分</th>
+              <th style="border:1px solid #000; padding:6px; background:#f5f5f5; width:8%; font-size:13px;">小計</th>
             </tr>
           </thead>
           <tbody>
