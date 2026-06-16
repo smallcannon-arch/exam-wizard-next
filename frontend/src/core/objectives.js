@@ -136,8 +136,19 @@ function parseTableObjectiveInput(raw) {
       continue;
     }
 
-    // 2) 判斷是否為節數總結行或非目標行
-    if (mainText.includes("授課節數") || mainText.includes("總節數") || mainText.includes("學習節數") || mainText === "節數：" || mainText === "節數:") {
+    // 2) 判斷是否為表格欄位標頭、總結行或非目標行
+    if (
+      mainText.includes("指標編號") ||
+      mainText.includes("學習指標") ||
+      mainText.includes("授課節數") ||
+      mainText.includes("總節數") ||
+      mainText.includes("學習節數") ||
+      mainText.includes("目標配分") ||
+      mainText === "指標" ||
+      mainText === "目標" ||
+      mainText === "節數：" ||
+      mainText === "節數:"
+    ) {
       continue;
     }
 
