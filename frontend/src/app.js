@@ -75,23 +75,48 @@ function renderObjectivePreview() {
   const totalScore = getPlanTotals(state.planRows).totalScore;
   const totalPeriods = objectives.reduce((sum, objective) => sum + (Number(objective.periodCount) || 0), 0);
   const scoreById = objectiveScoresByPeriod(objectives, totalScore);
+  const customScores = state.customTargetScores || {};
 
   const rows = objectives.map((objective, index) => {
     const { code, label } = splitObjectiveCode(objective.text);
+    const hasCustom = customScores[objective.objectiveId] !== undefined;
+    const finalScore = hasCustom ? Number(customScores[objective.objectiveId]) : (scoreById.get(objective.objectiveId) || 0);
+
     return `<tr>
       <td>${escapeHtml(code || index + 1)}</td>
       <td>${escapeHtml(label)}</td>
       <td class="num">${escapeHtml(objective.periodCount)} 節</td>
-      <td class="num">${escapeHtml(scoreById.get(objective.objectiveId) || 0)} 分</td>
+      <td class="num" style="text-align:center; width:120px;">
+        <input type="number" 
+               class="step2-target-score-input" 
+               data-objective-id="${escapeHtml(objective.objectiveId)}" 
+               value="${finalScore}" 
+               min="0" 
+               style="width: 70px; text-align: center; display: inline-block; margin: 0; padding: 2px 4px; height: 28px; border-radius: 4px; border: 1px solid var(--line);" />
+        分
+      </td>
     </tr>`;
   }).join("");
 
+  const customScoresSum = objectives.reduce((sum, objective) => {
+    const hasCustom = customScores[objective.objectiveId] !== undefined;
+    return sum + (hasCustom ? Number(customScores[objective.objectiveId]) : (scoreById.get(objective.objectiveId) || 0));
+  }, 0);
+
+  let step2Warning = "";
+  if (customScoresSum !== totalScore) {
+    step2Warning = `<div style="color: #d9381e; background: #fff1f0; border: 1px solid #ffa39e; padding: 8px 12px; border-radius: 6px; margin-bottom: 12px; font-size: 13px; font-weight: 600;">
+      ⚠️ 目前目標配分合計為 ${customScoresSum} 分，與試卷預計總分 ${totalScore} 分不符，請手動調整使兩者相符。
+    </div>`;
+  }
+
   return `
-    <h3>目標配分預覽（依節數比例）</h3>
+    <h3>目標配分預覽（可手動調整配分）</h3>
+    ${step2Warning}
     <div class="table-wrap"><table>
-      <thead><tr><th>指標編號</th><th>學習指標／單元</th><th class="num">授課節數</th><th class="num">目標配分</th></tr></thead>
+      <thead><tr><th>指標編號</th><th>學習指標／單元</th><th class="num">授課節數</th><th class="num" style="text-align:center; width:120px;">目標配分</th></tr></thead>
       <tbody>${rows}</tbody>
-      <tfoot><tr><td></td><td><strong>合計</strong></td><td class="num"><strong>${totalPeriods} 節</strong></td><td class="num"><strong>${totalScore} 分</strong></td></tr></tfoot>
+      <tfoot><tr><td></td><td><strong>合計</strong></td><td class="num"><strong>${totalPeriods} 節</strong></td><td class="num" style="text-align:center; color:${customScoresSum === totalScore ? "inherit" : "#d9381e"};"><strong>${customScoresSum} 分</strong></td></tr></tfoot>
     </table></div>
   `;
 }
@@ -127,6 +152,14 @@ function buildBlueprint() {
 
   const totalScore = planCheck.totalScore;
   const scoreById = objectiveScoresByPeriod(objectives, totalScore);
+  const customScores = state.customTargetScores || {};
+
+  objectives.forEach(obj => {
+    if (customScores[obj.objectiveId] !== undefined) {
+      scoreById.set(obj.objectiveId, Number(customScores[obj.objectiveId]));
+    }
+  });
+
   const objectiveTargets = computeObjectiveShares(objectives).map((row) => {
     const objective = objectives.find((entry) => entry.objectiveId === row.objectiveId);
     return {
@@ -271,6 +304,7 @@ async function organizeObjectives() {
     setState({ errors: ["沒有可整理的內容，請先把指標貼進「學習目標」欄。"], messages: [] });
     return;
   }
+  state.customTargetScores = {};
 
   busy = true;
   busyItemId = null;
@@ -1412,6 +1446,9 @@ function updateStateFromEvent(event) {
 
   if (field) {
     state[field] = event.target.value;
+    if (field === "objectiveInput") {
+      state.customTargetScores = {};
+    }
     return true;
   }
 
@@ -1590,6 +1627,17 @@ app.addEventListener("change", (event) => {
         }
       });
     }
+    
+    render();
+    return;
+  }
+
+  if (event.target.classList.contains("step2-target-score-input")) {
+    const objectiveId = event.target.dataset.objectiveId;
+    const newScore = Number(event.target.value) || 0;
+    
+    state.customTargetScores = state.customTargetScores || {};
+    state.customTargetScores[objectiveId] = newScore;
     
     render();
     return;
