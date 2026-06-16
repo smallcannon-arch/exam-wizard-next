@@ -810,10 +810,42 @@ function renderStep2() {
     }
 
     topGuideHtml = `
-      <div class="notice">
-        <strong>💡 智慧匯入大補帖（推薦）：</strong>
-        <p style="margin:6px 0 0;">拖曳或選取整份廠商備課資料夾（如 <code>1.備課資料</code> ➔ <code>05形音輕鬆學</code> 或 <code>08各課短語句型</code> 的 PDF 資料夾），系統會自動過濾篩選並用 AI 一鍵填入下方的目標與摘要。</p>
-        <p style="margin:6px 0 0; font-size:13px; color:var(--muted);">您也可以使用手動方式，透過 ${gemLink(GEM_OBJECTIVES_URL, "「目標提取」Gem")} 提取文字貼入下方。</p>
+      <div class="notice" style="background: var(--blue-soft); border-left: 4px solid var(--primary); padding: 16px; border-radius: 12px; margin-bottom: 20px;">
+        <strong style="font-size: 16px; display: block; margin-bottom: 8px; color: var(--primary);">💡 學習目標與教材摘要匯入指引</strong>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; margin-bottom: 12px;">
+          <div style="background: #fff; padding: 12px; border-radius: 8px; border: 1px solid var(--line);">
+            <strong style="color: var(--primary); display: block; margin-bottom: 6px; font-size: 14px;">方法一：使用內建 AI 快速提取 (限 5 檔內)</strong>
+            <p style="margin: 0; font-size: 13px; color: var(--muted); line-height: 1.5;">
+              直接在下方拖入 <strong>3~5 個</strong> 核心備課檔案（如個別課次的形音、句型 PDF），使用 <strong>追加模式</strong> 分批提取，最為省時。
+            </p>
+          </div>
+          
+          <div style="background: #fff; padding: 12px; border-radius: 8px; border: 1px solid var(--line);">
+            <strong style="color: var(--primary); display: block; margin-bottom: 6px; font-size: 14px;">方法二：使用外部 Google Gem 批次提取 (適合全冊/大範圍)</strong>
+            <p style="margin: 0; font-size: 13px; color: var(--muted); line-height: 1.5;">
+              開啟外部特製 Gem，一次拖入多達 <strong>20 個</strong> 檔案分析。完成後將文字複製貼回下方的文字框中。
+            </p>
+          </div>
+        </div>
+
+        <div style="padding-top: 12px; border-top: 1px dashed var(--line); font-size: 13px;">
+          <strong style="display: block; margin-bottom: 6px; color: var(--muted);">👉 外部 Gem 具體操作步驟：</strong>
+          <ul style="margin: 0; padding-left: 20px; line-height: 1.6; color: var(--muted);">
+            <li style="margin-bottom: 6px;">
+              <strong>提取學習目標：</strong>點選 
+              <a href="${GEM_OBJECTIVES_URL}" target="_blank" style="color: var(--primary); font-weight: 600; text-decoration: underline;">🔗 開啟「目標提取」Gem</a>
+              。上傳<strong>「課本目錄或單元活動架構」</strong>檔案，並將產生的 <code>目標｜節數</code> 文字貼回下方「學習目標」框。
+              <button class="secondary" data-copy-prompt="objectives" style="padding: 2px 6px; font-size: 11px; height: auto; margin-left: 6px; cursor: pointer;">📋 複製備用提示詞</button>
+            </li>
+            <li>
+              <strong>提取教材重點：</strong>點選 
+              <a href="${GEM_MATERIAL_URL}" target="_blank" style="color: var(--primary); font-weight: 600; text-decoration: underline;">🔗 開啟「教材提取」Gem</a>
+              。上傳<strong>「形音輕鬆學、短語句型練習」</strong>等語句細節檔，將產生的重點文字貼回下方「教材摘要」框。
+              <button class="secondary" data-copy-prompt="material" style="padding: 2px 6px; font-size: 11px; height: auto; margin-left: 6px; cursor: pointer;">📋 複製備用提示詞</button>
+            </li>
+          </ul>
+        </div>
       </div>
       <div class="drop-zone" id="dropZone" style="border: 2px dashed var(--line); border-radius: 18px; padding: 24px; text-align: center; cursor: pointer; color: var(--muted); background: var(--blue-soft); transition: all 0.2s; margin-bottom: 16px;">
         <span class="drop-zone-prompt" style="font-weight:600; display:block; margin-bottom:6px;">📂 拖曳備課資料夾或 PDF 檔案至此，或點擊此處選取</span>
@@ -827,15 +859,27 @@ function renderStep2() {
     `;
   } else {
     topGuideHtml = `
-      <div class="notice">
-        <strong>用兩個 Gem 分別抓「學習目標」與「教材重點」（建議；也可自己填）</strong>
-        <ol class="gem-steps">
-          <li><strong>學習目標：</strong>${gemLink(GEM_OBJECTIVES_URL, "開啟「目標提取」Gem")}，上傳該課的課本／單元活動架構，把它輸出的每行（<code>目標文字｜節數</code>）整段貼到下方「<strong>學習目標</strong>」欄。</li>
-          <li><strong>教材重點：</strong>${gemLink(GEM_MATERIAL_URL, "開啟「教材提取」Gem")}，上傳該課的課本／習作，把它輸出的各單元重點整段貼到下方「<strong>教材摘要</strong>」欄。</li>
-          <li>兩個 Gem 都<strong>不必</strong>上傳目次、解答或純教學 PPT。</li>
-          <li>確認或修改後按「建立配題與藍圖」，系統會依各目標<strong>節數比例</strong>配分出題。</li>
-        </ol>
-        不想用 Gem 也可以：直接在下方「學習目標」欄輸入，每行 <code>目標文字｜節數</code>（例：<code>1-2 動物適應環境的策略｜2</code>）。
+      <div class="notice" style="background: var(--blue-soft); border-left: 4px solid var(--primary); padding: 16px; border-radius: 12px; margin-bottom: 20px;">
+        <strong style="font-size: 16px; display: block; margin-bottom: 8px; color: var(--primary);">💡 學習目標與教材摘要匯入指引</strong>
+        <p style="font-size: 14px; margin: 0 0 12px 0; color: var(--muted);">推薦使用外部 Gemini Gems 進行大範圍提取，或手動填寫。</p>
+        
+        <div style="font-size: 13px;">
+          <strong style="display: block; margin-bottom: 6px; color: var(--muted);">👉 具體操作步驟：</strong>
+          <ul style="margin: 0; padding-left: 20px; line-height: 1.6; color: var(--muted);">
+            <li style="margin-bottom: 6px;">
+              <strong>學習目標：</strong>點選 
+              <a href="${GEM_OBJECTIVES_URL}" target="_blank" style="color: var(--primary); font-weight: 600; text-decoration: underline;">🔗 開啟「目標提取」Gem</a>
+              。上傳<strong>「課本目錄或單元架構」</strong>，將輸出的每行 <code>目標文字｜節數</code> 貼入下方「學習目標」欄。
+              <button class="secondary" data-copy-prompt="objectives" style="padding: 2px 6px; font-size: 11px; height: auto; margin-left: 6px; cursor: pointer;">📋 複製備用提示詞</button>
+            </li>
+            <li>
+              <strong>教材重點：</strong>點選 
+              <a href="${GEM_MATERIAL_URL}" target="_blank" style="color: var(--primary); font-weight: 600; text-decoration: underline;">🔗 開啟「教材提取」Gem</a>
+              。上傳<strong>「課本內容或單元重點」</strong>，將產生的摘要重點貼入下方「教材摘要」欄。
+              <button class="secondary" data-copy-prompt="material" style="padding: 2px 6px; font-size: 11px; height: auto; margin-left: 6px; cursor: pointer;">📋 複製備用提示詞</button>
+            </li>
+          </ul>
+        </div>
       </div>
     `;
   }
@@ -1474,6 +1518,43 @@ app.addEventListener("click", (event) => {
   if (dropZone) {
     const fileInputFiles = document.getElementById("fileInputFiles");
     if (fileInputFiles) fileInputFiles.click();
+    return;
+  }
+
+  const copyPromptBtn = event.target.closest("[data-copy-prompt]");
+  if (copyPromptBtn) {
+    event.stopPropagation();
+    const type = copyPromptBtn.dataset.copyPrompt;
+    const promptText = type === "objectives"
+      ? `你是一位臺灣國小課程設計專家。請閱讀我上傳的教材檔案（例如課本目錄、活動架構或教學單元大綱），萃取可評量的學習目標。
+請針對每個學習目標估算建議教學節數（periodCount，為正整數，通常為 1~3 節）。
+請嚴格以下列格式輸出，每行一個目標，不要有任何額外的說明文字：
+[學習目標內容]｜[節數]
+例如：
+1-1 能認讀本課生字與語詞｜1
+1-2 能掌握轉折複句的用法｜2`
+      : `你是一位臺灣國小命題與教材分析專家。請閱讀我上傳的教材檔案（如課文、生字表、短語句型練習單、重點整理等），為我整理出適用於命題的「教材重點摘要」。
+請依課次或單元整理，並列出以下項目：
+1. 生字與語詞（特別標記容易出錯的字音字形與釋義）
+2. 重要短語與句型（附帶例句）
+3. 常用修辭手法與課文例句
+4. 核心概念、定理或主要事實（若是國語以外科目）
+請用精煉、條理分明的條列式中文輸出，字數控制在 400-800 字之間。`;
+
+    navigator.clipboard.writeText(promptText)
+      .then(() => {
+        alert("提示詞已成功複製到剪貼簿！可直接貼到 Gemini / ChatGPT 使用。");
+      })
+      .catch((err) => {
+        console.error("無法複製:", err);
+        const textarea = document.createElement("textarea");
+        textarea.value = promptText;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+        alert("提示詞已成功複製到剪貼簿！可直接貼到 Gemini / ChatGPT 使用。");
+      });
     return;
   }
 
