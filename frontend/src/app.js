@@ -3,7 +3,7 @@ import { makeObjectiveId } from "./core/ids.js";
 import { summarizeScoreByObjective } from "./core/scoring.js";
 import { buildItemSlots, buildSectionsByQuestionType, distributeObjectivesToSlots } from "./core/blueprint.js";
 import { buildPlanSequences, getPlanTotals, validatePlan } from "./core/plan.js";
-import { getQuestionTypeOptions, SUBJECT_OPTIONS, CHINESE_AUDIT_STRUCTURE, getChineseDimension, getChineseSubcategory } from "./core/questionTypes.js";
+import { getQuestionTypeOptions, SUBJECT_OPTIONS, CHINESE_AUDIT_STRUCTURE, getChineseDimension, getChineseSubcategory, getChineseDimensionBySubcategory } from "./core/questionTypes.js";
 import { generateExcelXml } from "./core/excelGenerator.js";
 import { validateExam } from "./core/validation.js";
 import { replaceItemById } from "./core/replaceItem.js";
@@ -141,7 +141,21 @@ function buildBlueprint() {
   const distributedSlots = distributeObjectivesToSlots(slotResult.slots, objectives, scoreById);
   if (state.project.subject === "國語") {
     distributedSlots.forEach((slot) => {
-      slot.chineseDimension = getChineseDimension(slot.questionType);
+      const obj = objectives.find(o => o.objectiveId === slot.primaryObjectiveId);
+      if (obj) {
+        const { label } = splitObjectiveCode(obj.text);
+        const dimension = getChineseDimensionBySubcategory(label);
+        if (dimension) {
+          slot.chineseDimension = dimension;
+          slot.chineseSubcategory = label;
+        } else {
+          slot.chineseDimension = getChineseDimension(slot.questionType);
+          slot.chineseSubcategory = getChineseSubcategory(slot.questionType, slot.chineseDimension);
+        }
+      } else {
+        slot.chineseDimension = getChineseDimension(slot.questionType);
+        slot.chineseSubcategory = getChineseSubcategory(slot.questionType, slot.chineseDimension);
+      }
     });
   }
 
@@ -205,12 +219,17 @@ if (!generatedCheck.ok) {
 }
 
 // 補齊 objectiveIds（AI 有時只回 primaryObjectiveId），避免後續檢核誤判缺漏。
-const importedItems = result.items.map((item) => ({
-  ...item,
-  objectiveIds: (Array.isArray(item.objectiveIds) && item.objectiveIds.length > 0)
-    ? item.objectiveIds
-    : (item.primaryObjectiveId ? [item.primaryObjectiveId] : []),
-}));
+const importedItems = result.items.map((item) => {
+  const slot = state.intents.find(s => s.itemId === item.itemId);
+  return {
+    ...item,
+    objectiveIds: (Array.isArray(item.objectiveIds) && item.objectiveIds.length > 0)
+      ? item.objectiveIds
+      : (item.primaryObjectiveId ? [item.primaryObjectiveId] : []),
+    chineseDimension: item.chineseDimension || slot?.chineseDimension || getChineseDimension(item.questionType),
+    chineseSubcategory: item.chineseSubcategory || slot?.chineseSubcategory || getChineseSubcategory(item.questionType, item.chineseDimension || slot?.chineseDimension),
+  };
+});
 
 const sectionResult = buildSectionsByQuestionType({
   items: importedItems,
@@ -822,6 +841,48 @@ function renderStep3Or4() {
   const planRows = state.planRows;
 
   let targetsSectionHtml = "";
+  
+  const totalScore = getPlanTotals(state.planRows).totalScore;
+  const targetScoresSum = targets.reduce((sum, t) => sum + (Number(t.targetScore) || 0), 0);
+  
+  let targetScoreWarning = "";
+  if (targetScoresSum !== totalScore) {
+    targetScoreWarning = `<p class="warning" style="color: #d9381e; background: #fff1f0; border: 1px solid #ffa39e; padding: 10px 14px; border-radius: 8px; margin-bottom: 16px; font-weight: 600;">
+      ⚠️ 目前各學習目標配分加總為 ${targetScoresSum} 分，與試卷總分 ${totalScore} 分不符（請調整配分以符合總分）。
+    </p>`;
+  }
+
+  const targetsTableHtml = `
+    <h3>學習目標與目標配分（可手動調整配分）</h3>
+    <div class="table-wrap"><table>
+      <thead><tr><th>目標</th><th>文字</th><th class="num">節數</th><th class="num">占總時數</th><th class="num" style="text-align:center; width:120px;">目標配分</th></tr></thead>
+      <tbody>${targets.map((row) => `<tr>
+        <td>${escapeHtml(row.objectiveId)}</td>
+        <td>${escapeHtml(row.text)}</td>
+        <td class="num">${escapeHtml(row.periodCount)} 節</td>
+        <td class="num">${escapeHtml(formatPercent(row.share))}</td>
+        <td class="num" style="text-align:center;">
+          <input type="number" 
+                 class="target-score-input" 
+                 data-objective-id="${escapeHtml(row.objectiveId)}" 
+                 value="${row.targetScore}" 
+                 min="0" 
+                 style="width: 70px; text-align: center; display: inline-block; margin: 0; padding: 2px 4px; height: 28px; border-radius: 4px; border: 1px solid var(--line);" />
+          分
+        </td>
+      </tr>`).join("")}</tbody>
+      <tfoot>
+        <tr style="font-weight:bold; background:#fafafa;">
+          <td></td>
+          <td>合計</td>
+          <td class="num">${targets.reduce((sum, t) => sum + (Number(t.periodCount) || 0), 0)} 節</td>
+          <td class="num">100%</td>
+          <td class="num" style="text-align:center; color:${targetScoresSum === totalScore ? "inherit" : "#d9381e"};">${targetScoresSum} 分</td>
+        </tr>
+      </tfoot>
+    </table></div>
+  `;
+
   if (isChinese) {
     const dimScores = { "字詞短語": 0, "句式語法": 0, "段篇讀寫": 0 };
     intents.forEach((slot) => {
@@ -835,8 +896,9 @@ function renderStep3Or4() {
     const recs = getMandarinRecommendation(state.project.grade);
 
     targetsSectionHtml = `
+      ${targetScoreWarning}
       <h3>國語科評量向度配分比例（點選下方題位向度可即時調整）</h3>
-      <div class="table-wrap"><table>
+      <div class="table-wrap" style="margin-bottom:20px;"><table>
         <thead><tr><th>評量向度</th><th>建議佔分比</th><th>預估配分 (比例)</th></tr></thead>
         <tbody>
           <tr>
@@ -856,14 +918,12 @@ function renderStep3Or4() {
           </tr>
         </tbody>
       </table></div>
+      ${targetsTableHtml}
     `;
   } else {
     targetsSectionHtml = `
-      <h3>學習目標與配分占比（依節數）</h3>
-      <div class="table-wrap"><table>
-        <thead><tr><th>目標</th><th>文字</th><th>節數</th><th>占總時數</th><th>目標配分(約)</th></tr></thead>
-        <tbody>${targets.map((row) => `<tr><td>${escapeHtml(row.objectiveId)}</td><td>${escapeHtml(row.text)}</td><td>${escapeHtml(row.periodCount)}</td><td>${escapeHtml(formatPercent(row.share))}</td><td>${escapeHtml(row.targetScore)}</td></tr>`).join("")}</tbody>
-      </table></div>
+      ${targetScoreWarning}
+      ${targetsTableHtml}
     `;
   }
 
@@ -1505,6 +1565,36 @@ app.addEventListener("click", (event) => {
 
 // 配題表的題型/題數/配分或科目改變時（blur 觸發），重繪以更新小計與合計。
 app.addEventListener("change", (event) => {
+  if (event.target.classList.contains("target-score-input")) {
+    const objectiveId = event.target.dataset.objectiveId;
+    const newScore = Number(event.target.value) || 0;
+    
+    const targetObj = state.objectiveTargets.find(t => t.objectiveId === objectiveId);
+    if (targetObj) {
+      targetObj.targetScore = newScore;
+    }
+    
+    const scoreById = new Map(state.objectiveTargets.map(t => [t.objectiveId, t.targetScore]));
+    state.intents = distributeObjectivesToSlots(state.intents, state.objectives, scoreById);
+    
+    if (state.project.subject === "國語") {
+      state.intents.forEach((slot) => {
+        const obj = state.objectives.find(o => o.objectiveId === slot.primaryObjectiveId);
+        if (obj) {
+          const { label } = splitObjectiveCode(obj.text);
+          const dimension = getChineseDimensionBySubcategory(label);
+          if (dimension) {
+            slot.chineseDimension = dimension;
+            slot.chineseSubcategory = label;
+          }
+        }
+      });
+    }
+    
+    render();
+    return;
+  }
+
   if (event.target.id === "appendModeCheckbox") {
     state.isAppendMode = event.target.checked;
     render();

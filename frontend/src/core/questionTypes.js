@@ -138,3 +138,14 @@ export const CHINESE_AUDIT_STRUCTURE = [
     items: ["句子變化", "看圖寫作", "限制習寫", "主題習寫", "感想心得", "寫作技巧"]
   }
 ];
+
+export function getChineseDimensionBySubcategory(subcategory) {
+  const s = String(subcategory || "").trim();
+  for (const group of CHINESE_AUDIT_STRUCTURE) {
+    if (group.items.includes(s)) {
+      return group.dimension;
+    }
+  }
+  return null;
+}
+
