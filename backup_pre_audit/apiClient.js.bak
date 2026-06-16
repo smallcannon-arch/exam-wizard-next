@@ -67,20 +67,3 @@ export function regenerateItemViaApi({
     },
   });
 }
-
-export function extractObjectivesViaApi({
-  apiBaseUrl,
-  project,
-  materialText,
-  files,
-}) {
-  return postJson({
-    apiBaseUrl,
-    path: "/extract-objectives",
-    body: {
-      project,
-      materialText,
-      files,
-    },
-  });
-}

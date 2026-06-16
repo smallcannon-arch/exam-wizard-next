@@ -22,6 +22,21 @@ function getPrimaryObjective(item) {
   return "";
 }
 
+function getParentId(itemId) {
+  const id = normalizeId(itemId);
+  const hyphenCount = (id.match(/-/g) || []).length;
+  if (hyphenCount > 1) {
+    const hyphenIndex = id.lastIndexOf("-");
+    return id.substring(0, hyphenIndex);
+  }
+  return id;
+}
+
+function isGroupItem(itemId) {
+  const id = normalizeId(itemId);
+  return (id.match(/-/g) || []).length > 1;
+}
+
 export function validateGeneratedPaper({ slots = [], objectives = [], items = [] } = {}) {
   const errors = [];
   const warnings = [];
@@ -35,82 +50,152 @@ export function validateGeneratedPaper({ slots = [], objectives = [], items = []
 
   const objectiveIdSet = new Set(objectives.map((objective) => normalizeId(objective?.objectiveId)).filter(Boolean));
   const slotById = new Map(slots.map((slot) => [normalizeId(slot.itemId), slot]));
-  const seen = new Set();
   const covered = new Set();
 
+  // Group items by parent ID (e.g. "Q-041-1" -> "Q-041", "Q-001" -> "Q-001")
+  const itemsByParentId = new Map();
   for (const item of items) {
     if (!isPlainObject(item)) {
       errors.push("AI 回傳某題不是物件。");
       continue;
     }
-
     const id = normalizeId(item.itemId);
     if (!id) {
       errors.push("某題缺少 itemId。");
       continue;
     }
 
-    const slot = slotById.get(id);
+    const parentId = getParentId(id);
+    if (!itemsByParentId.has(parentId)) {
+      itemsByParentId.set(parentId, []);
+    }
+    itemsByParentId.get(parentId).push(item);
+  }
+
+  const seenParentIds = new Set();
+
+  for (const [parentId, groupItems] of itemsByParentId.entries()) {
+    const slot = slotById.get(parentId);
     if (!slot) {
-      errors.push(`${id}：不在題位清單內。`);
+      errors.push(`${parentId}：不在題位清單內。`);
       continue;
     }
-    if (seen.has(id)) {
-      errors.push(`${id}：AI 回傳重複題號。`);
-      continue;
-    }
-    seen.add(id);
+    seenParentIds.add(parentId);
 
-    if (normalizeId(item.questionType) !== normalizeId(slot.questionType)) {
-      errors.push(`${id}：題型應為「${slot.questionType}」，不可更動。`);
-    }
-    if (Number(item.score) !== Number(slot.score)) {
-      errors.push(`${id}：配分應為 ${slot.score} 分，不可更動。`);
-    }
-    if (!hasText(item.question)) {
-      errors.push(`${id}：缺少 question。`);
-    }
-    if (!hasText(item.answer)) {
-      errors.push(`${id}：缺少 answer。`);
-    }
+    const isGroup = groupItems.length > 1 || isGroupItem(groupItems[0].itemId);
 
-    const CHOICE_LIKE = ["選擇題", "圖表判讀題", "實驗探究題"];
-    if (CHOICE_LIKE.includes(normalizeId(item.questionType))) {
-      const optionCount = Array.isArray(item.options) ? item.options.length : 0;
-      if (optionCount < 2) {
-        errors.push(`${id}：${item.questionType}採選擇題形式，缺少選項。`);
-      } else if (optionCount < 4) {
-        warnings.push(`提醒：${id}（${item.questionType}）只有 ${optionCount} 個選項（建議 4 個）。`);
+    if (isGroup) {
+      if (normalizeId(slot.questionType) !== "學力檢測題") {
+        errors.push(`${parentId}：該題型為「${slot.questionType}」，不可拆分為子題。`);
       }
-    }
 
-    const primary = getPrimaryObjective(item);
-    if (!primary) {
-      errors.push(`${id}：缺少對應學習目標。`);
-    } else if (objectiveIdSet.size > 0 && !objectiveIdSet.has(primary)) {
-      errors.push(`${id}：對應目標 ${primary} 不在學習目標清單內。`);
-    }
+      const subItemIds = new Set();
+      let totalGroupScore = 0;
+      let hasStimulus = false;
 
-    if (Array.isArray(item.objectiveIds)) {
-      for (const objectiveId of item.objectiveIds) {
-        const normalized = normalizeId(objectiveId);
-        if (objectiveIdSet.has(normalized)) covered.add(normalized);
+      for (const item of groupItems) {
+        const subId = normalizeId(item.itemId);
+        if (subItemIds.has(subId)) {
+          errors.push(`${subId}：AI 回傳重複子題號。`);
+        }
+        subItemIds.add(subId);
+
+        totalGroupScore += Number(item.score || 0);
+
+        if (hasText(item.stimulus)) {
+          hasStimulus = true;
+        }
+
+        if (!hasText(item.question)) {
+          errors.push(`${subId}：缺少 question。`);
+        }
+        if (!hasText(item.answer)) {
+          errors.push(`${subId}：缺少 answer。`);
+        }
+
+        if (normalizeId(item.questionType) === "學力檢測題") {
+          const optionCount = Array.isArray(item.options) ? item.options.length : 0;
+          if (optionCount < 2) {
+            errors.push(`${subId}：學力檢測子題採選擇題形式，缺少選項。`);
+          } else if (optionCount < 4) {
+            warnings.push(`提醒：${subId}（學力檢測子題）只有 ${optionCount} 個選項（建議 4 個）。`);
+          }
+        }
+
+        const primary = getPrimaryObjective(item);
+        if (!primary) {
+          errors.push(`${subId}：缺少對應學習目標。`);
+        } else if (objectiveIdSet.size > 0 && !objectiveIdSet.has(primary)) {
+          errors.push(`${subId}：對應目標 ${primary} 不在學習目標清單內。`);
+        }
+
+        if (Array.isArray(item.objectiveIds)) {
+          for (const objectiveId of item.objectiveIds) {
+            const normalized = normalizeId(objectiveId);
+            if (objectiveIdSet.has(normalized)) covered.add(normalized);
+          }
+        }
+        if (objectiveIdSet.has(primary)) covered.add(primary);
       }
+
+      if (totalGroupScore !== Number(slot.score)) {
+        errors.push(`${parentId}：子題配分總和為 ${totalGroupScore} 分，但題位設定配分為 ${slot.score} 分，配分不合。`);
+      }
+
+      if (!hasStimulus) {
+        errors.push(`${parentId}：學力檢測題組缺少共同的 stimulus (引言 / 情境段落)。`);
+      }
+
+    } else {
+      const item = groupItems[0];
+      const id = normalizeId(item.itemId);
+
+      if (normalizeId(item.questionType) !== normalizeId(slot.questionType)) {
+        errors.push(`${id}：題型應為「${slot.questionType}」，不可更動。`);
+      }
+      if (Number(item.score) !== Number(slot.score)) {
+        errors.push(`${id}：配分應為 ${slot.score} 分，不可更動。`);
+      }
+      if (!hasText(item.question)) {
+        errors.push(`${id}：缺少 question。`);
+      }
+      if (!hasText(item.answer)) {
+        errors.push(`${id}：缺少 answer。`);
+      }
+
+      const CHOICE_LIKE = ["選擇題", "圖表判讀題", "實驗探究題"];
+      if (CHOICE_LIKE.includes(normalizeId(item.questionType))) {
+        const optionCount = Array.isArray(item.options) ? item.options.length : 0;
+        if (optionCount < 2) {
+          errors.push(`${id}：${item.questionType}採選擇題形式，缺少選項。`);
+        } else if (optionCount < 4) {
+          warnings.push(`提醒：${id}（${item.questionType}）只有 ${optionCount} 個選項（建議 4 個）。`);
+        }
+      }
+
+      const primary = getPrimaryObjective(item);
+      if (!primary) {
+        errors.push(`${id}：缺少對應學習目標。`);
+      } else if (objectiveIdSet.size > 0 && !objectiveIdSet.has(primary)) {
+        errors.push(`${id}：對應目標 ${primary} 不在學習目標清單內。`);
+      }
+
+      if (Array.isArray(item.objectiveIds)) {
+        for (const objectiveId of item.objectiveIds) {
+          const normalized = normalizeId(objectiveId);
+          if (objectiveIdSet.has(normalized)) covered.add(normalized);
+        }
+      }
+      if (objectiveIdSet.has(primary)) covered.add(primary);
     }
-    if (objectiveIdSet.has(primary)) covered.add(primary);
   }
 
   for (const slot of slots) {
-    if (!seen.has(normalizeId(slot.itemId))) {
+    if (!seenParentIds.has(normalizeId(slot.itemId))) {
       errors.push(`${slot.itemId}：AI 未回傳此題。`);
     }
   }
 
-  if (items.length !== slots.length) {
-    errors.push(`AI 回傳題數 ${items.length}，與題位數 ${slots.length} 不一致。`);
-  }
-
-  // 目標覆蓋：提醒，不擋下匯入
   const uncovered = [];
   for (const objectiveId of objectiveIdSet) {
     if (!covered.has(objectiveId)) uncovered.push(objectiveId);

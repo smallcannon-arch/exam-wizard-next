@@ -35,16 +35,10 @@ export function objectivesToInputText(objectives) {
   return objectives
     .map((objective) => ({
       text: asText(objective?.text),
-      unitName: asText(objective?.unitName),
       periodCount: toPositiveInteger(objective?.periodCount, 1),
     }))
     .filter((objective) => objective.text)
-    .map((objective) => {
-      if (objective.unitName && objective.unitName !== "未分單元") {
-        return `${objective.unitName} ｜ ${objective.text} ｜ ${objective.periodCount}`;
-      }
-      return `${objective.text}｜${objective.periodCount}`;
-    })
+    .map((objective) => `${objective.text}｜${objective.periodCount}`)
     .join("\n");
 }
 
@@ -65,13 +59,6 @@ function stripInlineNode(text) {
 
 function parseFlatLine(line) {
   const parts = String(line).split(/[｜|\t]/).map((part) => part.trim());
-  if (parts.length >= 3) {
-    return {
-      unitName: parts[0],
-      text: parts[1],
-      periodCount: toPositiveInteger(parts[2], 1)
-    };
-  }
   let text = parts[0] || "";
   let period = parts[1];
   if (period === undefined) {
@@ -91,15 +78,6 @@ function distributePeriods(total, count) {
   return largestRemainder(base, Array.from({ length: count }, (_, index) => ({ key: index, weight: 1 }))).map((row) => row.count || 1);
 }
 
-function getUnitNameFromText(text, fallback = "未分單元") {
-  const code = extractLeadingCode(text);
-  if (code) {
-    const parts = code.split("-");
-    if (parts[0]) return `第${parts[0]}單元`;
-  }
-  return fallback;
-}
-
 export function parseObjectiveInput(input) {
   const raw = String(input || "").trim();
   if (!raw) return [];
@@ -110,14 +88,11 @@ export function parseObjectiveInput(input) {
       const data = JSON.parse(raw);
       const list = Array.isArray(data) ? data : (Array.isArray(data?.objectives) ? data.objectives : []);
       const mapped = list
-        .map((objective) => {
-          const textStr = asText(objective?.text ?? objective?.objective ?? objective?.description ?? objective?.目標);
-          return {
-            text: textStr,
-            unitName: asText(objective?.unitName ?? objective?.單元) || getUnitNameFromText(textStr, "未分單元"),
-            periodCount: toPositiveInteger(objective?.periodCount ?? objective?.periods ?? objective?.節數 ?? objective?.節, 1),
-          };
-        })
+        .map((objective) => ({
+          text: asText(objective?.text ?? objective?.objective ?? objective?.description ?? objective?.目標),
+          unitName: asText(objective?.unitName ?? objective?.單元),
+          periodCount: toPositiveInteger(objective?.periodCount ?? objective?.periods ?? objective?.節數 ?? objective?.節, 1),
+        }))
         .filter((objective) => objective.text);
       if (mapped.length > 0) return mapped;
     } catch {
@@ -136,18 +111,10 @@ export function parseObjectiveInput(input) {
       const periods = distributePeriods(unit.periodCount, unit.indicators.length);
       unit.indicators.forEach((indicator, index) => {
         const code = unit.code ? `${unit.code}-${index + 1}` : "";
-        const textStr = code ? `${code} ${indicator}` : indicator;
-        out.push({
-          text: textStr,
-          periodCount: periods[index] || 1,
-          unitName: unit.name || getUnitNameFromText(textStr, "未分單元")
-        });
+        out.push({ text: code ? `${code} ${indicator}` : indicator, periodCount: periods[index] || 1 });
       });
     } else if (unit.name) {
-      out.push({
-        text: unit.name,
-        periodCount: unit.periodCount || 1
-      });
+      out.push({ text: unit.name, periodCount: unit.periodCount || 1 });
     }
     unit = null;
   };
@@ -174,26 +141,15 @@ export function parseObjectiveInput(input) {
     if (bullet) {
       const text = bullet[1].trim();
       if (!text) continue;
-      if (unit) {
-        unit.indicators.push(text);
-      } else {
-        const parsed = parseFlatLine(text);
-        const uName = parsed.unitName || getUnitNameFromText(parsed.text, "");
-        const obj = { ...parsed };
-        if (uName) obj.unitName = uName;
-        out.push(obj);
-      }
+      if (unit) unit.indicators.push(text);
+      else out.push(parseFlatLine(text));
       continue;
     }
 
     // 標準行：含「｜」或結尾帶節數 → 直接當一個目標
     if (/[｜|\t]/.test(line) || /\d+\s*節?$/.test(line)) {
       flushUnit();
-      const parsed = parseFlatLine(line);
-      const uName = parsed.unitName || getUnitNameFromText(parsed.text, "");
-      const obj = { ...parsed };
-      if (uName) obj.unitName = uName;
-      out.push(obj);
+      out.push(parseFlatLine(line));
       continue;
     }
 

@@ -7,14 +7,13 @@ import { getQuestionTypeOptions, SUBJECT_OPTIONS } from "./core/questionTypes.js
 import { validateExam } from "./core/validation.js";
 import { replaceItemById } from "./core/replaceItem.js";
 import { renderStudentPaper, renderTeacherPaper } from "./core/renderPaper.js";
-import { generateItemsViaApi, regenerateItemViaApi, extractObjectivesViaApi } from "./apiClient.js";
-import { parseObjectiveInput, normalizeExtractedObjectives, objectivesToInputText } from "./core/objectives.js";
+import { generateItemsViaApi, regenerateItemViaApi } from "./apiClient.js";
+import { parseObjectiveInput } from "./core/objectives.js";
 import { computeObjectiveShares, formatPercent } from "./core/periods.js";
 import { largestRemainder } from "./core/distribute.js";
 import { getApiBaseUrl } from "./config.js";
 import { validateGeneratedPaper } from "./core/validateGeneratedPaper.js";
 import { buildAuditRows } from "./core/auditRows.js";
-import { renderAuditTable } from "./core/renderAuditTable.js";
 
 // 目標提取 Gem（沿用現有連結）；教材提取 Gem 建立後，把網址填到 GEM_MATERIAL_URL。
 const GEM_OBJECTIVES_URL = "https://gemini.google.com/gem/1Xd6a-3N4dZvvzC7TdgP1yBjAa2IXDUFb?usp=sharing";
@@ -98,7 +97,7 @@ function renderObjectivePreview() {
 function parseObjectives(input) {
   return parseObjectiveInput(input).map((objective, index) => ({
     objectiveId: makeObjectiveId(index + 1),
-    unitName: objective.unitName || "未分單元",
+    unitName: objective.unitName || (index < 2 ? "觀察與推論" : "生活應用"),
     text: objective.text,
     periodCount: objective.periodCount,
   }));
@@ -332,137 +331,6 @@ function updateItemOption(itemId, optionIndex, value) {
   }
 }
 
-async function scanFilesFromEntry(entry) {
-  const files = [];
-  if (entry.isFile) {
-    const file = await new Promise((resolve) => entry.file(resolve));
-    files.push(file);
-  } else if (entry.isDirectory) {
-    const reader = entry.createReader();
-    const readAllEntries = async () => {
-      const all = [];
-      while (true) {
-        const batch = await new Promise((resolve) => reader.readEntries(resolve));
-        if (batch.length === 0) break;
-        all.push(...batch);
-      }
-      return all;
-    };
-    const entries = await readAllEntries();
-    for (const subEntry of entries) {
-      const subFiles = await scanFilesFromEntry(subEntry);
-      files.push(...subFiles);
-    }
-  }
-  return files;
-}
-
-function handleSelectedFiles(files) {
-  const allowedExtensions = [".pdf", ".docx"];
-  const filtered = files.filter((file) => {
-    const name = file.name.toLowerCase();
-    if (name.includes("~$")) return false; // exclude word temp files
-    return allowedExtensions.some(ext => name.endsWith(ext));
-  });
-
-  if (filtered.length === 0) {
-    setState({ errors: ["未偵測到符合格式的檔案（支援 .pdf 與 .docx）。"], messages: [] });
-    return;
-  }
-
-  // 自動勾選比較有可能是教材的檔案（如含有形音、句型、課文等關鍵字）
-  const relevantKeywords = ["形音", "句型", "課文", "大意", "目標", "閱讀"];
-  state.scannedFiles = filtered.map((file) => {
-    const isRelevant = relevantKeywords.some(keyword => file.name.includes(keyword));
-    return { file, checked: isRelevant || filtered.length <= 4 };
-  });
-
-  setState({ errors: [], messages: [`已成功讀取 ${filtered.length} 個備課檔案，請於下方勾選並開始提取。`] });
-}
-
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => {
-      const base64 = reader.result.split(",")[1];
-      resolve(base64);
-    };
-    reader.onerror = (error) => reject(error);
-  });
-}
-
-async function extractObjectives() {
-  const selected = (state.scannedFiles || []).filter(sf => sf.checked);
-  if (selected.length === 0) {
-    setState({ errors: ["請先選取至少一個要提取的教材檔案。"], messages: [] });
-    return;
-  }
-
-  if (selected.length > 5) {
-    setState({ errors: ["因 AI Token 限制，一次最多只能勾選 5 個檔案提取。"], messages: [] });
-    return;
-  }
-
-  busy = true;
-  busyItemId = null;
-  busyLabel = "AI 正在從教材中提取學習目標與教材摘要，大約需要 15~20 秒，請稍候……";
-  setState({ errors: [], messages: [] });
-
-  try {
-    const filesData = await Promise.all(selected.map(async (sf) => {
-      const base64 = await fileToBase64(sf.file);
-      return {
-        name: sf.file.name,
-        mimeType: sf.file.type || "application/pdf",
-        data: base64,
-      };
-    }));
-
-    const result = await extractObjectivesViaApi({
-      apiBaseUrl: getApiBaseUrl(),
-      project: state.project,
-      materialText: state.materialText,
-      files: filesData,
-    });
-
-    if (!result?.ok || !Array.isArray(result.objectives)) {
-      setState({ errors: [result?.error || "AI 提取目標回傳錯誤。"], messages: [] });
-      return;
-    }
-
-    const objectives = normalizeExtractedObjectives(result.objectives);
-    if (objectives.length === 0) {
-      setState({ errors: ["AI 未能從上傳檔案中提取到任何學習目標。"], messages: [] });
-      return;
-    }
-
-    state.objectiveInput = objectivesToInputText(objectives);
-    
-    // 將教材重點彙整成文字存放在教材摘要中
-    const summary = `已從以下檔案自動提取要素：\n${selected.map(sf => `・${sf.file.name}`).join("\n")}`;
-    
-    setState({
-      errors: [],
-      messages: [`成功！AI 已自動提取出 ${objectives.length} 個學習目標，並自動產生教材大意。`],
-      materialText: summary,
-    });
-  } catch (error) {
-    setState({
-      errors: [
-        `AI 提取教材目標失敗：${error?.message || String(error)}`,
-        `請確認後端 Worker 是否仍在 ${getApiBaseUrl()} 執行。`,
-      ],
-      messages: [],
-    });
-  } finally {
-    busy = false;
-    busyItemId = null;
-    busyLabel = "";
-    render();
-  }
-}
-
 function renderMessages() {
   return [
     ...state.messages.map((message) => `<div class="notice success">${escapeHtml(message)}</div>`),
@@ -480,10 +348,6 @@ function renderSteps() {
 function renderStep1() {
   return `<section class="panel">
     <div class="grid">
-      <label class="field-lg">學校名稱<input data-project="schoolName" value="${escapeHtml(state.project.schoolName)}"></label>
-      <label class="field-lg">學年度<input data-project="schoolYear" value="${escapeHtml(state.project.schoolYear)}"></label>
-      <label class="field-lg">學期<input data-project="semester" value="${escapeHtml(state.project.semester)}"></label>
-      <label class="field-lg">評量次數<input data-project="examType" value="${escapeHtml(state.project.examType)}"></label>
       <label class="field-lg">科目
         <select data-project="subject">
           <option value="" ${!state.project.subject ? "selected" : ""}>請選擇</option>
@@ -496,9 +360,6 @@ function renderStep1() {
           ${["一年級", "二年級", "三年級", "四年級", "五年級", "六年級"].map((option) => `<option value="${option}" ${option === state.project.grade ? "selected" : ""}>${option}</option>`).join("")}
         </select>
       </label>
-      <label class="field-lg">命題教師<input data-project="teacherName" value="${escapeHtml(state.project.teacherName)}"></label>
-      <label class="field-lg">版本<input data-project="version" value="${escapeHtml(state.project.version)}"></label>
-      <label class="field-lg" style="grid-column: span 2;">評量範圍<input data-project="range" value="${escapeHtml(state.project.range)}"></label>
     </div>
     ${renderPlanTable()}
     <div class="actions"><button data-next-step="2">下一步</button></div>
@@ -506,9 +367,13 @@ function renderStep1() {
 }
 
 function renderPlanTable() {
-  const subject = state.project.subject;
+  const subject = state.planSubject || state.project.subject;
   const baseOptions = getQuestionTypeOptions(subject);
   const totals = getPlanTotals(state.planRows);
+
+  const subjectSelect = ["", ...SUBJECT_OPTIONS]
+    .map((option) => `<option value="${escapeHtml(option)}" ${option === (state.planSubject || "") ? "selected" : ""}>${option === "" ? "請選擇科目" : escapeHtml(option)}</option>`)
+    .join("");
 
   const rowsHtml = state.planRows.map((row, index) => {
     const options = baseOptions.includes(row.questionType) ? baseOptions : [...baseOptions, row.questionType];
@@ -527,7 +392,7 @@ function renderPlanTable() {
 
   return `
     <h3>配題表（題型／題數／配分）</h3>
-    <p class="notice">題型清單已依您的學科「${escapeHtml(state.project.subject || "預設")}」自動篩選。含「學力檢測題」＝情境素養題組。</p>
+    <p class="notice">題型清單依：<select data-field="planSubject">${subjectSelect}</select>　含「學力檢測題」＝情境素養題組（題幹含生活情境與子題）。</p>
     <div class="table-wrap"><table>
       <thead><tr><th>題型</th><th>題數</th><th>每題(答)配分</th><th>小計</th><th></th></tr></thead>
       <tbody>${rowsHtml}</tbody>
@@ -538,44 +403,26 @@ function renderPlanTable() {
 }
 
 function renderStep2() {
-  const filesListHtml = (state.scannedFiles || []).length > 0
-    ? `<h3>已偵測到的教材檔案（請勾選本次要命題的課次）：</h3>
-       <div class="file-checkbox-list" style="max-height: 200px; overflow-y: auto; border: 1px solid var(--line); padding: 10px; border-radius: 12px; margin-bottom: 12px; background: #fafafa;">
-         ${(state.scannedFiles || []).map((sf, index) => `
-           <label class="file-checkbox-row" style="display:flex; align-items:center; gap:8px; margin-bottom:4px; font-size:14px; cursor:pointer; color:var(--muted);">
-             <input type="checkbox" data-file-index="${index}" ${sf.checked ? "checked" : ""} style="width:auto; margin:0;">
-             <span>${escapeHtml(sf.file.name)} (${Math.round(sf.file.size / 1024)} KB)</span>
-           </label>
-         `).join("")}
-       </div>
-       <div class="actions" style="margin-bottom:16px;">
-         <button data-action="extract-objectives" ${busy ? "disabled" : ""}>🚀 開始 AI 一鍵提取目標與教材</button>
-       </div>`
-    : "";
-
   return `<section class="panel">
     <h2>② 學習目標</h2>
     <div class="notice">
-      <strong>💡 智慧匯入大補帖（推薦）：</strong>
-      <p style="margin:6px 0 0;">拖曳或選取整份廠商備課資料夾（如 `1.備課資料` ➔ `05形音輕鬆學` 或 `08各課短語句型` 的 PDF 資料夾），系統會自動過濾篩選並用 AI 一鍵填入下方的目標與摘要。</p>
+      <strong>用兩個 Gem 分別抓「學習目標」與「教材重點」（建議；也可自己填）</strong>
+      <ol class="gem-steps">
+        <li><strong>學習目標：</strong>${gemLink(GEM_OBJECTIVES_URL, "開啟「目標提取」Gem")}，上傳該課的課本／單元活動架構，把它輸出的每行（<code>目標文字｜節數</code>）整段貼到下方「<strong>學習目標</strong>」欄。</li>
+        <li><strong>教材重點：</strong>${gemLink(GEM_MATERIAL_URL, "開啟「教材提取」Gem")}，上傳該課的課本／習作，把它輸出的各單元重點整段貼到下方「<strong>教材摘要</strong>」欄。</li>
+        <li>兩個 Gem 都<strong>不必</strong>上傳目次、解答或純教學 PPT。</li>
+        <li>確認或修改後按「建立配題與藍圖」，系統會依各目標<strong>節數比例</strong>配分出題。</li>
+      </ol>
+      不想用 Gem 也可以：直接在下方「學習目標」欄輸入，每行 <code>目標文字｜節數</code>（例：<code>1-2 動物適應環境的策略｜2</code>）。
     </div>
-    <div class="drop-zone" id="dropZone" style="border: 2px dashed var(--line); border-radius: 18px; padding: 24px; text-align: center; cursor: pointer; color: var(--muted); background: var(--blue-soft); transition: all 0.2s; margin-bottom: 16px;">
-      <span class="drop-zone-prompt" style="font-weight:600; display:block; margin-bottom:6px;">📂 拖曳備課資料夾或 PDF 檔案至此，或點擊此處選取</span>
-      <span style="font-size:13px;">（建議優先選擇廠商提供的「形音輕鬆學」或「短語句型練習」PDF）</span>
-      <input type="file" id="fileInput" webkitdirectory directory multiple style="display: none;">
-      <input type="file" id="fileInputFiles" multiple accept=".pdf,.docx" style="display: none;">
-    </div>
-    ${filesListHtml}
-    ${loadingLine()}
-    <hr style="border:0; border-top:1px solid var(--line); margin:24px 0;">
-    <label>學習目標（把 LLM／Gem 抓回 the 指標整段貼進來即可）<textarea data-field="objectiveInput">${escapeHtml(state.objectiveInput)}</textarea></label>
+    <label>學習目標（把 LLM／Gem 抓回的指標整段貼進來即可）<textarea data-field="objectiveInput">${escapeHtml(state.objectiveInput)}</textarea></label>
     <p class="notice">貼好後按「整理學習目標」，系統會把它整理成帶編號與節數的標準格式（見下方預覽），可再手動微調。</p>
     <div class="actions">
       <button data-action="organize-objectives">整理學習目標</button>
     </div>
     ${renderObjectivePreview()}
     <label>教材摘要（選填）<textarea data-field="materialText">${escapeHtml(state.materialText)}</textarea></label>
-    <p class="notice">用途：作為 AI 出題的依據。建議貼上課本／習作重點（國語：生字、語詞、句型、課文重點；其他科：核心概念與重要詞彙）。留空也可以，AI 會只依學習目標出題。</p>
+    <p class="notice">用途：作為 AI 出題的依據。建議貼上「教材提取」Gem 摘出的課本／習作重點（國語：生字、語詞、句型、課文重點；其他科：核心概念與重要詞彙）。留空也可以，AI 會只依學習目標出題。</p>
     <div class="actions">
       <button data-action="build-blueprint">確認目標，建立配題與藍圖</button>
     </div>
@@ -616,69 +463,6 @@ function renderStep3Or4() {
 
 function renderItems() {
   const summary = summarizeScoreByObjective(state.items);
-  const cardsHtml = [];
-  const renderedGroups = new Set();
-
-  for (let i = 0; i < state.items.length; i++) {
-    const item = state.items[i];
-    const groupId = item.groupId;
-
-    const getChineseDimSelect = (subItem) => {
-      if (state.project.subject !== "國語") return "";
-      return `<label style="display:block; margin-top:8px;">評量向度
-        <select data-item-field="chineseDimension" data-item-id="${escapeHtml(subItem.itemId)}">
-          <option value="字詞短語" ${subItem.chineseDimension === "字詞短語" ? "selected" : ""}>字詞短語</option>
-          <option value="句式語法" ${subItem.chineseDimension === "句式語法" ? "selected" : ""}>句式語法</option>
-          <option value="段篇讀寫" ${subItem.chineseDimension === "段篇讀寫" ? "selected" : ""}>段篇讀寫</option>
-        </select>
-      </label>`;
-    };
-
-    if (groupId) {
-      if (renderedGroups.has(groupId)) continue;
-      renderedGroups.add(groupId);
-
-      const groupItems = state.items.filter((x) => x.groupId === groupId);
-      const firstItem = groupItems[0];
-      const subCardsHtml = groupItems.map((subItem) => {
-        const subId = subItem.itemId;
-        return `<div class="sub-item-edit" style="border-top:1px dashed var(--line); padding-top:16px; margin-top:16px;">
-          <div class="item-meta" style="font-weight:600; color:var(--primary); margin-bottom:8px;">
-            子題號：${escapeHtml(subId)} ｜ 配分：${escapeHtml(subItem.score)}分 ｜ 對應目標：${escapeHtml(subItem.objectiveIds?.join("、") || subItem.primaryObjectiveId || "未標示")} ｜ 層次：${escapeHtml(subItem.cognitiveLevel || "未標示")}
-          </div>
-          <label>子題幹<textarea data-item-field="question" data-item-id="${escapeHtml(subId)}">${escapeHtml(subItem.question)}</textarea></label>
-          ${Array.isArray(subItem.options) && subItem.options.length > 0 ? `<div class="options-edit"><span class="options-label">選項</span>${subItem.options.map((option, optionIndex) => `<label class="option-row">(${String.fromCharCode(65 + optionIndex)})<input data-item-field="option" data-item-id="${escapeHtml(subId)}" data-option-index="${optionIndex}" value="${escapeHtml(option)}"></label>`).join("")}</div>` : ""}
-          <label>答案<input data-item-field="answer" data-item-id="${escapeHtml(subId)}" value="${escapeHtml(subItem.answer)}"></label>
-          <label>解析<textarea data-item-field="explanation" data-item-id="${escapeHtml(subId)}">${escapeHtml(subItem.explanation)}</textarea></label>
-          ${getChineseDimSelect(subItem)}
-          <div class="actions" style="margin-top:8px;">
-            <button data-action="regenerate-item" data-item-id="${escapeHtml(subId)}" ${busy ? "disabled" : ""}>${busy && busyItemId === subId ? "AI 重出中……" : "AI 重出子題"}</button>
-          </div>
-        </div>`;
-      }).join("");
-
-      cardsHtml.push(`<article class="item-card group-card" style="border: 2px solid var(--primary); background: #fcfdfe; border-radius:16px; padding:20px; margin-bottom:20px;">
-        <div class="item-meta" style="font-size:15px; font-weight:bold; color:var(--dark); margin-bottom:12px; border-bottom: 2px solid var(--line); padding-bottom:6px;">
-          📦 題組：${escapeHtml(groupId)} ｜ 總配分：${groupItems.reduce((s, x) => s + Number(x.score || 0), 0)}分
-        </div>
-        <label><strong>情境引言 (Stimulus)</strong><textarea data-group-stimulus="${escapeHtml(groupId)}" style="background:var(--blue-soft); font-weight:500; min-height:100px;">${escapeHtml(firstItem.stimulus || "")}</textarea></label>
-        ${subCardsHtml}
-      </article>`);
-    } else {
-      cardsHtml.push(`<article class="item-card" style="border-radius:16px; padding:20px; margin-bottom:20px;">
-        <div class="item-meta">${escapeHtml(item.itemId)}｜${escapeHtml(item.questionType)}｜${escapeHtml(item.score)}分｜對應目標 ${escapeHtml(item.objectiveIds?.join("、") || item.primaryObjectiveId || "未標示")}｜層次 ${escapeHtml(item.cognitiveLevel || "未標示")}</div>
-        <label>題幹<textarea data-item-field="question" data-item-id="${escapeHtml(item.itemId)}">${escapeHtml(item.question)}</textarea></label>
-        ${Array.isArray(item.options) && item.options.length > 0 ? `<div class="options-edit"><span class="options-label">選項</span>${item.options.map((option, optionIndex) => `<label class="option-row">(${String.fromCharCode(65 + optionIndex)})<input data-item-field="option" data-item-id="${escapeHtml(item.itemId)}" data-option-index="${optionIndex}" value="${escapeHtml(option)}"></label>`).join("")}</div>` : ""}
-        <label>答案<input data-item-field="answer" data-item-id="${escapeHtml(item.itemId)}" value="${escapeHtml(item.answer)}"></label>
-        <label>解析<textarea data-item-field="explanation" data-item-id="${escapeHtml(item.itemId)}">${escapeHtml(item.explanation)}</textarea></label>
-        ${getChineseDimSelect(item)}
-        <div class="actions">
-          <button data-action="regenerate-item" data-item-id="${escapeHtml(item.itemId)}" ${busy ? "disabled" : ""}>${busy && busyItemId === item.itemId ? "AI 重出中……" : "AI 重出此題"}</button>
-        </div>
-      </article>`);
-    }
-  }
-
   return `<section class="panel">
     <h2>④ 修題定稿</h2>
     <p class="notice">這裡沒有備選池。題目就是正式草稿；不滿意的題目，直接重出該題。</p>
@@ -686,7 +470,16 @@ function renderItems() {
       <thead><tr><th>目標</th><th>計分單位數</th><th>分數</th></tr></thead>
       <tbody>${summary.map((row) => `<tr><td>${row.objectiveId}</td><td>${row.unitCount}</td><td>${row.score}</td></tr>`).join("")}</tbody>
     </table></div>
-    ${cardsHtml.join("")}
+    ${state.items.map((item) => `<article class="item-card">
+      <div class="item-meta">${escapeHtml(item.itemId)}｜${escapeHtml(item.questionType)}｜${escapeHtml(item.score)}分｜對應目標 ${escapeHtml(item.objectiveIds?.join("、") || item.primaryObjectiveId || "未標示")}｜層次 ${escapeHtml(item.cognitiveLevel || "未標示")}</div>
+      <label>題幹<textarea data-item-field="question" data-item-id="${escapeHtml(item.itemId)}">${escapeHtml(item.question)}</textarea></label>
+      ${Array.isArray(item.options) && item.options.length > 0 ? `<div class="options-edit"><span class="options-label">選項</span>${item.options.map((option, optionIndex) => `<label class="option-row">(${String.fromCharCode(65 + optionIndex)})<input data-item-field="option" data-item-id="${escapeHtml(item.itemId)}" data-option-index="${optionIndex}" value="${escapeHtml(option)}"></label>`).join("")}</div>` : ""}
+      <label>答案<input data-item-field="answer" data-item-id="${escapeHtml(item.itemId)}" value="${escapeHtml(item.answer)}"></label>
+      <label>解析<textarea data-item-field="explanation" data-item-id="${escapeHtml(item.itemId)}">${escapeHtml(item.explanation)}</textarea></label>
+      <div class="actions">
+        <button data-action="regenerate-item" data-item-id="${escapeHtml(item.itemId)}" ${busy ? "disabled" : ""}>${busy && busyItemId === item.itemId ? "AI 重出中……" : "AI 重出此題"}</button>
+      </div>
+    </article>`).join("")}
     ${loadingLine()}
     <div class="actions"><button data-next-step="5">前往檢核</button></div>
   </section>`;
@@ -696,10 +489,10 @@ function renderAudit() {
   // 以配題表的總分作為預期總分，才能真的檢查「題目總分是否符合預期」。
   const examTotal = getPlanTotals(state.planRows).totalScore || state.items.reduce((sum, item) => sum + (Number(item?.score) || 0), 0);
   const result = validateExam({
-    objectives: state.objectives,
-    objectivePlans: state.objectivePlans,
-    items: state.items,
-    totalScore: examTotal,
+  objectives: state.objectives,
+  objectivePlans: state.objectivePlans,
+  items: state.items,
+  totalScore: examTotal,
   });
 
   return `<section class="panel">
@@ -738,27 +531,8 @@ function renderOutput() {
   const project = { ...state.project, examName: examTitle() };
   const studentPaper = renderStudentPaper({ project, sections: state.sections, items: state.items });
   const teacherPaper = renderTeacherPaper({ project, sections: state.sections, items: state.items });
-  const auditTableHtml = renderAuditTable({
-    project,
-    objectives: state.objectives,
-    items: state.items,
-    planRows: state.planRows,
-    sections: state.sections,
-  });
-
   return `<section class="panel">
     <h2>⑥ 輸出</h2>
-    
-    <div class="actions" style="margin-bottom: 24px;">
-      <button onclick="window.print()" style="font-weight:600; padding:12px 24px; font-size:16px;">🖨️ 列印試題審核表 (A4 自動排版)</button>
-    </div>
-
-    <div id="auditTablePrintArea" class="audit-table-container" style="background:#fff; border:1px solid var(--line); border-radius:18px; padding:32px; box-shadow:0 10px 30px rgba(0,0,0,0.04); margin-bottom:32px; overflow-x:auto;">
-      ${auditTableHtml}
-    </div>
-
-    <hr style="border:0; border-top:1px solid var(--line); margin:32px 0;">
-
     <h3>學生卷</h3>
     <pre>${escapeHtml(studentPaper)}</pre>
     <h3>教師卷</h3>
@@ -794,16 +568,6 @@ app.addEventListener("input", (event) => {
   const itemId = event.target.dataset.itemId;
   const planField = event.target.dataset.planField;
   const planIndex = event.target.dataset.planIndex;
-  const groupStimulus = event.target.dataset.groupStimulus;
-
-  if (groupStimulus) {
-    state.items.forEach((item) => {
-      if (item.groupId === groupStimulus) {
-        item.stimulus = event.target.value;
-      }
-    });
-    return;
-  }
 
   if (planField && planIndex !== undefined) {
     const index = Number(planIndex);
@@ -838,29 +602,6 @@ app.addEventListener("click", (event) => {
   const stepButton = event.target.closest("[data-step]");
   const nextStepButton = event.target.closest("[data-next-step]");
   const actionButton = event.target.closest("[data-action]");
-  const selectFilesBtn = event.target.closest("#btnSelectFiles");
-  const selectFolderBtn = event.target.closest("#btnSelectFolder");
-  const dropZone = event.target.closest("#dropZone");
-
-  if (selectFilesBtn) {
-    event.stopPropagation();
-    const fileInputFiles = document.getElementById("fileInputFiles");
-    if (fileInputFiles) fileInputFiles.click();
-    return;
-  }
-
-  if (selectFolderBtn) {
-    event.stopPropagation();
-    const fileInput = document.getElementById("fileInput");
-    if (fileInput) fileInput.click();
-    return;
-  }
-
-  if (dropZone) {
-    const fileInputFiles = document.getElementById("fileInputFiles");
-    if (fileInputFiles) fileInputFiles.click();
-    return;
-  }
 
   if (stepButton) {
     setState({ step: Number(stepButton.dataset.step) });
@@ -879,9 +620,8 @@ app.addEventListener("click", (event) => {
   if (action === "build-blueprint") buildBlueprint();
   if (action === "generate-items") generateItems();
   if (action === "regenerate-item") regenerateItem(actionButton.dataset.itemId);
-  if (action === "extract-objectives") extractObjectives();
   if (action === "add-plan-row") {
-    const subject = state.project.subject;
+    const subject = state.planSubject || state.project.subject;
     const options = getQuestionTypeOptions(subject);
     setState({ planRows: [...state.planRows, { questionType: options[0], count: 5, score: 2 }] });
   }
@@ -893,89 +633,8 @@ app.addEventListener("click", (event) => {
 
 // 配題表的題型/題數/配分或科目改變時（blur 觸發），重繪以更新小計與合計。
 app.addEventListener("change", (event) => {
-  if (event.target.id === "fileInput" || event.target.id === "fileInputFiles") {
-    if (event.target.files && event.target.files.length > 0) {
-      handleSelectedFiles(Array.from(event.target.files));
-    }
-    return;
-  }
-
-  if (event.target.dataset.fileIndex !== undefined) {
-    const index = Number(event.target.dataset.fileIndex);
-    if (state.scannedFiles && state.scannedFiles[index]) {
-      state.scannedFiles[index].checked = event.target.checked;
-      render();
-    }
-    return;
-  }
-
-  const itemField = event.target.dataset.itemField;
-  const itemId = event.target.dataset.itemId;
-  if (itemField && itemId) {
-    if (itemField === "option" && event.target.dataset.optionIndex !== undefined) {
-      updateItemOption(itemId, Number(event.target.dataset.optionIndex), event.target.value);
-    } else {
-      updateItemField(itemId, itemField, event.target.value);
-    }
-  }
-
-  if (event.target.dataset.planField || event.target.dataset.field === "objectiveInput" || event.target.dataset.project === "subject") {
+  if (event.target.dataset.planField || event.target.dataset.field === "planSubject" || event.target.dataset.field === "objectiveInput" || event.target.dataset.project === "subject") {
     render();
-  }
-});
-
-app.addEventListener("dragover", (event) => {
-  const dropZone = event.target.closest("#dropZone");
-  if (dropZone) {
-    event.preventDefault();
-    dropZone.style.borderColor = "var(--primary)";
-    dropZone.style.background = "var(--blue-light)";
-  }
-});
-
-app.addEventListener("dragleave", (event) => {
-  const dropZone = event.target.closest("#dropZone");
-  if (dropZone) {
-    dropZone.style.borderColor = "var(--line)";
-    dropZone.style.background = "var(--blue-soft)";
-  }
-});
-
-app.addEventListener("drop", async (event) => {
-  const dropZone = event.target.closest("#dropZone");
-  if (dropZone) {
-    event.preventDefault();
-    dropZone.style.borderColor = "var(--line)";
-    dropZone.style.background = "var(--blue-soft)";
-
-    const items = event.dataTransfer.items;
-    if (!items) return;
-
-    busy = true;
-    busyLabel = "正在掃描檔案……";
-    render();
-
-    try {
-      const filePromises = [];
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        if (item.kind === "file") {
-          const entry = item.webkitGetAsEntry();
-          if (entry) {
-            filePromises.push(scanFilesFromEntry(entry));
-          }
-        }
-      }
-      const results = await Promise.all(filePromises);
-      const files = results.flat();
-      handleSelectedFiles(files);
-    } catch (err) {
-      setState({ errors: [`掃描檔案失敗: ${err.message}`] });
-    } finally {
-      busy = false;
-      busyLabel = "";
-      render();
-    }
   }
 });
 

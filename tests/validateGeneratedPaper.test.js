@@ -68,4 +68,43 @@ describe("validateGeneratedPaper", () => {
     expect(result.ok).toBe(false);
     expect(result.errors.some((e) => e.includes("不在學習目標清單內"))).toBe(true);
   });
+
+  it("學力檢測題組分群配分加總相符且包含共同引言時通過 (Design B)", () => {
+    const result = validateGeneratedPaper({
+      slots, objectives,
+      items: [
+        item({}),
+        item({ itemId: "Q-002-1", groupId: "G-002", questionType: "學力檢測題", score: 2, stimulus: "生活情境...", primaryObjectiveId: "O-002", objectiveIds: ["O-002"] }),
+        item({ itemId: "Q-002-2", groupId: "G-002", questionType: "學力檢測題", score: 3, stimulus: "", primaryObjectiveId: "O-002", objectiveIds: ["O-002"] }),
+      ],
+    });
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  it("學力檢測題組分群配分總和不符時報錯", () => {
+    const result = validateGeneratedPaper({
+      slots, objectives,
+      items: [
+        item({}),
+        item({ itemId: "Q-002-1", groupId: "G-002", questionType: "學力檢測題", score: 2, stimulus: "生活情境...", primaryObjectiveId: "O-002", objectiveIds: ["O-002"] }),
+        item({ itemId: "Q-002-2", groupId: "G-002", questionType: "學力檢測題", score: 2, stimulus: "", primaryObjectiveId: "O-002", objectiveIds: ["O-002"] }),
+      ],
+    });
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("子題配分總和為 4 分"))).toBe(true);
+  });
+
+  it("學力檢測題組缺少引言時報錯", () => {
+    const result = validateGeneratedPaper({
+      slots, objectives,
+      items: [
+        item({}),
+        item({ itemId: "Q-002-1", groupId: "G-002", questionType: "學力檢測題", score: 2, stimulus: "", primaryObjectiveId: "O-002", objectiveIds: ["O-002"] }),
+        item({ itemId: "Q-002-2", groupId: "G-002", questionType: "學力檢測題", score: 3, stimulus: "", primaryObjectiveId: "O-002", objectiveIds: ["O-002"] }),
+      ],
+    });
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("缺少共同的 stimulus"))).toBe(true);
+  });
 });

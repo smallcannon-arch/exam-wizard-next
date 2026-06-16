@@ -4,15 +4,19 @@ function numberToChinese(index) {
 }
 
 // 選擇題形式（含實驗探究題、圖表判讀題）在題號前加作答括號（如 (      )1.）。
-const CHOICE_LIKE_TYPES = ["選擇題", "是非題", "實驗探究題", "圖表判讀題"];
+const CHOICE_LIKE_TYPES = ["選擇題", "是非題", "實驗探究題", "圖表判讀題", "學力檢測題"];
 
 function answerBlank(questionType) {
-  return CHOICE_LIKE_TYPES.includes(questionType) ? "(      )" : "";
+  return CHOICE_LIKE_TYPES.includes(questionType) ? "(      ) " : "";
 }
 
 // 是非題不呈現選項；其餘只要有 options 就列出。
 function showsOptions(item) {
   return item.questionType !== "是非題" && Array.isArray(item.options) && item.options.length > 0;
+}
+
+function getSubNumber(itemId) {
+  return String(itemId || "").split("-")[1] || "1";
 }
 
 export function renderStudentPaper({ project = {}, sections = [], items = [] } = {}) {
@@ -21,14 +25,41 @@ export function renderStudentPaper({ project = {}, sections = [], items = [] } =
 
   sections.forEach((section, sectionIndex) => {
     lines.push(`${numberToChinese(sectionIndex + 1)}、${section.title.replace(/^\d+\.\s*/, "")}`);
-    section.itemIds.forEach((itemId, localIndex) => {
+    let questionNumber = 1;
+    const renderedGroups = new Set();
+
+    section.itemIds.forEach((itemId) => {
       const item = itemById.get(itemId);
       if (!item) return;
-      lines.push(`${answerBlank(item.questionType)}${localIndex + 1}.（${item.score}分）${item.question}`);
-      if (showsOptions(item)) {
-        lines.push(item.options.map((option, index) => `(${String.fromCharCode(65 + index)}) ${option}`).join("　"));
+
+      const groupId = item.groupId;
+      if (groupId) {
+        if (renderedGroups.has(groupId)) {
+          lines.push(`　　${answerBlank(item.questionType)}(${getSubNumber(item.itemId)})（${item.score}分）${item.question}`);
+          if (showsOptions(item)) {
+            lines.push("　　　　" + item.options.map((option, index) => `(${String.fromCharCode(65 + index)}) ${option}`).join("　"));
+          }
+          lines.push("");
+          return;
+        }
+
+        renderedGroups.add(groupId);
+        lines.push(`${questionNumber}.【題組】${item.stimulus || ""}`);
+        questionNumber++;
+
+        lines.push(`　　${answerBlank(item.questionType)}(${getSubNumber(item.itemId)})（${item.score}分）${item.question}`);
+        if (showsOptions(item)) {
+          lines.push("　　　　" + item.options.map((option, index) => `(${String.fromCharCode(65 + index)}) ${option}`).join("　"));
+        }
+        lines.push("");
+      } else {
+        lines.push(`${answerBlank(item.questionType)}${questionNumber}.（${item.score}分）${item.question}`);
+        if (showsOptions(item)) {
+          lines.push(item.options.map((option, index) => `(${String.fromCharCode(65 + index)}) ${option}`).join("　"));
+        }
+        lines.push("");
+        questionNumber++;
       }
-      lines.push("");
     });
   });
 
@@ -41,17 +72,51 @@ export function renderTeacherPaper({ project = {}, sections = [], items = [] } =
 
   sections.forEach((section, sectionIndex) => {
     lines.push(`${numberToChinese(sectionIndex + 1)}、${section.title.replace(/^\d+\.\s*/, "")}`);
-    section.itemIds.forEach((itemId, localIndex) => {
+    let questionNumber = 1;
+    const renderedGroups = new Set();
+
+    section.itemIds.forEach((itemId) => {
       const item = itemById.get(itemId);
       if (!item) return;
+
       const objectiveTag = item.objectiveIds?.join("、") || item.primaryObjectiveId || "未標示";
-      lines.push(`${answerBlank(item.questionType)}${localIndex + 1}.（${item.score}分）${item.question}　【${item.questionType || "未標示"}｜${objectiveTag}｜${item.cognitiveLevel || "未標示"}｜${item.score}分】`);
-      if (showsOptions(item)) {
-        lines.push(item.options.map((option, index) => `(${String.fromCharCode(65 + index)}) ${option}`).join("　"));
+      const chineseDimTag = item.chineseDimension ? `｜${item.chineseDimension}` : "";
+      const metaTag = `【${item.questionType || "未標示"}${chineseDimTag}｜${objectiveTag}｜${item.cognitiveLevel || "未標示"}｜${item.score}分】`;
+
+      const groupId = item.groupId;
+      if (groupId) {
+        if (renderedGroups.has(groupId)) {
+          lines.push(`　　${answerBlank(item.questionType)}(${getSubNumber(item.itemId)})（${item.score}分）${item.question}　${metaTag}`);
+          if (showsOptions(item)) {
+            lines.push("　　　　" + item.options.map((option, index) => `(${String.fromCharCode(65 + index)}) ${option}`).join("　"));
+          }
+          lines.push(`　　答案：${item.answer}`);
+          lines.push(`　　解析：${item.explanation || "未提供"}`);
+          lines.push("");
+          return;
+        }
+
+        renderedGroups.add(groupId);
+        lines.push(`${questionNumber}.【題組】${item.stimulus || ""}`);
+        questionNumber++;
+
+        lines.push(`　　${answerBlank(item.questionType)}(${getSubNumber(item.itemId)})（${item.score}分）${item.question}　${metaTag}`);
+        if (showsOptions(item)) {
+          lines.push("　　　　" + item.options.map((option, index) => `(${String.fromCharCode(65 + index)}) ${option}`).join("　"));
+        }
+        lines.push(`　　答案：${item.answer}`);
+        lines.push(`　　解析：${item.explanation || "未提供"}`);
+        lines.push("");
+      } else {
+        lines.push(`${answerBlank(item.questionType)}${questionNumber}.（${item.score}分）${item.question}　${metaTag}`);
+        if (showsOptions(item)) {
+          lines.push(item.options.map((option, index) => `(${String.fromCharCode(65 + index)}) ${option}`).join("　"));
+        }
+        lines.push(`答案：${item.answer}`);
+        lines.push(`解析：${item.explanation || "未提供"}`);
+        lines.push("");
+        questionNumber++;
       }
-      lines.push(`答案：${item.answer}`);
-      lines.push(`解析：${item.explanation || "未提供"}`);
-      lines.push("");
     });
   });
 
