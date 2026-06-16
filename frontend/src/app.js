@@ -230,39 +230,106 @@ async function generateItems() {
     });
 
     if (!result?.ok || !Array.isArray(result.items)) {
-  setState({
-    errors: [result?.error || "AI 回傳格式錯誤。"],
-    messages: [],
-  });
-  return;
-}
+      setState({
+        errors: [result?.error || "AI 回傳格式錯誤。"],
+        messages: [],
+      });
+      return;
+    }
 
-const generatedCheck = validateGeneratedPaper({
-  slots: state.intents,
-  objectives: state.objectives,
-  items: result.items,
-});
+    const importedItems = result.items.map((item) => {
+      let normalizedItemId = String(item.itemId).trim();
+      const parts = normalizedItemId.split("-");
+      let slot = null;
 
-if (!generatedCheck.ok) {
-  setState({
-    errors: generatedCheck.errors,
-    messages: ["AI 回傳的試卷題型或配分被更動、或有缺漏，尚未匯入。請重新生成。"],
-  });
-  return;
-}
+      if (parts.length >= 2) {
+        const parentNum = parseInt(parts[1], 10) || parseInt(parts[0], 10);
+        if (!isNaN(parentNum)) {
+          slot = state.intents.find(s => {
+            const sParts = s.itemId.split("-");
+            return sParts.length >= 2 && parseInt(sParts[1], 10) === parentNum;
+          });
+        }
+      } else {
+        const num = parseInt(normalizedItemId, 10);
+        if (!isNaN(num)) {
+          slot = state.intents.find(s => {
+            const sParts = s.itemId.split("-");
+            return sParts.length >= 2 && parseInt(sParts[1], 10) === num;
+          });
+        }
+      }
 
-// 補齊 objectiveIds（AI 有時只回 primaryObjectiveId），避免後續檢核誤判缺漏。
-const importedItems = result.items.map((item) => {
-  const slot = state.intents.find(s => s.itemId === item.itemId);
-  return {
-    ...item,
-    objectiveIds: (Array.isArray(item.objectiveIds) && item.objectiveIds.length > 0)
-      ? item.objectiveIds
-      : (item.primaryObjectiveId ? [item.primaryObjectiveId] : []),
-    chineseDimension: item.chineseDimension || slot?.chineseDimension || getChineseDimension(item.questionType),
-    chineseSubcategory: item.chineseSubcategory || slot?.chineseSubcategory || getChineseSubcategory(item.questionType, item.chineseDimension || slot?.chineseDimension),
-  };
-});
+      if (slot) {
+        if (slot.isGroup) {
+          const subIndex = parts.length > 2 ? parts[2] : (parts.length === 2 ? parts[1] : "1");
+          normalizedItemId = `${slot.itemId}-${subIndex}`;
+        } else {
+          normalizedItemId = slot.itemId;
+        }
+      } else {
+        slot = state.intents.find(s => s.itemId.toLowerCase() === normalizedItemId.toLowerCase());
+      }
+
+      let groupId = item.groupId ? String(item.groupId).trim() : "";
+      if (slot && slot.isGroup) {
+        groupId = `G-${slot.itemId.substring(slot.itemId.indexOf("-") + 1)}`;
+      }
+
+      let primaryId = item.primaryObjectiveId ? String(item.primaryObjectiveId).trim() : "";
+      if (primaryId && !state.objectives.some(o => o.objectiveId === primaryId)) {
+        const matchedObj = state.objectives.find(o => 
+          o.text.trim() === primaryId || 
+          splitObjectiveCode(o.text).label === primaryId ||
+          o.objectiveId.toLowerCase() === primaryId.toLowerCase()
+        );
+        if (matchedObj) {
+          primaryId = matchedObj.objectiveId;
+        }
+      }
+
+      if (!primaryId && slot) {
+        primaryId = slot.primaryObjectiveId || "";
+      }
+
+      let objectiveIds = Array.isArray(item.objectiveIds) ? item.objectiveIds : [];
+      objectiveIds = objectiveIds.map(id => {
+        const trimmed = String(id).trim();
+        if (state.objectives.some(o => o.objectiveId === trimmed)) return trimmed;
+        const matched = state.objectives.find(o => 
+          o.text.trim() === trimmed || 
+          splitObjectiveCode(o.text).label === trimmed
+        );
+        return matched ? matched.objectiveId : trimmed;
+      });
+      if (primaryId && !objectiveIds.includes(primaryId)) {
+        objectiveIds.unshift(primaryId);
+      }
+
+      return {
+        ...item,
+        itemId: normalizedItemId,
+        groupId,
+        primaryObjectiveId: primaryId,
+        objectiveIds,
+        chineseDimension: item.chineseDimension || slot?.chineseDimension || getChineseDimension(item.questionType),
+        chineseSubcategory: item.chineseSubcategory || slot?.chineseSubcategory || getChineseSubcategory(item.questionType, item.chineseDimension || slot?.chineseDimension),
+      };
+    });
+
+    const generatedCheck = validateGeneratedPaper({
+      slots: state.intents,
+      objectives: state.objectives,
+      items: importedItems,
+    });
+
+    if (!generatedCheck.ok) {
+      setState({
+        errors: generatedCheck.errors,
+        messages: ["AI 回傳的試卷題型或配分被更動、或有缺漏，尚未匯入。請重新生成。"],
+      });
+      return;
+    }
 
 const sectionResult = buildSectionsByQuestionType({
   items: importedItems,
@@ -376,10 +443,50 @@ async function regenerateItem(itemId) {
       return;
     }
 
+    const slot = state.intents.find(s => s.itemId === itemId);
+
+    let primaryId = newItem.primaryObjectiveId ? String(newItem.primaryObjectiveId).trim() : "";
+    if (primaryId && !state.objectives.some(o => o.objectiveId === primaryId)) {
+      const matchedObj = state.objectives.find(o => 
+        o.text.trim() === primaryId || 
+        splitObjectiveCode(o.text).label === primaryId ||
+        o.objectiveId.toLowerCase() === primaryId.toLowerCase()
+      );
+      if (matchedObj) {
+        primaryId = matchedObj.objectiveId;
+      }
+    }
+    if (!primaryId && slot) {
+      primaryId = slot.primaryObjectiveId || "";
+    }
+
+    let objectiveIds = Array.isArray(newItem.objectiveIds) ? newItem.objectiveIds : [];
+    objectiveIds = objectiveIds.map(id => {
+      const trimmed = String(id).trim();
+      if (state.objectives.some(o => o.objectiveId === trimmed)) return trimmed;
+      const matched = state.objectives.find(o => 
+        o.text.trim() === trimmed || 
+        splitObjectiveCode(o.text).label === trimmed
+      );
+      return matched ? matched.objectiveId : trimmed;
+    });
+    if (primaryId && !objectiveIds.includes(primaryId)) {
+      objectiveIds.unshift(primaryId);
+    }
+
+    const normalizedNewItem = {
+      ...newItem,
+      itemId,
+      primaryObjectiveId: primaryId,
+      objectiveIds,
+      chineseDimension: newItem.chineseDimension || slot?.chineseDimension || getChineseDimension(newItem.questionType),
+      chineseSubcategory: newItem.chineseSubcategory || slot?.chineseSubcategory || getChineseSubcategory(newItem.questionType, newItem.chineseDimension || slot?.chineseDimension),
+    };
+
     const replacement = replaceItemById({
       items: state.items,
       itemId,
-      regeneratedItem: newItem,
+      regeneratedItem: normalizedNewItem,
     });
 
     if (!replacement.ok) {
