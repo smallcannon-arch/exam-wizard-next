@@ -3,11 +3,19 @@ function text(value, fallback = "未提供") {
 }
 
 export function buildGenerateItemsPrompt({ project = {}, materialText = "", objectives = [], intents = [] }) {
-  const slots = (Array.isArray(intents) ? intents : []).map((slot) => ({
-    itemId: slot.itemId,
-    questionType: slot.questionType,
-    score: slot.score,
-  }));
+  const slots = (Array.isArray(intents) ? intents : []).map((slot) => {
+    const base = {
+      itemId: slot.itemId,
+      questionType: slot.questionType,
+      score: slot.score,
+    };
+    if (slot.isGroup) {
+      base.isGroup = true;
+      base.subCount = slot.subCount || (Array.isArray(slot.subScores) ? slot.subScores.length : 2);
+      base.subScores = slot.subScores || [];
+    }
+    return base;
+  });
 
   const isChinese = (project.subject === "國語");
 
