@@ -364,10 +364,27 @@ function updateItemOption(itemId, optionIndex, value) {
   }
 }
 
-async function scanFilesFromEntry(entry) {
+function getFolderDisplay(file) {
+  const path = file.webkitRelativePath || file.customPath || "";
+  if (!path) return "";
+  const parts = path.split(/[/\\]/); // support both slashes
+  if (parts.length <= 1) return "";
+  const folderParts = parts.slice(0, -1);
+  const cleanParts = folderParts.filter(part => {
+    const p = part.toLowerCase();
+    return p !== "pdf" && p !== "word" && p !== "docx" && p !== "doc" && p !== "備課資料";
+  });
+  if (cleanParts.length === 0) {
+    return `[${folderParts.slice(-1)}] `;
+  }
+  return `[${cleanParts.slice(-2).join(" ➔ ")}] `;
+}
+
+async function scanFilesFromEntry(entry, currentPath = "") {
   const files = [];
   if (entry.isFile) {
     const file = await new Promise((resolve) => entry.file(resolve));
+    file.customPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
     files.push(file);
   } else if (entry.isDirectory) {
     const reader = entry.createReader();
@@ -381,8 +398,9 @@ async function scanFilesFromEntry(entry) {
       return all;
     };
     const entries = await readAllEntries();
+    const nextPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
     for (const subEntry of entries) {
-      const subFiles = await scanFilesFromEntry(subEntry);
+      const subFiles = await scanFilesFromEntry(subEntry, nextPath);
       files.push(...subFiles);
     }
   }
@@ -405,8 +423,11 @@ function handleSelectedFiles(files) {
   // 自動勾選比較有可能是教材的檔案（如含有形音、句型、課文等關鍵字）
   const relevantKeywords = ["形音", "句型", "課文", "大意", "目標", "閱讀"];
   state.scannedFiles = filtered.map((file) => {
-    const isRelevant = relevantKeywords.some(keyword => file.name.includes(keyword));
-    return { file, checked: isRelevant || filtered.length <= 4 };
+    // 若總檔案數多於 5 個，預設均不勾選，由教師手動篩選與選取
+    const shouldCheck = filtered.length <= 5
+      ? (relevantKeywords.some(keyword => file.name.includes(keyword)) || filtered.length <= 4)
+      : false;
+    return { file, checked: shouldCheck };
   });
 
   setState({ errors: [], messages: [`已成功讀取 ${filtered.length} 個備課檔案，請於下方勾選並開始提取。`] });
@@ -720,20 +741,58 @@ function renderStep2() {
 
   let topGuideHtml = "";
   if (isChinese) {
-    const filesListHtml = (state.scannedFiles || []).length > 0
-      ? `<h3>已偵測到的教材檔案（請勾選本次要命題的課次）：</h3>
-         <div class="file-checkbox-list" style="max-height: 200px; overflow-y: auto; border: 1px solid var(--line); padding: 10px; border-radius: 12px; margin-bottom: 12px; background: #fafafa;">
-           ${(state.scannedFiles || []).map((sf, index) => `
-             <label class="file-checkbox-row" style="display:flex; align-items:center; gap:8px; margin-bottom:4px; font-size:14px; cursor:pointer; color:var(--muted);">
-               <input type="checkbox" data-file-index="${index}" ${sf.checked ? "checked" : ""} style="width:auto; margin:0;">
-               <span>${escapeHtml(sf.file.name)} (${Math.round(sf.file.size / 1024)} KB)</span>
-             </label>
-           `).join("")}
-         </div>
-         <div class="actions" style="margin-bottom:16px;">
-           <button data-action="extract-objectives" ${busy ? "disabled" : ""}>🚀 開始 AI 一鍵提取目標與教材</button>
-         </div>`
-      : "";
+    let filesListHtml = "";
+    if ((state.scannedFiles || []).length > 0) {
+      const filterText = (state.fileFilterText || "").trim().toLowerCase();
+      const checkedCount = state.scannedFiles.filter(sf => sf.checked).length;
+      const isOverLimit = checkedCount > 5;
+      
+      const visibleFiles = state.scannedFiles.map((sf, index) => ({ sf, index })).filter(({ sf }) => {
+        if (!filterText) return true;
+        const nameMatch = sf.file.name.toLowerCase().includes(filterText);
+        const pathMatch = (sf.file.webkitRelativePath || sf.file.customPath || "").toLowerCase().includes(filterText);
+        return nameMatch || pathMatch;
+      });
+
+      const limitNoticeColor = isOverLimit ? "red" : "var(--muted)";
+      const limitNoticeWeight = isOverLimit ? "bold" : "normal";
+
+      filesListHtml = `
+        <div style="margin-bottom: 12px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; justify-content: space-between;">
+          <div>
+            <h3 style="margin: 0 0 4px 0;">已偵測到的教材檔案：</h3>
+            <span style="font-size: 14px; color: ${limitNoticeColor}; font-weight: ${limitNoticeWeight};">
+              已勾選 ${checkedCount} 個檔案（限制上限 5 個）${isOverLimit ? " ⚠️ 已超出上限，請取消勾選多餘檔案" : ""}
+            </span>
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="secondary" data-action="uncheck-all-files" style="padding: 6px 12px; font-size: 13px; height: auto;">全不選</button>
+            <button class="secondary" data-action="check-filtered-files" style="padding: 6px 12px; font-size: 13px; height: auto;">勾選篩選出的檔案</button>
+          </div>
+        </div>
+        <input type="text" id="fileFilterInput" placeholder="🔍 輸入關鍵字篩選備課檔案 (例如：第一課)..." value="${escapeHtml(state.fileFilterText || "")}" style="margin-bottom: 8px; width: 100%; box-sizing: border-box; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line);">
+        <div class="file-checkbox-list" style="max-height: 250px; overflow-y: auto; border: 1px solid var(--line); padding: 10px; border-radius: 12px; margin-bottom: 12px; background: #fafafa;">
+          ${visibleFiles.length > 0 
+            ? visibleFiles.map(({ sf, index }) => {
+                const folderDisplay = getFolderDisplay(sf.file);
+                return `
+                  <label class="file-checkbox-row" style="display:flex; align-items:center; gap:8px; margin-bottom:4px; font-size:14px; cursor:pointer; color:var(--muted);">
+                    <input type="checkbox" data-file-index="${index}" ${sf.checked ? "checked" : ""} style="width:auto; margin:0;">
+                    <span style="word-break: break-all;">
+                      <strong style="color:var(--primary);">${escapeHtml(folderDisplay)}</strong>${escapeHtml(sf.file.name)} 
+                      <span style="font-size:12px; color:var(--muted);">(${Math.round(sf.file.size / 1024)} KB)</span>
+                    </span>
+                  </label>
+                `;
+              }).join("")
+            : `<div style="text-align: center; color: var(--muted); padding: 20px 0;">沒有符合「${escapeHtml(filterText)}」的檔案</div>`
+          }
+        </div>
+        <div class="actions" style="margin-bottom:16px;">
+          <button data-action="extract-objectives" ${busy || isOverLimit || checkedCount === 0 ? "disabled" : ""}>🚀 開始 AI 一鍵提取目標與教材</button>
+        </div>
+      `;
+    }
 
     topGuideHtml = `
       <div class="notice">
@@ -1220,7 +1279,25 @@ function loadingLine() {
 
 function render() {
   try {
+    const activeId = document.activeElement ? document.activeElement.id : null;
+    let selectionStart = null;
+    let selectionEnd = null;
+    if (activeId && (document.activeElement.tagName === "INPUT" || document.activeElement.tagName === "TEXTAREA")) {
+      selectionStart = document.activeElement.selectionStart;
+      selectionEnd = document.activeElement.selectionEnd;
+    }
+
     app.innerHTML = `${renderSteps()}${renderMessages()}${renderCurrentStep()}`;
+
+    if (activeId) {
+      const el = document.getElementById(activeId);
+      if (el) {
+        el.focus();
+        if (selectionStart !== null && selectionEnd !== null && typeof el.setSelectionRange === "function") {
+          el.setSelectionRange(selectionStart, selectionEnd);
+        }
+      }
+    }
   } catch (err) {
     console.error("Render error:", err);
     app.innerHTML = `<div style="padding: 24px; color: red; background: #fff1f0; border: 1px solid #ffa39e; border-radius: 8px; margin: 20px;">
@@ -1342,6 +1419,12 @@ function updateStateFromEvent(event) {
 }
 
 app.addEventListener("input", (event) => {
+  if (event.target.id === "fileFilterInput") {
+    state.fileFilterText = event.target.value;
+    render();
+    return;
+  }
+
   const handled = updateStateFromEvent(event);
   if (!handled) return;
 
@@ -1401,6 +1484,27 @@ app.addEventListener("click", (event) => {
   if (!actionButton) return;
 
   const action = actionButton.dataset.action;
+  if (action === "uncheck-all-files") {
+    if (state.scannedFiles) {
+      state.scannedFiles.forEach(sf => sf.checked = false);
+      render();
+    }
+    return;
+  }
+  if (action === "check-filtered-files") {
+    if (state.scannedFiles) {
+      const filterText = (state.fileFilterText || "").trim().toLowerCase();
+      state.scannedFiles.forEach(sf => {
+        const nameMatch = sf.file.name.toLowerCase().includes(filterText);
+        const pathMatch = (sf.file.webkitRelativePath || sf.file.customPath || "").toLowerCase().includes(filterText);
+        if (nameMatch || pathMatch) {
+          sf.checked = true;
+        }
+      });
+      render();
+    }
+    return;
+  }
   if (action === "chinese-import-checked") {
     const defaultObjectives = (state.checkedChineseSubcategories || [])
       .map((sub) => `${sub}｜1`)
