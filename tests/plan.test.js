@@ -103,7 +103,12 @@ describe("questionTypes", () => {
     const options = getQuestionTypeOptions("自然");
     expect(options[0]).toBe("選擇題");
     expect(options).toContain("實驗探究題");
+    expect(options).toContain("閱讀測驗");
     expect(options[options.length - 1]).toBe("學力檢測題");
+
+    expect(matchSubject("社會")).toBe("社會");
+    const socialOptions = getQuestionTypeOptions("社會");
+    expect(socialOptions).toContain("閱讀測驗");
   });
 
   it("未知科目用通用清單", () => {
