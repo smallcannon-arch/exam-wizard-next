@@ -3,7 +3,7 @@ import { normalizeGeneratedItems } from "./core/normalizeItem.js";
 
 async function postJson({ apiBaseUrl = getApiBaseUrl(), path, body }) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
+  const timeoutId = setTimeout(() => controller.abort(), 180000); // 180s timeout
 
   try {
     const response = await fetch(`${apiBaseUrl}${path}`, {
