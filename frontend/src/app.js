@@ -627,8 +627,8 @@ function renderStep1() {
           ${["一年級", "二年級", "三年級", "四年級", "五年級", "六年級"].map((option) => `<option value="${option}" ${option === state.project.grade ? "selected" : ""}>${option}</option>`).join("")}
         </select>
       </label>
-      <label class="field-lg">命題教師<input data-project="teacherName" value="${escapeHtml(state.project.teacherName)}"></label>
-      <label class="field-lg">版本<input data-project="version" value="${escapeHtml(state.project.version)}"></label>
+      <label class="field-lg">命題教師<input data-project="teacherName" placeholder="請自行輸入" value="${escapeHtml(state.project.teacherName)}"></label>
+      <label class="field-lg">版本<input data-project="version" placeholder="請自行輸入" value="${escapeHtml(state.project.version)}"></label>
       <label class="field-lg" style="grid-column: span 2;">評量範圍<input data-project="range" placeholder="請輸入單元範圍（例如：第3單元、第4單元）" value="${escapeHtml(state.project.range)}"></label>
     </div>
     ${renderPlanTable()}

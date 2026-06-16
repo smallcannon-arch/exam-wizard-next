@@ -10,7 +10,7 @@ export function createInitialState() {
       semester: "",
       examType: "",
       teacherName: "",
-      version: "翰林版",
+      version: "",
       range: "",
     },
     materialText: "",
