@@ -557,7 +557,7 @@ function renderStep2() {
     <h2>② 學習目標</h2>
     <div class="notice">
       <strong>💡 智慧匯入大補帖（推薦）：</strong>
-      <p style="margin:6px 0 0;">拖曳或選取整份廠商備課資料夾（如 `1.備課資料` ➔ `05形音輕鬆學` 或 `08各課短語句型` 的 PDF 資料夾），系統會自動過濾篩選並用 AI 一鍵填入下方的目標與摘要。</p>
+      <p style="margin:6px 0 0;">拖曳或選取整份廠商備課資料夾（如 <code>1.備課資料</code> ➔ <code>05形音輕鬆學</code> 或 <code>08各課短語句型</code> 的 PDF 資料夾），系統會自動過濾篩選並用 AI 一鍵填入下方的目標與摘要。</p>
     </div>
     <div class="drop-zone" id="dropZone" style="border: 2px dashed var(--line); border-radius: 18px; padding: 24px; text-align: center; cursor: pointer; color: var(--muted); background: var(--blue-soft); transition: all 0.2s; margin-bottom: 16px;">
       <span class="drop-zone-prompt" style="font-weight:600; display:block; margin-bottom:6px;">📂 拖曳備課資料夾或 PDF 檔案至此，或點擊此處選取</span>
