@@ -490,15 +490,26 @@ async function extractObjectives() {
       return;
     }
 
-    state.objectiveInput = objectivesToInputText(objectives);
+    let newObjectiveInput = objectivesToInputText(objectives);
+    if (state.isAppendMode && state.objectiveInput && state.objectiveInput.trim()) {
+      newObjectiveInput = state.objectiveInput.trim() + "\n" + newObjectiveInput;
+    }
     
     // 將教材重點彙整成文字存放在教材摘要中
     const fileSummary = `已從以下檔案自動提取要素：\n${selected.map(sf => `・${sf.file.name}`).join("\n")}`;
-    const materialSummary = result.materialSummary ? `${fileSummary}\n\n【教材重點摘要】\n${result.materialSummary}` : fileSummary;
+    let materialSummary = result.materialSummary ? `${fileSummary}\n\n【教材重點摘要】\n${result.materialSummary}` : fileSummary;
+    if (state.isAppendMode && state.materialText && state.materialText.trim()) {
+      materialSummary = state.materialText.trim() + "\n\n---\n\n" + materialSummary;
+    }
     
     setState({
       errors: [],
-      messages: [`成功！AI 已自動提取出 ${objectives.length} 個學習目標，並自動產生教材大意。`],
+      messages: [
+        state.isAppendMode
+          ? `成功！已增量追加提取出 ${objectives.length} 個學習目標，並追加教材摘要。`
+          : `成功！AI 已自動提取出 ${objectives.length} 個學習目標，並自動產生教材大意。`
+      ],
+      objectiveInput: newObjectiveInput,
       materialText: materialSummary,
     });
   } catch (error) {
@@ -788,8 +799,12 @@ function renderStep2() {
             : `<div style="text-align: center; color: var(--muted); padding: 20px 0;">沒有符合「${escapeHtml(filterText)}」的檔案</div>`
           }
         </div>
-        <div class="actions" style="margin-bottom:16px;">
+        <div class="actions" style="margin-bottom:16px; display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
           <button data-action="extract-objectives" ${busy || isOverLimit || checkedCount === 0 ? "disabled" : ""}>🚀 開始 AI 一鍵提取目標與教材</button>
+          <label style="display:inline-flex; align-items:center; gap:6px; font-size:14px; cursor:pointer; color:var(--muted); user-select:none;">
+            <input type="checkbox" id="appendModeCheckbox" ${state.isAppendMode ? "checked" : ""} style="width:auto; margin:0;">
+            追加至現有目標與摘要（不清除舊內容）
+          </label>
         </div>
       `;
     }
@@ -1541,6 +1556,12 @@ app.addEventListener("click", (event) => {
 
 // 配題表的題型/題數/配分或科目改變時（blur 觸發），重繪以更新小計與合計。
 app.addEventListener("change", (event) => {
+  if (event.target.id === "appendModeCheckbox") {
+    state.isAppendMode = event.target.checked;
+    render();
+    return;
+  }
+
   const slotField = event.target.dataset.slotField;
   const slotIndex = event.target.dataset.slotIndex;
   
