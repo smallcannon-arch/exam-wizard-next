@@ -624,7 +624,7 @@ function renderPlanTable() {
   return `
     <h3 style="font-size:20px; font-weight:bold; margin-top:24px;">配題表（題型／題數／配分）</h3>
     <p class="notice" style="font-size:15px; line-height:1.6;">
-      題型清單已依您的學科「${escapeHtml(subject || "預設")}」自動篩選。<br>
+      題型清單已依您的學科「<span style="color:#d32f2f; font-weight:bold;">${escapeHtml(subject || "預設")}</span>」自動篩選。<br>
       <strong>💡 溫馨提示</strong>：選取「題組」的項目會被 AI 自動拆解為指定數量的子題，並將該題配分由各子題分配，您在此階段可以放心為其配置較高的分數！
     </p>
     <div class="table-wrap"><table style="font-size:16px;">
