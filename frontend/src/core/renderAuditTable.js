@@ -300,7 +300,7 @@ export function renderAuditTable({ project = {}, objectives = [], items = [], pl
     return `<tr>
       <td style="border:1px solid #000; padding:10px; font-weight:500; font-size:14px;">${escapeHtml(unitTitle)}</td>
       <td style="border:1px solid #000; padding:10px; text-align:center; font-size:14px; font-weight:bold;">${unitPeriods} 節</td>
-      <td style="border:1px solid #000; padding:10px; text-align:center; font-size:14px; font-weight:bold; color:var(--primary);">${unitScore} 分 (${unitPct}%)</td>
+      <td style="border:1px solid #000; padding:10px; text-align:center; font-size:14px; font-weight:bold;">${unitScore} 分</td>
       <td style="border:1px solid #000; padding:10px; font-size:13px; text-align:center;">${escapeHtml(objLabels)}</td>
     </tr>`;
   }).join("");
@@ -313,8 +313,8 @@ export function renderAuditTable({ project = {}, objectives = [], items = [], pl
           <tr>
             <th style="border:1px solid #000; padding:10px; background:#f5f5f5; text-align:left;">大單元名稱/小單元(課)名稱</th>
             <th style="border:1px solid #000; padding:10px; background:#f5f5f5; width:15%;">授課節數</th>
-            <th style="border:1px solid #000; padding:10px; background:#f5f5f5; width:25%;">出題佔分 (比例)</th>
-            <th style="border:1px solid #000; padding:10px; background:#f5f5f5; width:25%;">教學目標/學習目標標號</th>
+            <th style="border:1px solid #000; padding:10px; background:#f5f5f5; width:20%;">出題佔分</th>
+            <th style="border:1px solid #000; padding:10px; background:#f5f5f5; width:30%;">教學目標/學習目標<br>(請寫標號即可，不需文字)</th>
           </tr>
         </thead>
         <tbody>
@@ -322,7 +322,7 @@ export function renderAuditTable({ project = {}, objectives = [], items = [], pl
           <tr style="font-weight:bold; background:#f5f5f5;">
             <td style="border:1px solid #000; padding:10px; text-align:left;">合計</td>
             <td style="border:1px solid #000; padding:10px; text-align:center;">${objectives.reduce((sum, obj) => sum + (obj.periodCount || 0), 0)} 節</td>
-            <td style="border:1px solid #000; padding:10px; text-align:center; color:var(--primary);">${totalScore} 分 (100%)</td>
+            <td style="border:1px solid #000; padding:10px; text-align:center;">${totalScore} 分</td>
             <td style="border:1px solid #000; padding:10px; text-align:center;">共 ${objectives.length} 目標</td>
           </tr>
         </tbody>

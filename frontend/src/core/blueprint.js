@@ -182,7 +182,8 @@ export function distributeObjectivesToSlots(slots, objectives = [], scoreById = 
   const allocatedScoreMap = new Map();
   objectives.forEach((obj) => allocatedScoreMap.set(obj.objectiveId, 0));
 
-  const allocatedSlots = slots.map((slot) => ({ ...slot }));
+  // Sort slots by score descending for allocation
+  const sortedSlots = slots.map((slot) => ({ ...slot })).sort((a, b) => b.score - a.score);
 
   const sortedObjectives = [...objectives].sort((a, b) => {
     const targetA = scoreById.get(a.objectiveId) || 0;
@@ -191,40 +192,53 @@ export function distributeObjectivesToSlots(slots, objectives = [], scoreById = 
   });
 
   const assignedSlotIds = new Set();
+  const allocationMap = new Map();
 
   for (const obj of sortedObjectives) {
-    const slot = allocatedSlots.find((s) => !assignedSlotIds.has(s.itemId));
+    const slot = sortedSlots.find((s) => !assignedSlotIds.has(s.itemId));
     if (slot) {
-      slot.primaryObjectiveId = obj.objectiveId;
-      slot.objectiveIds = [obj.objectiveId];
+      allocationMap.set(slot.itemId, obj.objectiveId);
       assignedSlotIds.add(slot.itemId);
       allocatedScoreMap.set(obj.objectiveId, slot.score);
     }
   }
 
-  for (const slot of allocatedSlots) {
+  for (const slot of sortedSlots) {
     if (assignedSlotIds.has(slot.itemId)) continue;
 
     let bestObj = null;
-    let maxDeficit = -Infinity;
+    let minNewSquaredError = Infinity;
 
     for (const obj of sortedObjectives) {
       const target = scoreById.get(obj.objectiveId) || 0;
       const allocated = allocatedScoreMap.get(obj.objectiveId) || 0;
-      const deficit = target - allocated;
-      if (deficit > maxDeficit) {
-        maxDeficit = deficit;
+      const newAllocated = allocated + slot.score;
+      const newSquaredError = Math.pow(target - newAllocated, 2);
+
+      if (newSquaredError < minNewSquaredError) {
+        minNewSquaredError = newSquaredError;
         bestObj = obj;
+      } else if (newSquaredError === minNewSquaredError) {
+        const currentBestAlloc = allocatedScoreMap.get(bestObj.objectiveId) || 0;
+        if (allocated < currentBestAlloc) {
+          bestObj = obj;
+        }
       }
     }
 
     if (bestObj) {
-      slot.primaryObjectiveId = bestObj.objectiveId;
-      slot.objectiveIds = [bestObj.objectiveId];
+      allocationMap.set(slot.itemId, bestObj.objectiveId);
       assignedSlotIds.add(slot.itemId);
       allocatedScoreMap.set(bestObj.objectiveId, (allocatedScoreMap.get(bestObj.objectiveId) || 0) + slot.score);
     }
   }
 
-  return allocatedSlots;
+  return slots.map((slot) => {
+    const objId = allocationMap.get(slot.itemId) || "";
+    return {
+      ...slot,
+      primaryObjectiveId: objId,
+      objectiveIds: objId ? [objId] : [],
+    };
+  });
 }
