@@ -610,8 +610,8 @@ function renderPlanTable() {
     }
 
     return `<tr>
-      <td style="vertical-align:middle; padding:12px 8px;">
-        <div style="display:flex; align-items:center; gap:16px; white-space:nowrap;">
+      <td style="vertical-align:middle; text-align:center; padding:12px 8px;">
+        <div style="display:inline-flex; align-items:center; gap:16px; white-space:nowrap;">
           <select data-plan-field="questionType" data-plan-index="${index}" style="margin:0; height:38px; padding:6px 28px 6px 10px; border-radius:8px; border:1px solid var(--line); width:auto; font-size:16px;">${optionHtml}</select>
           <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer; margin:0; font-size:16px; font-weight:600; color:var(--dark);">
             <input type="checkbox" data-plan-field="isGroup" data-plan-index="${index}" ${isGroup ? "checked" : ""} style="width:auto; margin:0; transform: scale(1.35); cursor:pointer;">
@@ -619,10 +619,10 @@ function renderPlanTable() {
           </label>
         </div>
       </td>
-      <td style="vertical-align:middle; padding:12px 8px;"><input type="number" min="1" data-plan-field="count" data-plan-index="${index}" value="${escapeHtml(row.count)}" style="margin:0; height:38px; width:100px; padding:6px 10px; border-radius:8px; border:1px solid var(--line); text-align:center; font-size:16px;"></td>
-      <td style="vertical-align:middle; padding:12px 8px;">${scoreConfigHtml}</td>
-      <td style="vertical-align:middle; padding:12px 8px;"><strong style="font-size:18px;">${escapeHtml(subtotal)}分</strong></td>
-      <td style="vertical-align:middle; padding:12px 8px;"><button class="secondary" data-action="remove-plan-row" data-plan-index="${index}" style="padding:6px 14px; margin:0; font-size:15px; height:38px; font-weight:600; white-space:nowrap;">刪除</button></td>
+      <td style="vertical-align:middle; text-align:center; padding:12px 8px;"><input type="number" min="1" data-plan-field="count" data-plan-index="${index}" value="${escapeHtml(row.count)}" style="margin:0; height:38px; width:100px; padding:6px 10px; border-radius:8px; border:1px solid var(--line); text-align:center; font-size:16px;"></td>
+      <td style="vertical-align:middle; text-align:center; padding:12px 8px;">${scoreConfigHtml}</td>
+      <td style="vertical-align:middle; text-align:center; padding:12px 8px;"><strong style="font-size:18px;">${escapeHtml(subtotal)}分</strong></td>
+      <td style="vertical-align:middle; text-align:center; padding:12px 8px;"><button class="secondary" data-action="remove-plan-row" data-plan-index="${index}" style="padding:6px 14px; margin:0; font-size:15px; height:38px; font-weight:600; white-space:nowrap;">刪除</button></td>
     </tr>`;
   }).join("");
 
@@ -635,11 +635,11 @@ function renderPlanTable() {
     <div class="table-wrap"><table style="font-size:16px;">
       <thead>
         <tr>
-          <th style="font-size:16px; padding:10px 8px; width:25%; min-width:300px; vertical-align:middle;">題型</th>
-          <th style="font-size:16px; padding:10px 8px; width:10%; min-width:100px; vertical-align:middle;">題數</th>
-          <th style="font-size:16px; padding:10px 8px; width:49%; min-width:680px; vertical-align:middle;">每題(答)配分</th>
-          <th style="font-size:16px; padding:10px 8px; width:8%; min-width:80px; vertical-align:middle;">小計</th>
-          <th style="font-size:16px; padding:10px 8px; width:8%; min-width:100px; vertical-align:middle;"></th>
+          <th style="font-size:16px; padding:10px 8px; width:25%; min-width:300px; vertical-align:middle; text-align:center;">題型 ／ 組成題組</th>
+          <th style="font-size:16px; padding:10px 8px; width:10%; min-width:100px; vertical-align:middle; text-align:center;">題數</th>
+          <th style="font-size:16px; padding:10px 8px; width:49%; min-width:680px; vertical-align:middle; text-align:center;">每題(答)配分</th>
+          <th style="font-size:16px; padding:10px 8px; width:8%; min-width:80px; vertical-align:middle; text-align:center;">小計</th>
+          <th style="font-size:16px; padding:10px 8px; width:8%; min-width:100px; vertical-align:middle; text-align:center;"></th>
         </tr>
       </thead>
       <tbody>${rowsHtml}</tbody>
