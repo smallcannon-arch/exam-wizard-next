@@ -18,7 +18,7 @@ import { renderAuditTable } from "./core/renderAuditTable.js";
 
 // 目標提取 Gem（沿用現有連結）；教材提取 Gem 建立後，把網址填到 GEM_MATERIAL_URL。
 const GEM_OBJECTIVES_URL = "https://gemini.google.com/gem/1Xd6a-3N4dZvvzC7TdgP1yBjAa2IXDUFb?usp=sharing";
-const GEM_MATERIAL_URL = "";
+const GEM_MATERIAL_URL = "https://gemini.google.com/gem/17PYExL91vSTPiO90za0kEuEjZyG6LxcF?usp=sharing";
 
 function gemLink(url, label) {
   return url
