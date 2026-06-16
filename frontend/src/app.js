@@ -538,36 +538,59 @@ function renderPlanTable() {
 }
 
 function renderStep2() {
-  const filesListHtml = (state.scannedFiles || []).length > 0
-    ? `<h3>已偵測到的教材檔案（請勾選本次要命題的課次）：</h3>
-       <div class="file-checkbox-list" style="max-height: 200px; overflow-y: auto; border: 1px solid var(--line); padding: 10px; border-radius: 12px; margin-bottom: 12px; background: #fafafa;">
-         ${(state.scannedFiles || []).map((sf, index) => `
-           <label class="file-checkbox-row" style="display:flex; align-items:center; gap:8px; margin-bottom:4px; font-size:14px; cursor:pointer; color:var(--muted);">
-             <input type="checkbox" data-file-index="${index}" ${sf.checked ? "checked" : ""} style="width:auto; margin:0;">
-             <span>${escapeHtml(sf.file.name)} (${Math.round(sf.file.size / 1024)} KB)</span>
-           </label>
-         `).join("")}
-       </div>
-       <div class="actions" style="margin-bottom:16px;">
-         <button data-action="extract-objectives" ${busy ? "disabled" : ""}>🚀 開始 AI 一鍵提取目標與教材</button>
-       </div>`
-    : "";
+  const isChinese = (state.project.subject === "國語");
+
+  let topGuideHtml = "";
+  if (isChinese) {
+    const filesListHtml = (state.scannedFiles || []).length > 0
+      ? `<h3>已偵測到的教材檔案（請勾選本次要命題的課次）：</h3>
+         <div class="file-checkbox-list" style="max-height: 200px; overflow-y: auto; border: 1px solid var(--line); padding: 10px; border-radius: 12px; margin-bottom: 12px; background: #fafafa;">
+           ${(state.scannedFiles || []).map((sf, index) => `
+             <label class="file-checkbox-row" style="display:flex; align-items:center; gap:8px; margin-bottom:4px; font-size:14px; cursor:pointer; color:var(--muted);">
+               <input type="checkbox" data-file-index="${index}" ${sf.checked ? "checked" : ""} style="width:auto; margin:0;">
+               <span>${escapeHtml(sf.file.name)} (${Math.round(sf.file.size / 1024)} KB)</span>
+             </label>
+           `).join("")}
+         </div>
+         <div class="actions" style="margin-bottom:16px;">
+           <button data-action="extract-objectives" ${busy ? "disabled" : ""}>🚀 開始 AI 一鍵提取目標與教材</button>
+         </div>`
+      : "";
+
+    topGuideHtml = `
+      <div class="notice">
+        <strong>💡 智慧匯入大補帖（推薦）：</strong>
+        <p style="margin:6px 0 0;">拖曳或選取整份廠商備課資料夾（如 <code>1.備課資料</code> ➔ <code>05形音輕鬆學</code> 或 <code>08各課短語句型</code> 的 PDF 資料夾），系統會自動過濾篩選並用 AI 一鍵填入下方的目標與摘要。</p>
+        <p style="margin:6px 0 0; font-size:13px; color:var(--muted);">您也可以使用手動方式，透過 ${gemLink(GEM_OBJECTIVES_URL, "「目標提取」Gem")} 提取文字貼入下方。</p>
+      </div>
+      <div class="drop-zone" id="dropZone" style="border: 2px dashed var(--line); border-radius: 18px; padding: 24px; text-align: center; cursor: pointer; color: var(--muted); background: var(--blue-soft); transition: all 0.2s; margin-bottom: 16px;">
+        <span class="drop-zone-prompt" style="font-weight:600; display:block; margin-bottom:6px;">📂 拖曳備課資料夾或 PDF 檔案至此，或點擊此處選取</span>
+        <span style="font-size:13px;">（建議優先選擇廠商提供的「形音輕鬆學」或「短語型練習」PDF）</span>
+        <input type="file" id="fileInput" webkitdirectory directory multiple style="display: none;">
+        <input type="file" id="fileInputFiles" multiple accept=".pdf,.docx" style="display: none;">
+      </div>
+      ${filesListHtml}
+      ${loadingLine()}
+      <hr style="border:0; border-top:1px solid var(--line); margin:24px 0;">
+    `;
+  } else {
+    topGuideHtml = `
+      <div class="notice">
+        <strong>用兩個 Gem 分別抓「學習目標」與「教材重點」（建議；也可自己填）</strong>
+        <ol class="gem-steps">
+          <li><strong>學習目標：</strong>${gemLink(GEM_OBJECTIVES_URL, "開啟「目標提取」Gem")}，上傳該課的課本／單元活動架構，把它輸出的每行（<code>目標文字｜節數</code>）整段貼到下方「<strong>學習目標</strong>」欄。</li>
+          <li><strong>教材重點：</strong>${gemLink(GEM_MATERIAL_URL, "開啟「教材提取」Gem")}，上傳該課的課本／習作，把它輸出的各單元重點整段貼到下方「<strong>教材摘要</strong>」欄。</li>
+          <li>兩個 Gem 都<strong>不必</strong>上傳目次、解答或純教學 PPT。</li>
+          <li>確認或修改後按「建立配題與藍圖」，系統會依各目標<strong>節數比例</strong>配分出題。</li>
+        </ol>
+        不想用 Gem 也可以：直接在下方「學習目標」欄輸入，每行 <code>目標文字｜節數</code>（例：<code>1-2 動物適應環境的策略｜2</code>）。
+      </div>
+    `;
+  }
 
   return `<section class="panel">
     <h2>② 學習目標</h2>
-    <div class="notice">
-      <strong>💡 智慧匯入大補帖（推薦）：</strong>
-      <p style="margin:6px 0 0;">拖曳或選取整份廠商備課資料夾（如 <code>1.備課資料</code> ➔ <code>05形音輕鬆學</code> 或 <code>08各課短語句型</code> 的 PDF 資料夾），系統會自動過濾篩選並用 AI 一鍵填入下方的目標與摘要。</p>
-    </div>
-    <div class="drop-zone" id="dropZone" style="border: 2px dashed var(--line); border-radius: 18px; padding: 24px; text-align: center; cursor: pointer; color: var(--muted); background: var(--blue-soft); transition: all 0.2s; margin-bottom: 16px;">
-      <span class="drop-zone-prompt" style="font-weight:600; display:block; margin-bottom:6px;">📂 拖曳備課資料夾或 PDF 檔案至此，或點擊此處選取</span>
-      <span style="font-size:13px;">（建議優先選擇廠商提供的「形音輕鬆學」或「短語句型練習」PDF）</span>
-      <input type="file" id="fileInput" webkitdirectory directory multiple style="display: none;">
-      <input type="file" id="fileInputFiles" multiple accept=".pdf,.docx" style="display: none;">
-    </div>
-    ${filesListHtml}
-    ${loadingLine()}
-    <hr style="border:0; border-top:1px solid var(--line); margin:24px 0;">
+    ${topGuideHtml}
     <label>學習目標（把 LLM／Gem 抓回 the 指標整段貼進來即可）<textarea data-field="objectiveInput">${escapeHtml(state.objectiveInput)}</textarea></label>
     <p class="notice">貼好後按「整理學習目標」，系統會把它整理成帶編號與節數的標準格式（見下方預覽），可再手動微調。</p>
     <div class="actions">
