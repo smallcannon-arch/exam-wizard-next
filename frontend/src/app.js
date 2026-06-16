@@ -573,67 +573,67 @@ function renderPlanTable() {
     let scoreConfigHtml = "";
     if (isGroup) {
       scoreConfigHtml = `
-        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; min-height:28px;">
-          <span style="font-size:13px; color:var(--muted);">其中</span>
-          <input type="number" min="1" max="${row.count}" data-plan-field="groupCount" data-plan-index="${index}" value="${row.groupCount || 1}" style="width:48px; padding:2px 6px; text-align:center; height:28px; border-radius:8px; border:1px solid var(--line); margin:0;">
-          <span style="font-size:13px; color:var(--muted);">組為題組，每組有</span>
-          <select data-plan-field="subCount" data-plan-index="${index}" style="width:auto; display:inline-block; height:28px; font-size:13px; padding:2px 18px 2px 8px; border-radius:8px; border:1px solid var(--line); margin:0; line-height:1; background-position: right 6px center;">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; min-height:38px; font-size:16px;">
+          <span style="color:var(--muted); font-size:15px;">其中</span>
+          <input type="number" min="1" max="${row.count}" data-plan-field="groupCount" data-plan-index="${index}" value="${row.groupCount || 1}" style="width:60px; padding:6px 8px; text-align:center; height:38px; border-radius:8px; border:1px solid var(--line); margin:0; font-size:16px;">
+          <span style="color:var(--muted); font-size:15px;">組為題組，每組有</span>
+          <select data-plan-field="subCount" data-plan-index="${index}" style="width:auto; display:inline-block; height:38px; font-size:15px; padding:6px 28px 6px 10px; border-radius:8px; border:1px solid var(--line); margin:0; line-height:1; background-position: right 8px center;">
             <option value="2" ${subScores.length === 2 ? "selected" : ""}>2</option>
             <option value="3" ${subScores.length === 3 ? "selected" : ""}>3</option>
             <option value="4" ${subScores.length === 4 ? "selected" : ""}>4</option>
           </select>
-          <span style="font-size:13px; color:var(--muted);">子題（配分：</span>
-          <div style="font-size:13px; color:var(--muted); display:inline-flex; align-items:center; gap:2px; margin:0;">
+          <span style="color:var(--muted); font-size:15px;">子題（配分：</span>
+          <div style="display:inline-flex; align-items:center; gap:4px; margin:0; font-size:15px;">
             ${subScores.map((score, sIdx) => `
-              <input type="number" min="1" data-plan-field="subScore" data-plan-index="${index}" data-sub-index="${sIdx}" value="${score}" style="width:36px; padding:2px; text-align:center; height:28px; border-radius:8px; border:1px solid var(--line); margin:0; font-size:12px;">
+              <input type="number" min="1" data-plan-field="subScore" data-plan-index="${index}" data-sub-index="${sIdx}" value="${score}" style="width:48px; padding:4px; text-align:center; height:38px; border-radius:8px; border:1px solid var(--line); margin:0; font-size:15px;">
               ${sIdx < subScores.length - 1 ? "<span>+</span>" : ""}
             `).join("")}
-            <span style="font-weight:bold; color:var(--primary); margin-left:4px;">= ${groupScore}分</span>
+            <span style="font-weight:bold; color:var(--primary); margin-left:6px;">= ${groupScore}分</span>
           </div>
-          <span style="font-size:13px; color:var(--muted);">)</span>
+          <span style="color:var(--muted); font-size:15px;">)</span>
           ${singleCount > 0 ? `
-            <span style="color:var(--line); margin:0 4px; font-weight:300;">|</span>
-            <span style="font-size:13px; color:var(--muted);">其餘 ${singleCount} 題為單題，每題</span>
-            <input type="number" min="1" data-plan-field="score" data-plan-index="${index}" value="${escapeHtml(row.score)}" style="width:48px; padding:2px 6px; text-align:center; height:28px; border-radius:8px; border:1px solid var(--line); margin:0;">
-            <span style="font-size:13px; color:var(--muted);">分</span>
+            <span style="color:var(--line); margin:0 8px; font-weight:300;">|</span>
+            <span style="color:var(--muted); font-size:15px;">其餘 ${singleCount} 題為單題，每題</span>
+            <input type="number" min="1" data-plan-field="score" data-plan-index="${index}" value="${escapeHtml(row.score)}" style="width:60px; padding:6px 8px; text-align:center; height:38px; border-radius:8px; border:1px solid var(--line); margin:0; font-size:16px;">
+            <span style="color:var(--muted); font-size:15px;">分</span>
           ` : ""}
         </div>
       `;
     } else {
       scoreConfigHtml = `
-        <input type="number" min="1" data-plan-field="score" data-plan-index="${index}" value="${escapeHtml(row.score)}" style="width:80px; margin:0; height:28px; padding:2px 8px; border-radius:8px; border:1px solid var(--line);">
+        <input type="number" min="1" data-plan-field="score" data-plan-index="${index}" value="${escapeHtml(row.score)}" style="width:100px; margin:0; height:38px; padding:6px 10px; border-radius:8px; border:1px solid var(--line); text-align:center; font-size:16px;">
       `;
     }
 
     return `<tr>
       <td>
-        <div style="display:flex; align-items:center; gap:8px;">
-          <select data-plan-field="questionType" data-plan-index="${index}" style="margin:0; height:28px; padding:2px 18px 2px 8px; border-radius:8px; border:1px solid var(--line); width:auto;">${optionHtml}</select>
-          <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; margin:0; font-size:13px; font-weight:600; color:var(--muted);">
-            <input type="checkbox" data-plan-field="isGroup" data-plan-index="${index}" ${isGroup ? "checked" : ""} style="width:auto; margin:0;">
+        <div style="display:flex; align-items:center; gap:12px;">
+          <select data-plan-field="questionType" data-plan-index="${index}" style="margin:0; height:38px; padding:6px 28px 6px 10px; border-radius:8px; border:1px solid var(--line); width:auto; font-size:16px;">${optionHtml}</select>
+          <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; margin:0; font-size:15px; font-weight:600; color:var(--muted);">
+            <input type="checkbox" data-plan-field="isGroup" data-plan-index="${index}" ${isGroup ? "checked" : ""} style="width:auto; margin:0; transform: scale(1.25);">
             <span>題組</span>
           </label>
         </div>
       </td>
-      <td><input type="number" min="1" data-plan-field="count" data-plan-index="${index}" value="${escapeHtml(row.count)}" style="margin:0; height:28px; width:80px; padding:2px 8px; border-radius:8px; border:1px solid var(--line);"></td>
+      <td><input type="number" min="1" data-plan-field="count" data-plan-index="${index}" value="${escapeHtml(row.count)}" style="margin:0; height:38px; width:100px; padding:6px 10px; border-radius:8px; border:1px solid var(--line); text-align:center; font-size:16px;"></td>
       <td>${scoreConfigHtml}</td>
-      <td><strong>${escapeHtml(subtotal)}分</strong></td>
-      <td><button class="secondary" data-action="remove-plan-row" data-plan-index="${index}" style="padding:4px 8px; margin:0; font-size:13px; height:28px;">刪除</button></td>
+      <td><strong style="font-size:18px;">${escapeHtml(subtotal)}分</strong></td>
+      <td><button class="secondary" data-action="remove-plan-row" data-plan-index="${index}" style="padding:6px 14px; margin:0; font-size:15px; height:38px; font-weight:600;">刪除</button></td>
     </tr>`;
   }).join("");
 
   return `
-    <h3>配題表（題型／題數／配分）</h3>
-    <p class="notice">
+    <h3 style="font-size:20px; font-weight:bold; margin-top:24px;">配題表（題型／題數／配分）</h3>
+    <p class="notice" style="font-size:15px; line-height:1.6;">
       題型清單已依您的學科「${escapeHtml(subject || "預設")}」自動篩選。<br>
       <strong>💡 溫馨提示</strong>：選取「題組」的項目會被 AI 自動拆解為指定數量的子題，並將該題配分由各子題分配，您在此階段可以放心為其配置較高的分數！
     </p>
-    <div class="table-wrap"><table>
-      <thead><tr><th>題型</th><th>題數</th><th>每題(答)配分</th><th>小計</th><th></th></tr></thead>
+    <div class="table-wrap"><table style="font-size:16px;">
+      <thead><tr><th style="font-size:16px; padding:10px 8px;">題型</th><th style="font-size:16px; padding:10px 8px;">題數</th><th style="font-size:16px; padding:10px 8px;">每題(答)配分</th><th style="font-size:16px; padding:10px 8px;">小計</th><th style="font-size:16px; padding:10px 8px;"></th></tr></thead>
       <tbody>${rowsHtml}</tbody>
     </table></div>
-    <div class="actions"><button class="secondary" data-action="add-plan-row">＋ 新增一列</button></div>
-    <p class="notice ${totals.totalItems > 0 ? "success" : ""}">合計：${totals.totalItems} 題、${totals.totalScore} 分（即本卷總分）</p>
+    <div class="actions" style="margin-top:12px;"><button class="secondary" data-action="add-plan-row" style="padding:10px 20px; font-size:16px; font-weight: 600; height: auto;">＋ 新增一列</button></div>
+    <p class="notice ${totals.totalItems > 0 ? "success" : ""}" style="font-size:18px; font-weight:bold; padding:14px 20px; margin-top:16px;">合計：${totals.totalItems} 題、${totals.totalScore} 分（即本卷總分）</p>
   `;
 }
 
@@ -643,18 +643,18 @@ function renderChineseSubcategoryChecklist() {
   const checkedSet = new Set(state.checkedChineseSubcategories || []);
   const recs = getMandarinRecommendation(state.project.grade);
   const gradeCategory = getGradeCategory(state.project.grade);
-  const categoryLabel = gradeCategory === "low" ? "低年級" : (gradeCategory === "middle" ? "中年級" : "高年級");
+  const categoryLabel = gradeCategory === "low" ? "低年級" : (gradeCategory === "middle" ? "中年級" : (gradeCategory === "high" ? "高年級" : ""));
 
   const columnsHtml = CHINESE_AUDIT_STRUCTURE.map((dimObj) => {
     const projectHtml = `
-      <div class="sub-column-project" style="margin-bottom:24px;">
-        <h4 style="margin:0 0 12px; font-size:16px; border-bottom: 2px solid var(--primary); padding-bottom: 6px; color: var(--primary); font-weight: bold;">${dimObj.project}</h4>
-        <div style="display:flex; flex-direction:column; gap:12px;">
+      <div class="sub-column-project" style="margin-bottom:28px;">
+        <h4 style="margin:0 0 16px; font-size:19px; border-bottom: 2px solid var(--primary); padding-bottom: 8px; color: var(--primary); font-weight: bold;">${dimObj.project}</h4>
+        <div style="display:flex; flex-direction:column; gap:14px;">
           ${dimObj.items.map((item) => {
             const checked = checkedSet.has(item);
             return `
-              <label style="display:inline-flex; align-items:center; gap:10px; font-size:17px; cursor:pointer; margin:0; font-weight:normal; color:var(--ink); padding: 2px 0;">
-                <input type="checkbox" data-chinese-sub="${item}" ${checked ? "checked" : ""} style="width:auto; margin:0; transform: scale(1.35); cursor:pointer;">
+              <label class="chinese-sub-label" style="display:inline-flex; align-items:center; gap:12px; font-size:19px; cursor:pointer; margin:0; font-weight:500; color:var(--ink); padding: 6px 10px; border-radius: 8px; transition: background 0.2s;">
+                <input type="checkbox" data-chinese-sub="${item}" ${checked ? "checked" : ""} style="width:auto; margin:0; transform: scale(1.5); cursor:pointer;">
                 <span>${item}</span>
               </label>
             `;
@@ -669,9 +669,9 @@ function renderChineseSubcategoryChecklist() {
   const gridHtml = dims.map((dim) => {
     const dimHtml = columnsHtml.filter(c => c.dimension === dim).map(c => c.html).join("");
     return `
-      <div style="flex:1; min-width:260px; background:#fff; padding:24px; border-radius:16px; border:1px solid var(--line); box-shadow:0 6px 16px rgba(0,0,0,0.02);">
-        <h3 style="margin:0 0 20px; font-size:19px; font-weight:bold; color:#111; display:flex; align-items:center; gap:8px;">
-          <span style="width:5px; height:20px; background:var(--primary); display:inline-block; border-radius:3px;"></span>
+      <div style="flex:1; min-width:260px; background:#fff; padding:32px; border-radius:20px; border:1px solid var(--line); box-shadow:0 6px 16px rgba(0,0,0,0.02);">
+        <h3 style="margin:0 0 24px; font-size:22px; font-weight:bold; color:#111; display:flex; align-items:center; gap:10px;">
+          <span style="width:6px; height:24px; background:var(--primary); display:inline-block; border-radius:3px;"></span>
           ${dim}
         </h3>
         ${dimHtml}
@@ -680,27 +680,27 @@ function renderChineseSubcategoryChecklist() {
   }).join("");
 
   return `
-    <div class="chinese-sub-checklist" style="margin:24px 0; padding:28px; background:var(--blue-soft); border-radius:20px; border:1px solid var(--line);">
-      <h3 style="margin:0 0 12px; font-size:20px; font-weight:800; color:var(--dark);">📋 國語科評量項目細項篩選</h3>
-      <div style="margin: 16px 0 20px 0; padding: 16px 20px; background: #fff; border: 1px solid var(--line); border-radius: 12px; font-size: 16px; color: #333; line-height: 1.7; text-align: left; box-shadow: 0 4px 10px rgba(0,0,0,0.01);">
-        <strong style="font-size: 17px; color: var(--primary);">💡 許育健教授國語科評量向度建議佔分比例：</strong><br>
+    <div class="chinese-sub-checklist" style="margin:24px 0; padding:36px; background:var(--blue-soft); border-radius:20px; border:1px solid var(--line);">
+      <h3 style="margin:0 0 16px; font-size:24px; font-weight:800; color:var(--dark);">📋 國語科評量項目細項篩選</h3>
+      <div style="margin: 16px 0 24px 0; padding: 20px 24px; background: #fff; border: 1px solid var(--line); border-radius: 16px; font-size: 18px; color: #333; line-height: 1.8; text-align: left; box-shadow: 0 4px 10px rgba(0,0,0,0.01);">
+        <strong style="font-size: 19px; color: var(--primary);">💡 許育健教授國語科評量向度建議佔分比例：</strong><br>
         • <strong>低年級</strong>（一、二年級）：字詞短語 50% ｜ 句式語法 30% ｜ 段篇讀寫 20%<br>
         • <strong>中年級</strong>（三、四年級）：字詞短語 30% ｜ 句式語法 50% ｜ 段篇讀寫 20%<br>
         • <strong>高年級</strong>（五、六年級）：字詞短語 20% ｜ 句式語法 30% ｜ 段篇讀寫 50%<br>
-        <div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #eee; font-weight: 600;">
-          當前設定年級：<span style="color:var(--primary); font-size:17px; font-weight: bold;">${categoryLabel || "（請先選擇年級）"}</span>
-          ${categoryLabel ? `➔ 建議比例：字詞短語 <span style="color:var(--primary); font-size:17px;">${recs.character}</span> ｜ 句式語法 <span style="color:var(--primary); font-size:17px;">${recs.grammar}</span> ｜ 段篇讀寫 <span style="color:var(--primary); font-size:17px;">${recs.reading}</span>` : ""}
+        <div style="margin-top: 14px; padding-top: 14px; border-top: 1px dashed #eee; font-weight: 600; font-size: 19px;">
+          當前設定年級：<span style="color:var(--primary); font-size:20px; font-weight: bold;">${categoryLabel || "（請先選擇年級）"}</span>
+          ${categoryLabel ? `➔ 建議比例：字詞短語 <span style="color:var(--primary); font-size:20px;">${recs.character}</span> ｜ 句式語法 <span style="color:var(--primary); font-size:20px;">${recs.grammar}</span> ｜ 段篇讀寫 <span style="color:var(--primary); font-size:20px;">${recs.reading}</span>` : ""}
         </div>
       </div>
-      <p style="margin:0 0 20px; font-size:16px; color:var(--muted); line-height: 1.6;">勾選本次評量要涵蓋的細項。AI 將只使用已勾選的項目進行出題與自動對齊，這能讓出題更集中，避免細項過多導致分散。</p>
+      <p style="margin:0 0 24px; font-size:18px; color:var(--muted); line-height: 1.6;">勾選本次評量要涵蓋的細項。AI 將只使用已勾選的項目進行出題與自動對齊，這能讓出題更集中，避免細項過多導致分散。</p>
       
-      <div class="actions" style="margin-bottom:20px; display:flex; gap:10px;">
-        <button class="secondary" data-action="chinese-sub-default" style="padding:8px 16px; font-size:15px; height:auto; font-weight: 600;">恢復預設選項</button>
-        <button class="secondary" data-action="chinese-sub-all" style="padding:8px 16px; font-size:15px; height:auto; font-weight: 600;">全選</button>
-        <button class="secondary" data-action="chinese-sub-none" style="padding:8px 16px; font-size:15px; height:auto; font-weight: 600;">清空</button>
+      <div class="actions" style="margin-bottom:24px; display:flex; gap:12px;">
+        <button class="secondary" data-action="chinese-sub-default" style="padding:10px 20px; font-size:17px; height:auto; font-weight: 600;">恢復預設選項</button>
+        <button class="secondary" data-action="chinese-sub-all" style="padding:10px 20px; font-size:17px; height:auto; font-weight: 600;">全選</button>
+        <button class="secondary" data-action="chinese-sub-none" style="padding:10px 20px; font-size:17px; height:auto; font-weight: 600;">清空</button>
       </div>
 
-      <div style="display:flex; gap:20px; flex-wrap:wrap; align-items:stretch;">
+      <div style="display:flex; gap:24px; flex-wrap:wrap; align-items:stretch;">
         ${gridHtml}
       </div>
     </div>

@@ -2,30 +2,50 @@ import { getApiBaseUrl } from "./config.js";
 import { normalizeGeneratedItems } from "./core/normalizeItem.js";
 
 async function postJson({ apiBaseUrl = getApiBaseUrl(), path, body }) {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
 
-  const data = await response.json().catch(() => null);
+  try {
+    const response = await fetch(`${apiBaseUrl}${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
 
-  if (!response.ok) {
+    clearTimeout(timeoutId);
+
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: data?.error || `HTTP ${response.status}`,
+      };
+    }
+
+    if (Array.isArray(data?.items)) {
+      return {
+        ...data,
+        items: normalizeGeneratedItems(data.items),
+      };
+    }
+    return data;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error.name === "AbortError") {
+      return {
+        ok: false,
+        error: "連線超時：AI 伺服器回應時間過長，請確認網路連線或稍後再試。",
+      };
+    }
     return {
       ok: false,
-      error: data?.error || `HTTP ${response.status}`,
+      error: error.message || String(error),
     };
   }
-
-  if (Array.isArray(data?.items)) {
-  return {
-    ...data,
-    items: normalizeGeneratedItems(data.items),
-  };
-}
-  return data;
 }
 
 export function generateItemsViaApi({

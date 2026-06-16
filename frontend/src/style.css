@@ -256,6 +256,11 @@ pre {
   box-shadow: 0 4px 12px rgba(24, 52, 93, 0.05);
 }
 
+.chinese-sub-label:hover {
+  background: rgba(24, 144, 255, 0.08) !important;
+  color: var(--primary) !important;
+}
+
 /* 審核表列印專用 A4 最佳化樣式 */
 @media print {
   body {
