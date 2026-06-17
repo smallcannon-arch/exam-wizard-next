@@ -4,6 +4,7 @@ export function createInitialState() {
     apiBaseUrl: "http://127.0.0.1:8787",
     project: {
       subject: "",
+      frameworkId: "",
       grade: "",
       schoolName: "新竹市香山區內湖國小",
       schoolYear: "",
