@@ -207,18 +207,21 @@ export function distributeObjectivesToSlots(slots, objectives = [], scoreById = 
     if (assignedSlotIds.has(slot.itemId)) continue;
 
     let bestObj = null;
-    let minNewSquaredError = Infinity;
+    let minErrorChange = Infinity;
 
     for (const obj of sortedObjectives) {
       const target = scoreById.get(obj.objectiveId) || 0;
       const allocated = allocatedScoreMap.get(obj.objectiveId) || 0;
       const newAllocated = allocated + slot.score;
-      const newSquaredError = Math.pow(target - newAllocated, 2);
+      
+      const currentError = Math.pow(target - allocated, 2);
+      const newError = Math.pow(target - newAllocated, 2);
+      const errorChange = newError - currentError; // 負的代表誤差減少
 
-      if (newSquaredError < minNewSquaredError) {
-        minNewSquaredError = newSquaredError;
+      if (errorChange < minErrorChange) {
+        minErrorChange = errorChange;
         bestObj = obj;
-      } else if (newSquaredError === minNewSquaredError) {
+      } else if (errorChange === minErrorChange) {
         const currentBestAlloc = allocatedScoreMap.get(bestObj.objectiveId) || 0;
         if (allocated < currentBestAlloc) {
           bestObj = obj;

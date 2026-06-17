@@ -145,4 +145,46 @@ describe("distributeObjectivesToSlots", () => {
     expect(counts["O-001"]).toBe(6);
     expect(counts["O-002"]).toBe(4);
   });
+
+  it("當部分目標的預估配分很大時，不應產生飢餓效應（貪婪演算法應正確分配剩餘題位）", () => {
+    const slots = [];
+    for (let i = 1; i <= 4; i++) slots.push({ itemId: `Q-G${i}`, score: 5 });
+    for (let i = 1; i <= 40; i++) slots.push({ itemId: `Q-S${i}`, score: 2 });
+
+    const objectives = [
+      { objectiveId: "O-001", text: "1-1-1 正確字音" },
+      { objectiveId: "O-002", text: "1-1-2 確認字形" },
+      { objectiveId: "O-003", text: "1-1-3 分辨部首" },
+      { objectiveId: "O-004", text: "1-1-4 字詞釋義" },
+      { objectiveId: "O-005", text: "1-1-5 句型辨識" },
+      { objectiveId: "O-006", text: "1-1-6 文句組成" },
+      { objectiveId: "O-007", text: "1-1-7 常用修辭" },
+      { objectiveId: "O-008", text: "1-1-8 提取訊息" },
+      { objectiveId: "O-009", text: "1-1-9 推論訊息" },
+      { objectiveId: "O-010", text: "1-1-10 主題習寫" },
+    ];
+
+    const scoreById = new Map([
+      ["O-001", 8],
+      ["O-002", 8],
+      ["O-003", 7],
+      ["O-004", 7],
+      ["O-005", 17],
+      ["O-006", 17],
+      ["O-007", 16],
+      ["O-008", 7],
+      ["O-009", 7],
+      ["O-010", 6],
+    ]);
+
+    const result = distributeObjectivesToSlots(slots, objectives, scoreById);
+    const counts = {};
+    result.forEach((r) => {
+      counts[r.primaryObjectiveId] = (counts[r.primaryObjectiveId] || 0) + r.score;
+    });
+
+    expect(counts["O-005"]).toBeGreaterThanOrEqual(15);
+    expect(counts["O-006"]).toBeGreaterThanOrEqual(15);
+    expect(counts["O-007"]).toBeGreaterThanOrEqual(14);
+  });
 });
