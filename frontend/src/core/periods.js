@@ -25,6 +25,18 @@ export function formatPercent(share) {
   return `${Math.round((Number(share) || 0) * 100)}%`;
 }
 
+// 依各目標節數，以最大餘數法把總分配成整數目標配分（總和等於總分）。純函式。
+export function objectiveScoresByPeriod(objectives, totalScore) {
+  const rows = largestRemainder(
+    totalScore,
+    (Array.isArray(objectives) ? objectives : []).map((objective) => ({
+      key: objective.objectiveId,
+      weight: objective.periodCount,
+    })),
+  );
+  return new Map(rows.map((row) => [row.key, row.count]));
+}
+
 // 國語科：依「向度比例」把總分分到各向度，再把各向度預算「平均分」給該向度底下的細項目標。
 // 兩層最大餘數法：確保向度佔分正確、不受各向度細項數量影響；總和恆等於 totalScore。
 // objectives: [{ objectiveId, dimension }]（dimension 應為 字詞短語／句式語法／段篇讀寫，未知者由呼叫端先歸位）。

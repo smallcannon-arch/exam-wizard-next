@@ -10,7 +10,8 @@ import { replaceItemById } from "./core/replaceItem.js";
 import { renderStudentPaper, renderTeacherPaper } from "./core/renderPaper.js";
 import { generateItemsViaApi, regenerateItemViaApi, extractObjectivesViaApi, normalizeObjectivesViaApi } from "./apiClient.js";
 import { parseObjectiveInput, normalizeExtractedObjectives, objectivesToInputText } from "./core/objectives.js";
-import { computeObjectiveShares, formatPercent, computeChineseDimensionScores } from "./core/periods.js";
+import { computeObjectiveShares, formatPercent, computeChineseDimensionScores, objectiveScoresByPeriod } from "./core/periods.js";
+import { ASSESSMENT_FRAMEWORKS, getAvailableFrameworks, resolveFrameworkId, usesChineseDimension } from "./core/frameworks.js";
 import { largestRemainder } from "./core/distribute.js";
 import { getApiBaseUrl } from "./config.js";
 import { validateGeneratedPaper } from "./core/validateGeneratedPaper.js";
@@ -57,23 +58,32 @@ function setState(patch) {
 }
 
 function setProjectField(field, value) {
+  const previous = state.project[field];
   state.project = { ...state.project, [field]: value };
+
+  // 切換命題模式（framework）：保留 objectiveInput / checkedChineseSubcategories，
+  // 但清空藍圖、題目與自訂配分，要求重新建立藍圖（不同 framework 能力單位不同，不自動轉換）。
+  if (field === "frameworkId" && previous !== value) {
+    state.intents = [];
+    state.items = [];
+    state.sections = [];
+    state.objectivePlans = [];
+    state.objectiveTargets = [];
+    state.customTargetScores = {};
+    state.messages = ["已切換命題模式。系統保留你已輸入的學習目標與勾選，但配分與生成將改用新模式；請重新建立藍圖。"];
+    state.errors = [];
+  }
 }
 
 function examTitle() {
   return `${state.project.grade || ""}${state.project.subject || ""}評量` || "未命名評量";
 }
 
-// 依各目標節數，以最大餘數法把總分配成整數目標配分（總和等於總分）。
-function objectiveScoresByPeriod(objectives, totalScore) {
-  const rows = largestRemainder(totalScore, objectives.map((objective) => ({ key: objective.objectiveId, weight: objective.periodCount })));
-  return new Map(rows.map((row) => [row.key, row.count]));
-}
-
-// 依科目選配分策略：國語＝向度比例驅動（細項依向度套年級比例、向度內平均分），不用節數；
-// 其他科＝節數比例。年級未選時 ratios 全 0，computeChineseDimensionScores 會退回各向度等權。
+// 依框架選配分策略：評量向度模式＝向度比例驅動（細項依向度套年級比例、向度內平均分）；
+// 教材目標模式（國語預設與其他科）＝節數比例。usesChineseDimension 須同時 subject==="國語" 且 framework==="chinese_dimension_items"。
+// objectiveScoresByPeriod 已移至 core/periods.js。
 function computeTargetScores(objectives, totalScore) {
-  if (state.project.subject !== "國語") {
+  if (!usesChineseDimension(state.project)) {
     return objectiveScoresByPeriod(objectives, totalScore);
   }
   const recs = getMandarinRecommendation(state.project.grade);
@@ -97,7 +107,7 @@ function renderObjectivePreview() {
   const objectives = parseObjectives(state.objectiveInput);
   if (objectives.length === 0) return "";
 
-  const isChinese = state.project.subject === "國語";
+  const useDimension = usesChineseDimension(state.project);
   const totalScore = getPlanTotals(state.planRows).totalScore;
   const totalPeriods = objectives.reduce((sum, objective) => sum + (Number(objective.periodCount) || 0), 0);
   const scoreById = computeTargetScores(objectives, totalScore);
@@ -111,7 +121,7 @@ function renderObjectivePreview() {
     return `<tr>
       <td>${escapeHtml(code || index + 1)}</td>
       <td>${escapeHtml(label)}</td>
-      <td class="num">${isChinese ? escapeHtml(getChineseDimensionBySubcategory(label) || "—") : `${escapeHtml(objective.periodCount)} 節`}</td>
+      <td class="num">${useDimension ? escapeHtml(getChineseDimensionBySubcategory(label) || "—") : `${escapeHtml(objective.periodCount)} 節`}</td>
       <td class="num" style="text-align:center; width:120px;">
         <input type="number" 
                class="step2-target-score-input" 
@@ -140,9 +150,9 @@ function renderObjectivePreview() {
     <h3>目標配分預覽（可手動調整配分）</h3>
     ${step2Warning}
     <div class="table-wrap"><table>
-      <thead><tr><th>指標編號</th><th>學習指標／單元</th><th class="num">${isChinese ? "評量向度" : "授課節數"}</th><th class="num" style="text-align:center; width:120px;">目標配分</th></tr></thead>
+      <thead><tr><th>指標編號</th><th>學習指標／單元</th><th class="num">${useDimension ? "評量向度" : "授課節數"}</th><th class="num" style="text-align:center; width:120px;">目標配分</th></tr></thead>
       <tbody>${rows}</tbody>
-      <tfoot><tr><td></td><td><strong>合計</strong></td><td class="num"><strong>${isChinese ? "" : `${totalPeriods} 節`}</strong></td><td class="num" style="text-align:center; color:${customScoresSum === totalScore ? "inherit" : "#d9381e"};"><strong>${customScoresSum} 分</strong></td></tr></tfoot>
+      <tfoot><tr><td></td><td><strong>合計</strong></td><td class="num"><strong>${useDimension ? "" : `${totalPeriods} 節`}</strong></td><td class="num" style="text-align:center; color:${customScoresSum === totalScore ? "inherit" : "#d9381e"};"><strong>${customScoresSum} 分</strong></td></tr></tfoot>
     </table></div>
   `;
 }
@@ -198,7 +208,7 @@ function buildBlueprint() {
   });
 
   const distributedSlots = distributeObjectivesToSlots(slotResult.slots, objectives, scoreById);
-  if (state.project.subject === "國語") {
+  if (usesChineseDimension(state.project)) {
     distributedSlots.forEach((slot) => {
       const obj = objectives.find(o => o.objectiveId === slot.primaryObjectiveId);
       if (obj) {
@@ -739,8 +749,8 @@ function renderSteps() {
 }
 
 function renderStep1() {
-  const isChinese = (state.project.subject === "國語");
-  const subChecklistHtml = isChinese ? renderChineseSubcategoryChecklist() : "";
+  const useDimension = usesChineseDimension(state.project);
+  const subChecklistHtml = useDimension ? renderChineseSubcategoryChecklist() : "";
 
   return `<section class="panel">
     <div class="grid">
@@ -764,6 +774,11 @@ function renderStep1() {
           ${["國語", "數學", "社會", "自然", "英文"].map((option) => `<option value="${option}" ${option === state.project.subject ? "selected" : ""}>${option}</option>`).join("")}
         </select>
       </label>
+      ${state.project.subject === "國語" ? `<label class="field-lg">命題模式
+        <select data-project="frameworkId">
+          ${getAvailableFrameworks(state.project.subject).map((fid) => `<option value="${fid}" ${resolveFrameworkId(state.project) === fid ? "selected" : ""}>${ASSESSMENT_FRAMEWORKS[fid].label}${ASSESSMENT_FRAMEWORKS[fid].isAdvanced ? "（進階）" : ""}</option>`).join("")}
+        </select>
+      </label>` : ""}
       <label class="field-lg">年級
         <select data-project="grade">
           <option value="" ${!state.project.grade ? "selected" : ""}>請選擇</option>
@@ -874,7 +889,7 @@ function renderPlanTable() {
 }
 
 function renderChineseSubcategoryChecklist() {
-  if (state.project.subject !== "國語") return "";
+  if (!usesChineseDimension(state.project)) return "";
 
   const checkedSet = new Set(state.checkedChineseSubcategories || []);
   const recs = getMandarinRecommendation(state.project.grade);
@@ -945,6 +960,7 @@ function renderChineseSubcategoryChecklist() {
 
 function renderStep2() {
   const isChinese = (state.project.subject === "國語");
+  const useDimension = usesChineseDimension(state.project);
 
   const topGuideHtml = `
     <div class="notice" style="background: var(--blue-soft); border-left: 4px solid var(--primary); padding: 16px; border-radius: 12px; margin-bottom: 20px;">
@@ -978,7 +994,7 @@ function renderStep2() {
     <p class="notice">貼好後按「整理學習目標」，系統會把它整理成帶編號與節數的標準格式（見下方預覽），可再手動微調。</p>
     <div class="actions">
       <button data-action="organize-objectives">整理學習目標</button>
-      ${isChinese ? `<button class="secondary" data-action="chinese-import-checked" style="margin-left:8px; padding:10px 20px; font-size:16px; height:auto; font-weight:600;">📋 載入已勾選的評量項目</button>` : ""}
+      ${useDimension ? `<button class="secondary" data-action="chinese-import-checked" style="margin-left:8px; padding:10px 20px; font-size:16px; height:auto; font-weight:600;">📋 載入已勾選的評量項目</button>` : ""}
     </div>
     ${renderObjectivePreview()}
     <label>教材摘要（選填）<textarea data-field="materialText">${escapeHtml(state.materialText)}</textarea></label>
@@ -1012,7 +1028,7 @@ function getMandarinRecommendation(grade) {
 }
 
 function renderStep3Or4() {
-  const isChinese = (state.project.subject === "國語");
+  const isChinese = usesChineseDimension(state.project);
   const targets = state.objectiveTargets || [];
   const intents = state.intents;
   const planRows = state.planRows;
@@ -1189,7 +1205,7 @@ function renderItems() {
     const groupId = item.groupId;
 
     const getChineseDimSelect = (subItem) => {
-      if (state.project.subject !== "國語") return "";
+      if (!usesChineseDimension(state.project)) return "";
       
       const currentDim = subItem.chineseDimension || "字詞短語";
       const currentSub = subItem.chineseSubcategory || getChineseSubcategory(subItem.questionType, currentDim);
@@ -1648,7 +1664,7 @@ app.addEventListener("input", (event) => {
   if (!handled) return;
 
   const projectField = event.target.dataset.project;
-  if (projectField === "subject" || projectField === "grade" || projectField === "semester" || projectField === "examType") {
+  if (projectField === "subject" || projectField === "grade" || projectField === "semester" || projectField === "examType" || projectField === "frameworkId") {
     render();
   }
 });
@@ -1724,7 +1740,7 @@ app.addEventListener("click", (event) => {
         return;
       }
 
-      if (state.project.subject === "國語") {
+      if (usesChineseDimension(state.project)) {
         if (!state.objectiveInput || !state.objectiveInput.trim()) {
           const defaultObjectives = (state.checkedChineseSubcategories || [])
             .map((sub) => `${sub}｜1`)
@@ -1818,7 +1834,7 @@ app.addEventListener("change", (event) => {
     const scoreById = new Map(state.objectiveTargets.map(t => [t.objectiveId, t.targetScore]));
     state.intents = distributeObjectivesToSlots(state.intents, state.objectives, scoreById);
     
-    if (state.project.subject === "國語") {
+    if (usesChineseDimension(state.project)) {
       state.intents.forEach((slot) => {
         const obj = state.objectives.find(o => o.objectiveId === slot.primaryObjectiveId);
         if (obj) {
