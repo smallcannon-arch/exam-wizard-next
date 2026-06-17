@@ -10,7 +10,7 @@ import { replaceItemById } from "./core/replaceItem.js";
 import { renderStudentPaper, renderTeacherPaper } from "./core/renderPaper.js";
 import { generateItemsViaApi, regenerateItemViaApi, extractObjectivesViaApi, normalizeObjectivesViaApi } from "./apiClient.js";
 import { parseObjectiveInput, normalizeExtractedObjectives, objectivesToInputText } from "./core/objectives.js";
-import { computeObjectiveShares, formatPercent } from "./core/periods.js";
+import { computeObjectiveShares, formatPercent, computeChineseDimensionScores } from "./core/periods.js";
 import { largestRemainder } from "./core/distribute.js";
 import { getApiBaseUrl } from "./config.js";
 import { validateGeneratedPaper } from "./core/validateGeneratedPaper.js";
@@ -70,6 +70,22 @@ function objectiveScoresByPeriod(objectives, totalScore) {
   return new Map(rows.map((row) => [row.key, row.count]));
 }
 
+// 依科目選配分策略：國語＝向度比例驅動（細項依向度套年級比例、向度內平均分），不用節數；
+// 其他科＝節數比例。年級未選時 ratios 全 0，computeChineseDimensionScores 會退回各向度等權。
+function computeTargetScores(objectives, totalScore) {
+  if (state.project.subject !== "國語") {
+    return objectiveScoresByPeriod(objectives, totalScore);
+  }
+  const recs = getMandarinRecommendation(state.project.grade);
+  const toNum = (value) => Number(String(value).replace("%", "")) || 0;
+  const ratios = { 字詞短語: toNum(recs.character), 句式語法: toNum(recs.grammar), 段篇讀寫: toNum(recs.reading) };
+  const withDimension = objectives.map((objective) => {
+    const { label } = splitObjectiveCode(objective.text);
+    return { objectiveId: objective.objectiveId, dimension: getChineseDimensionBySubcategory(label) || "字詞短語" };
+  });
+  return computeChineseDimensionScores(withDimension, totalScore, ratios);
+}
+
 // 從目標文字最前面抽出學習指標編號（如 3-1、3-1-1）；沒有就回傳空字串。
 function splitObjectiveCode(text) {
   const match = String(text || "").match(/^\s*([0-9]+(?:[-－.][0-9]+)+)[\s、.:：]*(.*)$/);
@@ -81,9 +97,10 @@ function renderObjectivePreview() {
   const objectives = parseObjectives(state.objectiveInput);
   if (objectives.length === 0) return "";
 
+  const isChinese = state.project.subject === "國語";
   const totalScore = getPlanTotals(state.planRows).totalScore;
   const totalPeriods = objectives.reduce((sum, objective) => sum + (Number(objective.periodCount) || 0), 0);
-  const scoreById = objectiveScoresByPeriod(objectives, totalScore);
+  const scoreById = computeTargetScores(objectives, totalScore);
   const customScores = state.customTargetScores || {};
 
   const rows = objectives.map((objective, index) => {
@@ -94,7 +111,7 @@ function renderObjectivePreview() {
     return `<tr>
       <td>${escapeHtml(code || index + 1)}</td>
       <td>${escapeHtml(label)}</td>
-      <td class="num">${escapeHtml(objective.periodCount)} 節</td>
+      <td class="num">${isChinese ? escapeHtml(getChineseDimensionBySubcategory(label) || "—") : `${escapeHtml(objective.periodCount)} 節`}</td>
       <td class="num" style="text-align:center; width:120px;">
         <input type="number" 
                class="step2-target-score-input" 
@@ -123,9 +140,9 @@ function renderObjectivePreview() {
     <h3>目標配分預覽（可手動調整配分）</h3>
     ${step2Warning}
     <div class="table-wrap"><table>
-      <thead><tr><th>指標編號</th><th>學習指標／單元</th><th class="num">授課節數</th><th class="num" style="text-align:center; width:120px;">目標配分</th></tr></thead>
+      <thead><tr><th>指標編號</th><th>學習指標／單元</th><th class="num">${isChinese ? "評量向度" : "授課節數"}</th><th class="num" style="text-align:center; width:120px;">目標配分</th></tr></thead>
       <tbody>${rows}</tbody>
-      <tfoot><tr><td></td><td><strong>合計</strong></td><td class="num"><strong>${totalPeriods} 節</strong></td><td class="num" style="text-align:center; color:${customScoresSum === totalScore ? "inherit" : "#d9381e"};"><strong>${customScoresSum} 分</strong></td></tr></tfoot>
+      <tfoot><tr><td></td><td><strong>合計</strong></td><td class="num"><strong>${isChinese ? "" : `${totalPeriods} 節`}</strong></td><td class="num" style="text-align:center; color:${customScoresSum === totalScore ? "inherit" : "#d9381e"};"><strong>${customScoresSum} 分</strong></td></tr></tfoot>
     </table></div>
   `;
 }
@@ -160,7 +177,7 @@ function buildBlueprint() {
   }
 
   const totalScore = planCheck.totalScore;
-  const scoreById = objectiveScoresByPeriod(objectives, totalScore);
+  const scoreById = computeTargetScores(objectives, totalScore);
   const customScores = state.customTargetScores || {};
 
   objectives.forEach(obj => {
@@ -1096,7 +1113,26 @@ function renderStep3Or4() {
     <h3>配題分布（題型與配分固定）</h3>
     <div class="table-wrap"><table>
       <thead><tr><th>題型</th><th>題數</th><th>每題(答)配分</th><th>小計</th></tr></thead>
-      <tbody>${planRows.map((row) => `<tr><td>${escapeHtml(row.questionType)}</td><td>${escapeHtml(row.count)}</td><td>${escapeHtml(row.score)}</td><td>${escapeHtml((Number(row.count) || 0) * (Number(row.score) || 0))}分</td></tr>`).join("")}</tbody>
+      <tbody>${(() => {
+        // 從題位（slots）重算，與題位表、向度表同源；題組展開後配分才正確（修正 72≠100）。
+        const byType = new Map();
+        for (const slot of intents) {
+          const t = slot.questionType || "未指定";
+          const g = byType.get(t) || { count: 0, sum: 0, scores: new Set() };
+          g.count += 1;
+          g.sum += Number(slot.score) || 0;
+          g.scores.add(Number(slot.score) || 0);
+          byType.set(t, g);
+        }
+        const rows = [...byType.entries()].map(([type, g]) => {
+          const perScore = g.scores.size === 1 ? String([...g.scores][0]) : "題組";
+          return `<tr><td>${escapeHtml(type)}</td><td>${g.count}</td><td>${escapeHtml(perScore)}</td><td>${g.sum}分</td></tr>`;
+        });
+        const totalCount = intents.length;
+        const totalSum = intents.reduce((sum, slot) => sum + (Number(slot.score) || 0), 0);
+        rows.push(`<tr style="font-weight:bold;"><td>合計</td><td>${totalCount}</td><td></td><td>${totalSum}分</td></tr>`);
+        return rows.join("");
+      })()}</tbody>
     </table></div>
 
     <h3>題位（共 ${intents.length} 題）</h3>
