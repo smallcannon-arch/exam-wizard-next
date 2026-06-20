@@ -1,0 +1,426 @@
+[
+  {
+    "exampleId": "G4_CH_READ_001",
+    "status": "candidate",
+    "sourceType": "public_assessment_pattern_adapted",
+    "sourceNote": "參考 TASA 國語文公開範例中主旨理解與局部資訊誘答的分析方式；本題為重新設計，非原題照抄。",
+    "grade": "國小四年級",
+    "subject": "國語文",
+    "unit": "閱讀理解",
+    "objectiveId": "待對應",
+    "cognitiveLevel": "理解",
+    "itemType": "閱讀理解單題",
+    "difficulty": "中",
+    "question": "閱讀短文後，回答問題。\n\n放學後，天空突然下起大雨。小安看見同學小哲站在走廊邊，手裡拿著美勞作品，卻沒有帶傘。小安原本想快點回家，因為媽媽提醒他晚餐前要完成作業。可是他想了想，還是走回教室拿出備用雨衣，陪小哲一起走到校門口。回家後，作業雖然晚了一點才開始寫，小安心裡卻覺得很踏實。\n\n這段文字主要想表達什麼？",
+    "options": {
+      "A": "下雨天一定要準備雨具。",
+      "B": "幫助別人有時需要放慢自己的腳步。",
+      "C": "做作業比幫助同學更重要。",
+      "D": "美勞作品遇到雨很容易壞掉。"
+    },
+    "answer": "B",
+    "correctReason": "短文核心不在雨具、作業或美勞作品，而在小安願意暫緩自己回家的計畫，主動幫助同學。",
+    "distractorDesign": {
+      "A": {
+        "misconceptionTag": "keyword_trap",
+        "misconceptionDescription": "學生看到大雨、傘、雨衣等高頻詞就直接選答。",
+        "whyStudentsMayChooseIt": "雨具線索在短文中重複出現。",
+        "whyItIsWrong": "雨具只是情境，不是文章主旨。",
+        "revisionNote": "保留，能診斷關鍵詞直覺誘答。"
+      },
+      "C": {
+        "misconceptionTag": "main_idea_confusion",
+        "misconceptionDescription": "學生把次要事件誤當文章主旨。",
+        "whyStudentsMayChooseIt": "文中提到媽媽提醒作業。",
+        "whyItIsWrong": "小安的行動顯示幫助同學才是核心。",
+        "revisionNote": "保留，誘答具診斷性。"
+      },
+      "D": {
+        "misconceptionTag": "partial_reading",
+        "misconceptionDescription": "學生只抓住文本中的具體物件。",
+        "whyStudentsMayChooseIt": "美勞作品是小哲需要幫助的原因之一。",
+        "whyItIsWrong": "物件細節不是主要訊息。",
+        "revisionNote": "保留。"
+      }
+    },
+    "whyThisIsGood": [
+      "題幹聚焦主旨理解。",
+      "正答需整合人物行動與心理。",
+      "三個誘答分別對應不同閱讀迷思。"
+    ],
+    "analysisStyleNote": "解析先說明正答如何整合全文，再逐一指出誘答只抓到局部線索。",
+    "copyrightRisk": "low_adapted_not_copied",
+    "promptUseStatus": "not_ready_until_teacher_review"
+  },
+  {
+    "exampleId": "G4_CH_REFERENT_002",
+    "status": "candidate",
+    "sourceType": "public_assessment_pattern_adapted",
+    "sourceNote": "參考國語閱讀題常見指稱與局部閱讀錯誤；本題為重新設計。",
+    "grade": "國小四年級",
+    "subject": "國語文",
+    "unit": "閱讀理解",
+    "objectiveId": "待對應",
+    "cognitiveLevel": "理解",
+    "itemType": "閱讀理解單題",
+    "difficulty": "中",
+    "question": "閱讀短文後，回答問題。\n\n社區花圃裡的向日葵長得很高，管理員伯伯請孩子們幫忙澆水。小芸提著水壺，小達拿著鏟子，把倒下的木牌扶正。伯伯笑著說：「有你們照顧，這裡會越來越漂亮。」孩子們聽了，都露出得意的笑容。\n\n句子中的「這裡」指的是哪裡？",
+    "options": {
+      "A": "小芸的家",
+      "B": "社區花圃",
+      "C": "管理員室",
+      "D": "孩子們的教室"
+    },
+    "answer": "B",
+    "correctReason": "前文一直描述孩子們在社區花圃照顧向日葵，因此「這裡」指社區花圃。",
+    "distractorDesign": {
+      "A": {
+        "misconceptionTag": "life_experience_override",
+        "misconceptionDescription": "學生用生活經驗取代文本資訊。",
+        "whyStudentsMayChooseIt": "澆水常和家中植物連結。",
+        "whyItIsWrong": "文本沒有提到小芸的家。",
+        "revisionNote": "保留。"
+      },
+      "C": {
+        "misconceptionTag": "keyword_trap",
+        "misconceptionDescription": "學生看到管理員伯伯就聯想管理員室。",
+        "whyStudentsMayChooseIt": "選項和文本人物有表面關聯。",
+        "whyItIsWrong": "人物身分不等於事件地點。",
+        "revisionNote": "保留。"
+      },
+      "D": {
+        "misconceptionTag": "referent_confusion",
+        "misconceptionDescription": "學生把孩子們與教室作錯誤連結。",
+        "whyStudentsMayChooseIt": "孩子常在教室活動。",
+        "whyItIsWrong": "文中活動地點是社區花圃。",
+        "revisionNote": "保留。"
+      }
+    },
+    "whyThisIsGood": [
+      "題幹聚焦指稱詞理解。",
+      "正答需回到前文地點線索。",
+      "誘答能診斷是否受人物或生活經驗干擾。"
+    ],
+    "analysisStyleNote": "解析示範回找前文地點，不靠單一關鍵詞。",
+    "copyrightRisk": "low_adapted_not_copied",
+    "promptUseStatus": "not_ready_until_teacher_review"
+  },
+  {
+    "exampleId": "G4_CH_SENTENCE_003",
+    "status": "candidate",
+    "sourceType": "teacher_assessment_pattern_adapted",
+    "sourceNote": "參考國語句式語法題常見關聯詞辨識，非原題照抄。",
+    "grade": "國小四年級",
+    "subject": "國語文",
+    "unit": "句式語法",
+    "objectiveId": "待對應",
+    "cognitiveLevel": "應用",
+    "itemType": "句式選擇題",
+    "difficulty": "中",
+    "question": "下列哪一組關聯詞填入句中最恰當？\n\n「這條路□□比較遠，□□沿途有樹蔭，走起來很舒服。」",
+    "options": {
+      "A": "因為……所以",
+      "B": "雖然……但是",
+      "C": "只要……就",
+      "D": "不但……而且"
+    },
+    "answer": "B",
+    "correctReason": "前半句是不利條件，後半句是轉折後的優點，應使用「雖然……但是」。",
+    "distractorDesign": {
+      "A": {
+        "misconceptionTag": "structure_confusion",
+        "misconceptionDescription": "學生把兩個分句誤判為因果。",
+        "whyStudentsMayChooseIt": "因為……所以是熟悉句型。",
+        "whyItIsWrong": "後句不是前句造成的結果。",
+        "revisionNote": "保留。"
+      },
+      "C": {
+        "misconceptionTag": "stem_neglect",
+        "misconceptionDescription": "學生未看清句子不是條件關係。",
+        "whyStudentsMayChooseIt": "只注意到走起來舒服的結果。",
+        "whyItIsWrong": "句中沒有條件成立就會發生的語意。",
+        "revisionNote": "保留。"
+      },
+      "D": {
+        "misconceptionTag": "structure_confusion",
+        "misconceptionDescription": "學生混淆遞進與轉折。",
+        "whyStudentsMayChooseIt": "兩個分句都可視為描述路的特徵。",
+        "whyItIsWrong": "前後一負一正，應使用轉折。",
+        "revisionNote": "保留。"
+      }
+    },
+    "whyThisIsGood": [
+      "四個選項都是常見關聯詞。",
+      "誘答對應因果、條件、遞進與轉折混淆。",
+      "題幹短，非目標閱讀負荷低。"
+    ],
+    "analysisStyleNote": "解析應指出前後分句的語意方向，再判斷關聯詞。",
+    "copyrightRisk": "low_original_candidate",
+    "promptUseStatus": "not_ready_until_teacher_review"
+  },
+  {
+    "exampleId": "G4_CH_PUNCT_004",
+    "status": "candidate",
+    "sourceType": "public_assessment_pattern_adapted",
+    "sourceNote": "參考 TASA 國語文公開範例中標點符號與分句關係的設計，重新改寫句子。",
+    "grade": "國小四年級",
+    "subject": "國語文",
+    "unit": "標點符號",
+    "objectiveId": "待對應",
+    "cognitiveLevel": "應用",
+    "itemType": "標點符號選擇題",
+    "difficulty": "中",
+    "question": "下列哪一個標點符號填入□中最恰當？\n\n「早晨的操場很安靜□只有幾隻麻雀在跑道旁跳來跳去。」",
+    "options": {
+      "A": "，",
+      "B": "。",
+      "C": "？",
+      "D": "！"
+    },
+    "answer": "A",
+    "correctReason": "前後分句語意連續，後句補充說明操場安靜時的景象，用逗號最恰當。",
+    "distractorDesign": {
+      "B": {
+        "misconceptionTag": "structure_confusion",
+        "misconceptionDescription": "學生以為看到一個完整意思就要句號。",
+        "whyStudentsMayChooseIt": "前半句可獨立成句。",
+        "whyItIsWrong": "後句仍接續補充同一畫面。",
+        "revisionNote": "保留。"
+      },
+      "C": {
+        "misconceptionTag": "stem_neglect",
+        "misconceptionDescription": "學生未注意句子沒有疑問語氣。",
+        "whyStudentsMayChooseIt": "只把空格當任意標點選擇。",
+        "whyItIsWrong": "句中沒有發問。",
+        "revisionNote": "保留。"
+      },
+      "D": {
+        "misconceptionTag": "life_experience_override",
+        "misconceptionDescription": "學生用自己對畫面的感受取代句子語氣。",
+        "whyStudentsMayChooseIt": "覺得麻雀跳動很活潑。",
+        "whyItIsWrong": "句子語氣平穩，沒有驚嘆。",
+        "revisionNote": "保留。"
+      }
+    },
+    "whyThisIsGood": [
+      "用語意連續性判斷標點。",
+      "誘答能區分句號、問號、驚嘆號的誤用。",
+      "情境簡單，適合四年級。"
+    ],
+    "analysisStyleNote": "解析應說明後句和前句是補充關係，因此用逗號。",
+    "copyrightRisk": "low_adapted_not_copied",
+    "promptUseStatus": "not_ready_until_teacher_review"
+  },
+  {
+    "exampleId": "G4_MA_AREA_001",
+    "status": "candidate",
+    "sourceType": "public_assessment_pattern_adapted",
+    "sourceNote": "參考 TASA 數學公開範例中面積、周長與單位混淆的分析方式；本題重新設計數值與情境。",
+    "grade": "國小四年級",
+    "subject": "數學",
+    "unit": "面積與周長",
+    "objectiveId": "待對應",
+    "cognitiveLevel": "程序執行",
+    "itemType": "選擇題",
+    "difficulty": "中",
+    "question": "一塊長方形菜圃長 8 公尺、寬 5 公尺。這塊菜圃的面積是多少？",
+    "options": {
+      "A": "13 公尺",
+      "B": "26 公尺",
+      "C": "40 平方公尺",
+      "D": "40 公尺"
+    },
+    "answer": "C",
+    "correctReason": "長方形面積為長乘以寬，8 × 5 = 40，單位是平方公尺。",
+    "distractorDesign": {
+      "A": {
+        "misconceptionTag": "formula_transfer_error",
+        "misconceptionDescription": "學生直接把長和寬相加。",
+        "whyStudentsMayChooseIt": "8 + 5 = 13 是最直覺的計算。",
+        "whyItIsWrong": "面積不是長 + 寬。",
+        "revisionNote": "保留。"
+      },
+      "B": {
+        "misconceptionTag": "formula_transfer_error",
+        "misconceptionDescription": "學生使用周長公式。",
+        "whyStudentsMayChooseIt": "2 × (8 + 5) = 26 是熟悉公式。",
+        "whyItIsWrong": "題目問面積，不是周長。",
+        "revisionNote": "保留。"
+      },
+      "D": {
+        "misconceptionTag": "unit_conversion_error",
+        "misconceptionDescription": "學生算出數字但未使用面積單位。",
+        "whyStudentsMayChooseIt": "40 是正確數值。",
+        "whyItIsWrong": "面積單位應是平方公尺。",
+        "revisionNote": "保留。"
+      }
+    },
+    "whyThisIsGood": [
+      "數字簡單，聚焦面積概念。",
+      "誘答能區分公式錯誤與單位錯誤。",
+      "適合作為面積題 few-shot 標竿。"
+    ],
+    "analysisStyleNote": "解析應分清楚數值與單位兩個判準。",
+    "copyrightRisk": "low_adapted_not_copied",
+    "promptUseStatus": "not_ready_until_teacher_review"
+  },
+  {
+    "exampleId": "G4_MA_CLOCK_002",
+    "status": "candidate",
+    "sourceType": "public_assessment_pattern_adapted",
+    "sourceNote": "參考 TASA 數學公開範例中鐘面大格、小格與旋轉角的分析方式；本題重新設計。",
+    "grade": "國小四年級",
+    "subject": "數學",
+    "unit": "角度與時間",
+    "objectiveId": "待對應",
+    "cognitiveLevel": "解題思考",
+    "itemType": "選擇題",
+    "difficulty": "中偏難",
+    "question": "鐘面上分針從 12 走到 4，分針共旋轉了幾度？",
+    "options": {
+      "A": "20 度",
+      "B": "40 度",
+      "C": "120 度",
+      "D": "240 度"
+    },
+    "answer": "C",
+    "correctReason": "鐘面一圈 360 度，共 12 大格，每大格 30 度。從 12 到 4 是 4 大格，30 × 4 = 120 度。",
+    "distractorDesign": {
+      "A": {
+        "misconceptionTag": "time_duration_confusion",
+        "misconceptionDescription": "學生把分鐘數直接當角度。",
+        "whyStudentsMayChooseIt": "從 12 到 4 可想到 20 分鐘。",
+        "whyItIsWrong": "分鐘數不等於角度。",
+        "revisionNote": "保留。"
+      },
+      "B": {
+        "misconceptionTag": "concept_inversion",
+        "misconceptionDescription": "學生誤以為每大格是 10 度。",
+        "whyStudentsMayChooseIt": "把鐘面數字 4 乘以 10。",
+        "whyItIsWrong": "每大格是 30 度。",
+        "revisionNote": "保留。"
+      },
+      "D": {
+        "misconceptionTag": "concept_inversion",
+        "misconceptionDescription": "學生算成反方向較大的角。",
+        "whyStudentsMayChooseIt": "從 4 回到 12 有 8 大格。",
+        "whyItIsWrong": "題目問分針從 12 到 4 的旋轉量。",
+        "revisionNote": "保留。"
+      }
+    },
+    "whyThisIsGood": [
+      "考鐘面與角度的表徵轉換。",
+      "誘答對應時間、角度、方向三類錯誤。",
+      "解析可示範一圈 360 度與 12 大格的關係。"
+    ],
+    "analysisStyleNote": "解析應一步一步說明 360 ÷ 12 與 30 × 4。",
+    "copyrightRisk": "low_adapted_not_copied",
+    "promptUseStatus": "not_ready_until_teacher_review"
+  },
+  {
+    "exampleId": "G4_MA_GEOMETRY_003",
+    "status": "candidate",
+    "sourceType": "public_assessment_pattern_adapted",
+    "sourceNote": "參考 TASA 數學公開範例中直角、垂直與三角形命名的分析方式；本題重新設計。",
+    "grade": "國小四年級",
+    "subject": "數學",
+    "unit": "三角形",
+    "objectiveId": "待對應",
+    "cognitiveLevel": "概念理解",
+    "itemType": "選擇題",
+    "difficulty": "中",
+    "question": "一個三角形中，有一個角剛好是 90 度。這個三角形一定可以稱為什麼三角形？",
+    "options": {
+      "A": "銳角三角形",
+      "B": "鈍角三角形",
+      "C": "直角三角形",
+      "D": "正三角形"
+    },
+    "answer": "C",
+    "correctReason": "有一個角是 90 度的三角形稱為直角三角形。",
+    "distractorDesign": {
+      "A": {
+        "misconceptionTag": "category_as_instance_error",
+        "misconceptionDescription": "學生以為三角形只要看起來尖就是銳角。",
+        "whyStudentsMayChooseIt": "銳角三角形是常見分類名稱。",
+        "whyItIsWrong": "有 90 度角時不是銳角三角形。",
+        "revisionNote": "保留。"
+      },
+      "B": {
+        "misconceptionTag": "single_feature_error",
+        "misconceptionDescription": "學生不清楚 90 度與大於 90 度的差別。",
+        "whyStudentsMayChooseIt": "把直角和鈍角都當成較大的角。",
+        "whyItIsWrong": "鈍角需大於 90 度。",
+        "revisionNote": "保留。"
+      },
+      "D": {
+        "misconceptionTag": "category_as_instance_error",
+        "misconceptionDescription": "學生把規則圖形名稱誤當角度分類。",
+        "whyStudentsMayChooseIt": "正三角形是熟悉名稱。",
+        "whyItIsWrong": "正三角形強調三邊等長，題幹沒有此條件。",
+        "revisionNote": "保留。"
+      }
+    },
+    "whyThisIsGood": [
+      "直接測三角形角度分類定義。",
+      "選項形式平衡，皆為三角形分類名。",
+      "能診斷角度分類與邊長分類混淆。"
+    ],
+    "analysisStyleNote": "解析應提醒判斷分類時要看題幹給的條件。",
+    "copyrightRisk": "low_adapted_not_copied",
+    "promptUseStatus": "not_ready_until_teacher_review"
+  },
+  {
+    "exampleId": "G4_MA_EQUATION_004",
+    "status": "candidate",
+    "sourceType": "public_assessment_pattern_adapted",
+    "sourceNote": "參考 TASA 數學公開範例中相同份數情境列式的分析方式；本題重新設計商品與數字。",
+    "grade": "國小四年級",
+    "subject": "數學",
+    "unit": "未知數與列式",
+    "objectiveId": "待對應",
+    "cognitiveLevel": "程序執行",
+    "itemType": "選擇題",
+    "difficulty": "中",
+    "question": "一個三明治 45 元，一瓶果汁 30 元。小婷買了相同份數的三明治和果汁，共付 300 元。若用 □ 表示各買的份數，下列哪個算式正確？",
+    "options": {
+      "A": "45 + 30 × □ = 300",
+      "B": "(45 + 30) × □ = 300",
+      "C": "45 × 30 + □ = 300",
+      "D": "300 ÷ 45 + 30 = □"
+    },
+    "answer": "B",
+    "correctReason": "每一組包含一個三明治和一瓶果汁，共 45 + 30 = 75 元，買 □ 組，所以是 (45 + 30) × □ = 300。",
+    "distractorDesign": {
+      "A": {
+        "misconceptionTag": "unknown_position_error",
+        "misconceptionDescription": "學生只把未知數套在其中一種商品上。",
+        "whyStudentsMayChooseIt": "看到果汁單價在 □ 前面。",
+        "whyItIsWrong": "兩種商品都買相同份數，都要乘 □。",
+        "revisionNote": "保留。"
+      },
+      "C": {
+        "misconceptionTag": "concept_inversion",
+        "misconceptionDescription": "學生把兩個單價相乘。",
+        "whyStudentsMayChooseIt": "看到兩個數字就直接相乘。",
+        "whyItIsWrong": "商品組合的單價應相加後再乘份數。",
+        "revisionNote": "保留。"
+      },
+      "D": {
+        "misconceptionTag": "unknown_position_error",
+        "misconceptionDescription": "學生不理解未知數代表各買的份數。",
+        "whyStudentsMayChooseIt": "嘗試用總價除以單一商品價格。",
+        "whyItIsWrong": "式子沒有表達相同份數的一組商品。",
+        "revisionNote": "保留。"
+      }
+    },
+    "whyThisIsGood": [
+      "題幹明確定義未知數。",
+      "數字可心算，降低非目標負荷。",
+      "誘答能診斷列式中的括號與未知數位置錯誤。"
+    ],
+    "analysisStyleNote": "解析應先定義一組商品，再寫出總價關係式。",
+    "copyrightRisk": "low_adapted_not_copied",
+    "promptUseStatus": "not_ready_until_teacher_review"
+  }
+]
