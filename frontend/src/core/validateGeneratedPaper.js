@@ -1,6 +1,12 @@
 // 題位制的生成後檢核：題型與配分需與題位相符；每題須指派有效的學習目標；
 // 題數與總分需正確（以上為「錯誤」，會擋下匯入）。
 // 「目標覆蓋」改為「提醒」：目標很細時不一定每個都出到題，僅提示、不擋下。
+import {
+  QUALITY_META_DISTRACTOR_REQUIRED_FIELDS,
+  QUALITY_META_REQUIRED_FIELDS,
+  QUALITY_META_SELF_CHECK_FIELDS,
+} from "./schema.js";
+
 function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -58,6 +64,18 @@ function getPrimaryObjective(item) {
   return "";
 }
 
+// 向度鎖定檢核：題位（slot）有鎖定向度時，AI 回傳的 chineseDimension 必須一致。
+// 用「警示」而非「錯誤」——不阻擋匯入（避免教材目標模式靠題型推估向度時動輒整卷重生），
+// 僅提示老師到修題畫面確認／修正。slot.chineseDimension 只在國語才會設值，故隱含限國語。
+function dimensionLockWarning(item, slot) {
+  const locked = normalizeId(slot?.chineseDimension);
+  const got = normalizeId(item?.chineseDimension);
+  if (locked && got && got !== locked) {
+    return `提醒：${normalizeId(item?.itemId)} 的評量向度 AI 回傳「${got}」與題位鎖定「${locked}」不符，已沿用，匯入後請於修題畫面確認或修正。`;
+  }
+  return "";
+}
+
 function getParentId(itemId) {
   const id = normalizeId(itemId);
   const hyphenCount = (id.match(/-/g) || []).length;
@@ -73,9 +91,143 @@ function isGroupItem(itemId) {
   return (id.match(/-/g) || []).length > 1;
 }
 
-export function validateGeneratedPaper({ slots = [], objectives = [], items = [] } = {}) {
+const CHOICE_LIKE_TYPES = ["選擇題", "圖表判讀題", "實驗探究題", "學力檢測題", "閱讀測驗"];
+
+function optionKey(index) {
+  return String.fromCharCode(65 + index);
+}
+
+function normalizeAnswerKey(value) {
+  const text = normalizeId(value).toUpperCase().replace(/[()（）\s.。]/g, "");
+  return /^[A-Z]$/.test(text) ? text : "";
+}
+
+function answerMatchesOptions(item) {
+  const options = Array.isArray(item?.options) ? item.options : [];
+  if (options.length === 0) return false;
+
+  const answer = normalizeId(item?.answer);
+  const answerKey = normalizeAnswerKey(answer);
+  if (answerKey) {
+    const index = answerKey.charCodeAt(0) - 65;
+    return index >= 0 && index < options.length;
+  }
+
+  return options.filter((option) => normalizeId(option) === answer).length === 1;
+}
+
+function answerIsSingleChoiceKey(item) {
+  return !!normalizeAnswerKey(item?.answer);
+}
+
+function optionLengthWarning(item) {
+  const options = Array.isArray(item?.options) ? item.options.map((option) => normalizeId(option)) : [];
+  if (options.length < 2) return "";
+
+  const lengths = options.map((option) => option.length).filter((length) => length > 0);
+  if (lengths.length < 2) return "";
+
+  const min = Math.min(...lengths);
+  const max = Math.max(...lengths);
+  if (max >= 12 && max >= min * 2.5) {
+    return `${normalizeId(item?.itemId)}：選項字數差距較大，可能洩漏正答，請人工確認。`;
+  }
+  return "";
+}
+
+function validateQualityMeta(item, { requireQualityMeta = false } = {}) {
   const errors = [];
   const warnings = [];
+  const id = normalizeId(item?.itemId) || "未知題號";
+  const qualityMeta = isPlainObject(item?.qualityMeta) ? item.qualityMeta : null;
+
+  if (!qualityMeta) {
+    if (requireQualityMeta) {
+      errors.push(`${id}：v2 品質模式下缺少 qualityMeta。`);
+    }
+    return { errors, warnings };
+  }
+
+  for (const field of QUALITY_META_REQUIRED_FIELDS) {
+    const value = qualityMeta[field];
+    if (field === "distractorDesign" || field === "selfCheck") {
+      if (!isPlainObject(value)) errors.push(`${id}：qualityMeta.${field} 必須是物件。`);
+    } else if (!hasText(value)) {
+      errors.push(`${id}：qualityMeta 缺少 ${field}。`);
+    }
+  }
+
+  const selfCheck = isPlainObject(qualityMeta.selfCheck) ? qualityMeta.selfCheck : {};
+  for (const field of QUALITY_META_SELF_CHECK_FIELDS) {
+    if (typeof selfCheck[field] !== "boolean") {
+      errors.push(`${id}：qualityMeta.selfCheck.${field} 必須是 true/false。`);
+    }
+  }
+
+  if (QUALITY_META_SELF_CHECK_FIELDS.every((field) => selfCheck[field] === true) && !hasText(qualityMeta.teacherExplanation)) {
+    warnings.push(`${id}：selfCheck 全部為 true，但 teacherExplanation 不足，請人工確認。`);
+  }
+
+  if (hasText(qualityMeta.teacherExplanation) && normalizeId(qualityMeta.teacherExplanation).length < 20) {
+    warnings.push(`${id}：teacherExplanation 偏短，審題資訊可能不足。`);
+  }
+
+  const questionType = normalizeId(item?.questionType);
+  const isChoiceLike = CHOICE_LIKE_TYPES.includes(questionType);
+  if (!isChoiceLike) return { errors, warnings };
+
+  const options = Array.isArray(item?.options) ? item.options : [];
+  const answerKey = normalizeAnswerKey(item?.answer);
+  const answerIndex = answerKey ? answerKey.charCodeAt(0) - 65 : -1;
+  const distractorDesign = isPlainObject(qualityMeta.distractorDesign) ? qualityMeta.distractorDesign : {};
+
+  if (answerKey && Object.prototype.hasOwnProperty.call(distractorDesign, answerKey)) {
+    errors.push(`${id}：正答 ${answerKey} 不應出現在 qualityMeta.distractorDesign 中。`);
+  }
+
+  const tags = [];
+  options.forEach((_option, index) => {
+    const key = optionKey(index);
+    if (index === answerIndex) return;
+
+    const design = isPlainObject(distractorDesign[key]) ? distractorDesign[key] : null;
+    if (!design) {
+      errors.push(`${id}：錯誤選項 ${key} 缺少 distractorDesign。`);
+      return;
+    }
+
+    for (const field of QUALITY_META_DISTRACTOR_REQUIRED_FIELDS) {
+      if (!hasText(design[field])) {
+        errors.push(`${id}：錯誤選項 ${key} 缺少 ${field}。`);
+      }
+    }
+    if (hasText(design.misconceptionTag)) tags.push(design.misconceptionTag.trim());
+  });
+
+  if (tags.length > 1 && new Set(tags).size < tags.length) {
+    warnings.push(`${id}：誘答迷思標籤重複，診斷價值可能降低。`);
+  }
+
+  const lengthWarning = optionLengthWarning(item);
+  if (lengthWarning) warnings.push(lengthWarning);
+
+  return { errors, warnings };
+}
+
+function validateChoiceAnswer(item, errors) {
+  const id = normalizeId(item?.itemId) || "未知題號";
+  const questionType = normalizeId(item?.questionType);
+  if (!CHOICE_LIKE_TYPES.includes(questionType)) return;
+  if (!answerIsSingleChoiceKey(item)) return;
+  if (!answerMatchesOptions(item)) {
+    errors.push(`${id}：answer「${item.answer}」不在選項範圍內。`);
+  }
+}
+
+export function validateGeneratedPaper({ slots = [], objectives = [], items = [], qualityMode = "basic" } = {}) {
+  const errors = [];
+  const warnings = [];
+  const requireQualityMeta = qualityMode === "v2";
 
   if (!Array.isArray(slots) || slots.length === 0) {
     return { ok: false, errors: ["缺少題位資料，請先建立藍圖。"], warnings };
@@ -173,15 +325,19 @@ export function validateGeneratedPaper({ slots = [], objectives = [], items = []
           errors.push(`${subId}：缺少 answer。`);
         }
 
-        const CHOICE_LIKE = ["選擇題", "圖表判讀題", "實驗探究題", "學力檢測題", "閱讀測驗"];
-        if (CHOICE_LIKE.includes(normalizeId(item.questionType))) {
+        if (CHOICE_LIKE_TYPES.includes(normalizeId(item.questionType))) {
           const optionCount = Array.isArray(item.options) ? item.options.length : 0;
           if (optionCount < 2) {
             errors.push(`${subId}：${item.questionType}子題採選擇題形式，缺少選項。`);
           } else if (optionCount < 4) {
             warnings.push(`提醒：${subId}（${item.questionType}子題）只有 ${optionCount} 個選項（建議 4 個）。`);
           }
+          validateChoiceAnswer(item, errors);
         }
+
+        const qualityCheck = validateQualityMeta(item, { requireQualityMeta });
+        errors.push(...qualityCheck.errors);
+        warnings.push(...qualityCheck.warnings);
 
         const primary = getPrimaryObjective(item);
         if (!primary) {
@@ -235,6 +391,11 @@ export function validateGeneratedPaper({ slots = [], objectives = [], items = []
         errors.push(`${parentId}：題組缺少共同的 stimulus (引言 / 情境段落)。`);
       }
 
+      for (const gi of groupItems) {
+        const dimWarn = dimensionLockWarning(gi, slot);
+        if (dimWarn) warnings.push(dimWarn);
+      }
+
     } else {
       const item = groupItems[0];
       const id = normalizeId(item.itemId);
@@ -259,15 +420,19 @@ export function validateGeneratedPaper({ slots = [], objectives = [], items = []
         }
       }
 
-      const CHOICE_LIKE = ["選擇題", "圖表判讀題", "實驗探究題", "閱讀測驗"];
-      if (CHOICE_LIKE.includes(normalizeId(item.questionType))) {
+      if (CHOICE_LIKE_TYPES.includes(normalizeId(item.questionType))) {
         const optionCount = Array.isArray(item.options) ? item.options.length : 0;
         if (optionCount < 2) {
           errors.push(`${id}：${item.questionType}採選擇題形式，缺少選項。`);
         } else if (optionCount < 4) {
           warnings.push(`提醒：${id}（${item.questionType}）只有 ${optionCount} 個選項（建議 4 個）。`);
         }
+        validateChoiceAnswer(item, errors);
       }
+
+      const qualityCheck = validateQualityMeta(item, { requireQualityMeta });
+      errors.push(...qualityCheck.errors);
+      warnings.push(...qualityCheck.warnings);
 
       const primary = getPrimaryObjective(item);
       if (!primary) {
@@ -285,6 +450,9 @@ export function validateGeneratedPaper({ slots = [], objectives = [], items = []
         }
       }
       if (objectiveIdSet.has(primary)) covered.add(primary);
+
+      const dimWarn = dimensionLockWarning(item, slot);
+      if (dimWarn) warnings.push(dimWarn);
     }
   }
 

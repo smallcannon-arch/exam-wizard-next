@@ -54,6 +54,33 @@ describe("normalizeGeneratedItem", () => {
     expect(item.options).toEqual(["A. 水", "B. 空氣", "C. 油漆"]);
   });
 
+  it("可將舊頂層命題設計欄位收進 qualityMeta", () => {
+    const item = normalizeGeneratedItem({
+      itemId: "Q-005",
+      question: "下列何者正確？",
+      answer: "A",
+      explanation: "學生解析",
+      cognitiveLevel: "理解",
+      questionType: "選擇題",
+      correctReason: "A 正確。",
+      teacherExplanation: "本題檢核概念理解。",
+      distractorDesign: {
+        B: { misconceptionTag: "keyword_trap" },
+      },
+      selfCheck: {
+        singleCorrectAnswer: true,
+      },
+    });
+
+    expect(item.qualityMeta.schemaVersion).toBe("item-quality-meta/v1");
+    expect(item.qualityMeta.cognitiveLevel).toBe("理解");
+    expect(item.qualityMeta.itemType).toBe("選擇題");
+    expect(item.qualityMeta.correctReason).toBe("A 正確。");
+    expect(item.qualityMeta.teacherExplanation).toBe("本題檢核概念理解。");
+    expect(item.qualityMeta.distractorDesign.B.misconceptionTag).toBe("keyword_trap");
+    expect(item.qualityMeta.selfCheck.singleCorrectAnswer).toBe(true);
+  });
+
   it("批次正規化 items", () => {
     const items = normalizeGeneratedItems([
       {

@@ -1,3 +1,5 @@
+import { QUALITY_META_SCHEMA_VERSION } from "./schema.js";
+
 function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -33,6 +35,39 @@ function normalizeOptions(value) {
     .filter(Boolean);
 }
 
+function normalizeQualityMeta(item, explanation) {
+  const base = isPlainObject(item.qualityMeta) ? { ...item.qualityMeta } : {};
+  const legacyDistractorDesign = isPlainObject(item.distractorDesign) ? item.distractorDesign : null;
+  const legacySelfCheck = isPlainObject(item.selfCheck) ? item.selfCheck : null;
+  const teacherExplanation = firstNonEmptyText(item.teacherExplanation, base.teacherExplanation);
+  const correctReason = firstNonEmptyText(item.correctReason, base.correctReason);
+
+  const hasQualityData = Object.keys(base).length > 0
+    || legacyDistractorDesign
+    || legacySelfCheck
+    || teacherExplanation
+    || correctReason;
+
+  if (!hasQualityData) return undefined;
+
+  return {
+    ...base,
+    schemaVersion: firstNonEmptyText(base.schemaVersion, QUALITY_META_SCHEMA_VERSION),
+    cognitiveLevel: firstNonEmptyText(base.cognitiveLevel, item.cognitiveLevel),
+    difficulty: firstNonEmptyText(base.difficulty, item.difficulty),
+    itemType: firstNonEmptyText(base.itemType, item.questionType),
+    correctReason,
+    teacherExplanation,
+    distractorDesign: isPlainObject(base.distractorDesign)
+      ? base.distractorDesign
+      : (legacyDistractorDesign || {}),
+    selfCheck: isPlainObject(base.selfCheck)
+      ? base.selfCheck
+      : (legacySelfCheck || {}),
+    studentExplanation: firstNonEmptyText(base.studentExplanation, item.studentExplanation, explanation),
+  };
+}
+
 export function normalizeGeneratedItem(item) {
   if (!isPlainObject(item)) return item;
 
@@ -49,6 +84,7 @@ export function normalizeGeneratedItem(item) {
 
   const explanation = firstNonEmptyText(
     item.explanation,
+    item.studentExplanation,
     item.rationale,
     item.analysis,
     item.reason,
@@ -61,6 +97,7 @@ export function normalizeGeneratedItem(item) {
     options: normalizeOptions(item.options),
     answer: firstNonEmptyText(item.answer, item.correctAnswer, item.key),
     explanation,
+    qualityMeta: normalizeQualityMeta(item, explanation),
   };
 }
 

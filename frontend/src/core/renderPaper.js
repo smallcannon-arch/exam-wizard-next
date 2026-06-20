@@ -1,3 +1,5 @@
+import { toStudentItem } from "./itemViews.js";
+
 function numberToChinese(index) {
   const chars = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
   return chars[index - 1] || String(index);
@@ -21,7 +23,7 @@ function getSubNumber(itemId) {
 }
 
 export function renderStudentPaper({ project = {}, sections = [], items = [] } = {}) {
-  const itemById = new Map(items.map((item) => [item.itemId, item]));
+  const itemById = new Map(items.map((item) => [item.itemId, { ...toStudentItem(item), itemId: item.itemId, groupId: item.groupId, questionType: item.questionType, score: item.score, stimulus: item.stimulus }]));
   const lines = [`${project.examName || "未命名評量"}　學生卷`, ""];
 
   sections.forEach((section, sectionIndex) => {

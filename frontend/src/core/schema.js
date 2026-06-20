@@ -25,6 +25,41 @@ export const COGNITIVE_LEVELS = Object.freeze([
   "創造",
 ]);
 
+export const QUALITY_META_SCHEMA_VERSION = "item-quality-meta/v1";
+
+export const QUALITY_META_REQUIRED_FIELDS = Object.freeze([
+  "schemaVersion",
+  "subject",
+  "grade",
+  "unit",
+  "cognitiveLevel",
+  "difficulty",
+  "itemType",
+  "abilityFocus",
+  "correctReason",
+  "distractorDesign",
+  "teacherExplanation",
+  "selfCheck",
+]);
+
+export const QUALITY_META_DISTRACTOR_REQUIRED_FIELDS = Object.freeze([
+  "misconceptionTag",
+  "misconceptionDescription",
+  "whyStudentsMayChooseIt",
+  "whyItIsWrong",
+  "revisionNote",
+]);
+
+export const QUALITY_META_SELF_CHECK_FIELDS = Object.freeze([
+  "singleCorrectAnswer",
+  "matchesPrimaryObjectiveId",
+  "matchesCognitiveLevel",
+  "allDistractorsHaveMisconceptionTags",
+  "noObviousGiveaway",
+  "gradeAppropriate",
+  "noUnnecessaryDifficulty",
+]);
+
 export function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
