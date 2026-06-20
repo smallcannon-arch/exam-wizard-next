@@ -1,3 +1,9 @@
+import {
+  FEWSHOT_EXAMPLES,
+  renderFewShotExamples,
+  selectFewShotExamples,
+} from "./fewshotExamples.js";
+
 function text(value, fallback = "未提供") {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
 }
@@ -123,7 +129,7 @@ const INTERNAL_OUTPUT_GUIDELINES = `
 - 不要把 teacherExplanation、selfCheck 或誘答設計註記寫進 question、options 或 explanation。
 `;
 
-export function buildGenerateItemsPrompt({ project = {}, materialText = "", objectives = [], intents = [], checkedChineseSubcategories = [] }) {
+export function buildGenerateItemsPrompt({ project = {}, materialText = "", objectives = [], intents = [], checkedChineseSubcategories = [], fewShotExamples = FEWSHOT_EXAMPLES }) {
   const isChinese = (project.subject === "國語");
 
   const slots = (Array.isArray(intents) ? intents : []).map((slot) => {
@@ -143,6 +149,16 @@ export function buildGenerateItemsPrompt({ project = {}, materialText = "", obje
     }
     return base;
   });
+  const selectedFewShotExamples = selectFewShotExamples({
+    examples: fewShotExamples,
+    subject: project.subject,
+    grade: project.grade,
+    itemTypes: slots.map((slot) => slot.questionType).filter(Boolean),
+    cognitiveLevels: slots.map((slot) => slot.cognitiveLevel).filter(Boolean),
+    primaryObjectiveIds: slots.map((slot) => slot.primaryObjectiveId).filter(Boolean),
+    limit: 4,
+  });
+  const fewShotBlock = renderFewShotExamples(selectedFewShotExamples);
 
   const promptParts = [
     "# 角色",
@@ -187,11 +203,18 @@ export function buildGenerateItemsPrompt({ project = {}, materialText = "", obje
     "",
     QUALITY_DESIGN_GUIDELINES,
     "",
+  ];
+
+  if (fewShotBlock) {
+    promptParts.push(fewShotBlock, "");
+  }
+
+  promptParts.push(
     DISTRACTOR_DESIGN_GUIDELINES,
     "",
     INTERNAL_OUTPUT_GUIDELINES,
     ""
-  ];
+  );
 
   if (isChinese) {
     const listStr = Array.isArray(checkedChineseSubcategories) && checkedChineseSubcategories.length > 0
