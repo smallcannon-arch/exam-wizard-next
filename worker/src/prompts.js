@@ -86,6 +86,43 @@ const QUESTION_TYPE_GUIDELINES = `
   - 若該題為單一題目，其 \`stimulus\` 欄位仍須提供一段較短的閱讀文本（約 100-200 字），\`question\` 對該文本進行提問，並提供 4 個 options、單一 answer、explanation。
 `;
 
+const QUALITY_DESIGN_GUIDELINES = `
+# 優良題感與 few-shot 使用規則
+
+- 可參考公開學力檢測題本與試題品質分析報告來萃取題感、評量架構、誘答設計與常見迷思類型，但不得大量照抄公開題目，也不得把公開題本當成直接複製來源。
+- 若系統提供 few-shot 優良題範例，請學習範例旁的標註說明，而不是模仿表面主題、句型或選項形式。重點是理解：題幹如何聚焦單一能力、題目如何對應 primaryObjectiveId 與 cognitiveLevel、錯誤選項如何打到常見迷思、解析如何拆解正答與誤答。
+- few-shot 範例應依本次科目、年級、題型、primaryObjectiveId 與 cognitiveLevel 動態載入；若未提供人工審核範例，不得臨時自造 few-shot 範例，只能依本提示詞的題感規則與迷思標籤命題。
+- 每次最多參考 2 至 4 題 few-shot 範例。若提示詞長度過長，優先保留與本次題位最接近、具完整迷思標註、具逐項解析，或含「弱誘答改寫成強誘答」對比的範例。
+`;
+
+const DISTRACTOR_DESIGN_GUIDELINES = `
+# 錯誤選項與迷思標籤規格
+
+- 每一道選擇題形式的題目（選擇題、圖表判讀題、實驗探究題、學力檢測題、閱讀測驗子題）都必須只有一個明確正確答案。
+- 若系統目前固定為四選項，仍應產生 A、B、C、D 四個選項；不得改成三選項。
+- 每個錯誤選項都必須對應學生可能真的會犯的錯誤，不得只是荒謬、無關、語氣奇怪或明顯不合理的選項。
+- 錯誤選項與正答在語氣、長度、形式上應保持平衡，不可讓正答因最完整、最長或最正式而突出。
+- 若某個錯誤選項無法填出合理 misconceptionTag，代表該選項不合格，必須重寫該選項。
+- 不使用「以上皆是」「以上皆非」「以上皆錯」作為選項，除非題型明確要求。
+- 正確答案位置需分散，避免整卷偏向同一個選項。
+
+常見迷思標籤可包含但不限於：
+- 國語文：keyword_trap（關鍵詞直覺誘答）, partial_reading（局部閱讀）, stem_neglect（未看清題幹要求）, referent_confusion（指稱不清）, structure_confusion（文章結構混淆）, main_idea_confusion（主旨與細節混淆）, synonym_gap（同義轉換不穩）, life_experience_override（生活經驗覆蓋文本）。
+- 數學：formula_transfer_error（公式誤套）, concept_inversion（概念反向）, unit_conversion_error（單位換算錯誤）, time_duration_confusion（時刻與時間量混淆）, single_feature_error（單一特徵判斷）, absolute_difference_error（相差概念錯誤）, category_as_instance_error（類別與特例混淆）, unknown_position_error（未知數位置混淆）。
+`;
+
+const INTERNAL_OUTPUT_GUIDELINES = `
+# 命題輸出 v2：單一 canonical item + qualityMeta
+
+- 不要輸出 internalVersion 與 studentVersion 兩份完整題目資料；只輸出一份 canonical item。
+- question、options、answer、explanation、primaryObjectiveId 等核心欄位是學生版可見資料。explanation 是給學生看的解析，應簡明、可讀。
+- 每題都必須新增 qualityMeta 作為教師／審題／系統內部資料。學生版會由系統自動隱藏 qualityMeta。
+- qualityMeta 必須包含：schemaVersion（固定為 "item-quality-meta/v1"）, subject, grade, unit, cognitiveLevel, difficulty, itemType, abilityFocus, correctReason, distractorDesign, teacherExplanation, selfCheck。
+- 選擇題形式題目的 qualityMeta.distractorDesign 請只為錯誤選項填寫；每個錯誤選項至少包含 misconceptionTag, misconceptionDescription, whyStudentsMayChooseIt, whyItIsWrong, revisionNote。正答選項不可放入 distractorDesign。
+- qualityMeta.selfCheck 必須包含 singleCorrectAnswer, matchesPrimaryObjectiveId, matchesCognitiveLevel, allDistractorsHaveMisconceptionTags, noObviousGiveaway, gradeAppropriate, noUnnecessaryDifficulty。
+- 不要把 teacherExplanation、selfCheck 或誘答設計註記寫進 question、options 或 explanation。
+`;
+
 export function buildGenerateItemsPrompt({ project = {}, materialText = "", objectives = [], intents = [], checkedChineseSubcategories = [] }) {
   const isChinese = (project.subject === "國語");
 
@@ -116,7 +153,7 @@ export function buildGenerateItemsPrompt({ project = {}, materialText = "", obje
     "題目需符合國小學生程度，答案與解析需正確。每個題位只出一題，不要備選題。",
     "",
     "# 學習目標（含節數）JSON",
-    "請依各目標的 periodCount（節數）占總教學時數的比例，分配各目標在整卷的配分占比：節數多的目標，對應到較多題與較高總分。務必涵蓋所有目標，不可遺漏。",
+    "題位已依各目標的 periodCount（節數）占總教學時數的比例分配好題數與配分（節數多的目標對應較多題、較高總分）；以下 JSON 僅供你了解各目標的內容與分量，作為命題時的背景脈絡。請依各題位指定的 primaryObjectiveId 命題，不必、也不得自行重新分配目標或更動配分。",
     JSON.stringify(objectives, null, 2),
     "",
     "# 題位 JSON（itemId、questionType、score 請原樣保留，不可更動）",
@@ -129,7 +166,7 @@ export function buildGenerateItemsPrompt({ project = {}, materialText = "", obje
     "# 編排原則（整卷整體性）",
     "- 每題的 primaryObjectiveId 必須與該題位所指定的 primaryObjectiveId 欄位值完全一致，不可擅自更改，以確保配分與指標精準對齊；如有次要目標可放入 objectiveIds。",
     "- 每題標註 cognitiveLevel（記憶／理解／應用／分析／評鑑／創造）。",
-    "- 讓各學習目標的「總配分」盡量貼近其節數比例；所有目標都要有題目。",
+    "- 各學習目標的總配分已由題位的 primaryObjectiveId 與 score 鎖定，依題位命題即可，無須自行調整配分或挑選哪些目標出題。",
     "- 請依題型分「大題」排列：相同 questionType 的題目放在一起（例如所有選擇題相鄰、所有填充題相鄰、所有學力檢測題相鄰），不要把同題型打散。",
     "- 同一大題（同題型）內由易到難；避免題意重複或互相暗示答案。",
     "- 除非該 item 的 stimulus 欄位提供完整閱讀文本，question 不得使用「根據這段文字」「根據本文」「根據上文／下文」「文中」等依賴外部文本的說法；一般題目必須自成一題。",
@@ -147,6 +184,12 @@ export function buildGenerateItemsPrompt({ project = {}, materialText = "", obje
     "  5. 組內的第一個子題（如 `\"Q-041-1\"`）必須填寫共同的 `stimulus`（情境引言 / 長文本段落），而其餘子題（如 `\"Q-041-2\"`）的 `stimulus` 則留空（`\"\"`）。",
     "  6. 每個子題的 `question` 欄位為該子題自身的提問（不要在提問前面加上 (1) 這種題號，純為提問文字）。",
     "  7. 每個子題有自己獨立的 `options`、`answer` 與 `explanation`（若是選擇題、是非題、實驗探究題、圖表判讀題或學力檢測題類型的子題，options 至少提供 4 個選項）。",
+    "",
+    QUALITY_DESIGN_GUIDELINES,
+    "",
+    DISTRACTOR_DESIGN_GUIDELINES,
+    "",
+    INTERNAL_OUTPUT_GUIDELINES,
     ""
   ];
 
@@ -173,7 +216,8 @@ export function buildGenerateItemsPrompt({ project = {}, materialText = "", obje
     "",
     "# 輸出要求",
     "只輸出 JSON，不要 Markdown。格式：{\"items\":[...]}。items 的排列順序就是考卷的出題順序，請依編排原則排好。",
-    `每題必須包含：itemId（沿用題位或子題題號）, questionType（沿用題位）, score（配分）, primaryObjectiveId, objectiveIds, cognitiveLevel, stimulus, question, options, answer, explanation${isChinese ? ", chineseDimension, chineseSubcategory" : ""}。如果是學力檢測題的子題，必須包含 groupId，其他題型 groupId 填空字串即可。`
+    `每題必須包含：itemId（沿用題位或子題題號）, questionType（沿用題位）, score（配分）, primaryObjectiveId, objectiveIds, cognitiveLevel, stimulus, question, options, answer, explanation, qualityMeta${isChinese ? ", chineseDimension, chineseSubcategory" : ""}。如果是學力檢測題的子題，必須包含 groupId，其他題型 groupId 填空字串即可。`,
+    "選擇題形式題目的 qualityMeta.distractorDesign 必須包含每個錯誤選項的迷思設計；非選擇題若沒有選項，可將 qualityMeta.distractorDesign 設為空物件。"
   );
 
   return promptParts.join("\n");
@@ -253,15 +297,24 @@ export function buildRegenerateItemPrompt({ project = {}, materialText = "", obj
     "# 原題 JSON",
     JSON.stringify(originalItem, null, 2),
     "",
+    QUALITY_DESIGN_GUIDELINES,
+    "",
+    DISTRACTOR_DESIGN_GUIDELINES,
+    "",
+    INTERNAL_OUTPUT_GUIDELINES,
+    "",
     QUESTION_TYPE_GUIDELINES,
     "",
     "# 輸出要求",
-    "只輸出 JSON，不要 Markdown。格式：{\"items\":[一題]}。"
+    "只輸出 JSON，不要 Markdown。格式：{\"items\":[一題]}。",
+    "重出後的題目必須包含原本必要欄位，並補齊 qualityMeta；選擇題形式題目的 qualityMeta.distractorDesign 必須包含每個錯誤選項的迷思設計。"
   ];
 
   if (isChinese) {
     promptParts.push(
-      "產出的題目必須包含 `chineseDimension` 欄位，其值必須為 `\"字詞短語\"`、`\"句式語法\"` 或 `\"段篇讀寫\"` 之一。"
+      "# 國語向度鎖定",
+      `- 本題向度由題位鎖定：重出後 \`chineseDimension\` 必須維持原題的值「${originalItem.chineseDimension || ""}」（即「字詞短語」「句式語法」「段篇讀寫」之一），不可擅自更改，以免影響整卷向度佔分。`,
+      "- 必須同時輸出 `chineseSubcategory`（該題最合適的細項），且其細項須屬於上述鎖定的 chineseDimension。"
     );
   }
 
