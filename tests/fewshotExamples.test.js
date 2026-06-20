@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  FEWSHOT_EXAMPLES,
   renderFewShotExamples,
   selectFewShotExamples,
 } from "../worker/src/fewshotExamples.js";
@@ -35,6 +36,19 @@ function example(overrides = {}) {
 }
 
 describe("few-shot examples", () => {
+  it("runtime 只放入第一輪已准入範例", () => {
+    expect(FEWSHOT_EXAMPLES.map((item) => item.exampleId)).toEqual([
+      "G4_CH_READ_001",
+      "G4_CH_SENTENCE_003",
+      "G4_MA_CLOCK_002",
+      "G4_MA_EQUATION_004",
+    ]);
+    expect(FEWSHOT_EXAMPLES.every((item) => item.status === "teacher_reviewed")).toBe(true);
+    expect(FEWSHOT_EXAMPLES.every((item) => item.promptUseStatus === "prompt_ready")).toBe(true);
+    expect(FEWSHOT_EXAMPLES.map((item) => item.exampleId)).not.toContain("G4_CH_REFERENT_002");
+    expect(FEWSHOT_EXAMPLES.map((item) => item.exampleId)).not.toContain("G4_MA_AREA_001");
+  });
+
   it("只選入 teacher_reviewed 且 prompt_ready 的範例", () => {
     const selected = selectFewShotExamples({
       examples: [
@@ -72,7 +86,23 @@ describe("few-shot examples", () => {
       limit: 2,
     });
 
-    expect(selected[0].exampleId).toBe("CHINESE-G4");
+    expect(selected.map((item) => item.exampleId)).toEqual(["CHINESE-G4"]);
+  });
+
+  it("依目前科目選出對應的 runtime 範例", () => {
+    const chinese = selectFewShotExamples({
+      subject: "國語",
+      grade: "四年級",
+      limit: 4,
+    });
+    const math = selectFewShotExamples({
+      subject: "數學",
+      grade: "四年級",
+      limit: 4,
+    });
+
+    expect(chinese.map((item) => item.exampleId)).toEqual(["G4_CH_READ_001", "G4_CH_SENTENCE_003"]);
+    expect(math.map((item) => item.exampleId)).toEqual(["G4_MA_CLOCK_002", "G4_MA_EQUATION_004"]);
   });
 
   it("沒有可用範例時不渲染空殼區塊", () => {

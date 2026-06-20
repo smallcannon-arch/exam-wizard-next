@@ -18,14 +18,14 @@
 
 | exampleId | 科目 | 題型 | 通過 | 待修 | 不採用 | 建議狀態 | 備註 |
 |---|---|---|---:|---:|---:|---|---|
-| G4_CH_READ_001 | 國語文 | 閱讀理解單題 |  |  |  | candidate |  |
+| G4_CH_READ_001 | 國語文 | 閱讀理解單題 | 是 | 否 | 否 | prompt_ready | 第一輪 A/B few-shot 准入 |
 | G4_CH_REFERENT_002 | 國語文 | 指稱理解 |  |  |  | candidate |  |
-| G4_CH_SENTENCE_003 | 國語文 | 句式語法 |  |  |  | candidate |  |
+| G4_CH_SENTENCE_003 | 國語文 | 句式語法 | 是 | 否 | 否 | prompt_ready | 第一輪 A/B few-shot 准入 |
 | G4_CH_PUNCT_004 | 國語文 | 標點符號 |  |  |  | candidate |  |
 | G4_MA_AREA_001 | 數學 | 面積與周長 |  |  |  | candidate |  |
-| G4_MA_CLOCK_002 | 數學 | 旋轉角 |  |  |  | candidate |  |
+| G4_MA_CLOCK_002 | 數學 | 旋轉角 | 是 | 否 | 否 | prompt_ready | 第一輪 A/B few-shot 准入；限四年級 S-4-2 旋轉角與鐘面模型 |
 | G4_MA_GEOMETRY_003 | 數學 | 幾何概念 |  |  |  | candidate |  |
-| G4_MA_EQUATION_004 | 數學 | 情境列式 |  |  |  | candidate |  |
+| G4_MA_EQUATION_004 | 數學 | 情境列式 | 是 | 否 | 否 | prompt_ready | 第一輪 A/B few-shot 准入 |
 
 ## 單題准入檢核
 

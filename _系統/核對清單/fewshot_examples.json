@@ -1,7 +1,7 @@
 [
   {
     "exampleId": "G4_CH_READ_001",
-    "status": "candidate",
+    "status": "teacher_reviewed",
     "sourceType": "public_assessment_pattern_adapted",
     "sourceNote": "參考 TASA 國語文公開範例中主旨理解與局部資訊誘答的分析方式；本題為重新設計，非原題照抄。",
     "grade": "國小四年級",
@@ -50,7 +50,10 @@
     ],
     "analysisStyleNote": "解析先說明正答如何整合全文，再逐一指出誘答只抓到局部線索。",
     "copyrightRisk": "low_adapted_not_copied",
-    "promptUseStatus": "not_ready_until_teacher_review"
+    "promptUseStatus": "prompt_ready",
+    "reviewedBy": "Smallcannon",
+    "reviewDate": "2026-06-20",
+    "reviewNote": "准入第一輪 A/B 測試用 few-shot。"
   },
   {
     "exampleId": "G4_CH_REFERENT_002",
@@ -107,7 +110,7 @@
   },
   {
     "exampleId": "G4_CH_SENTENCE_003",
-    "status": "candidate",
+    "status": "teacher_reviewed",
     "sourceType": "teacher_assessment_pattern_adapted",
     "sourceNote": "參考國語句式語法題常見關聯詞辨識，非原題照抄。",
     "grade": "國小四年級",
@@ -156,7 +159,10 @@
     ],
     "analysisStyleNote": "解析應指出前後分句的語意方向，再判斷關聯詞。",
     "copyrightRisk": "low_original_candidate",
-    "promptUseStatus": "not_ready_until_teacher_review"
+    "promptUseStatus": "prompt_ready",
+    "reviewedBy": "Smallcannon",
+    "reviewDate": "2026-06-20",
+    "reviewNote": "准入第一輪 A/B 測試用 few-shot。"
   },
   {
     "exampleId": "G4_CH_PUNCT_004",
@@ -266,7 +272,7 @@
   },
   {
     "exampleId": "G4_MA_CLOCK_002",
-    "status": "candidate",
+    "status": "teacher_reviewed",
     "sourceType": "public_assessment_pattern_adapted",
     "sourceNote": "參考 TASA 數學公開範例中鐘面大格、小格與旋轉角的分析方式；本題重新設計。",
     "grade": "國小四年級",
@@ -315,7 +321,10 @@
     ],
     "analysisStyleNote": "解析應一步一步說明 360 ÷ 12 與 30 × 4。",
     "copyrightRisk": "low_adapted_not_copied",
-    "promptUseStatus": "not_ready_until_teacher_review"
+    "promptUseStatus": "prompt_ready",
+    "reviewedBy": "Smallcannon",
+    "reviewDate": "2026-06-20",
+    "reviewNote": "准入第一輪 A/B 測試用 few-shot。本題限於四年級 S-4-2 旋轉角與鐘面模型，不處理超過 360 度或時針分針複合夾角公式。"
   },
   {
     "exampleId": "G4_MA_GEOMETRY_003",
@@ -372,7 +381,7 @@
   },
   {
     "exampleId": "G4_MA_EQUATION_004",
-    "status": "candidate",
+    "status": "teacher_reviewed",
     "sourceType": "public_assessment_pattern_adapted",
     "sourceNote": "參考 TASA 數學公開範例中相同份數情境列式的分析方式；本題重新設計商品與數字。",
     "grade": "國小四年級",
@@ -421,6 +430,9 @@
     ],
     "analysisStyleNote": "解析應先定義一組商品，再寫出總價關係式。",
     "copyrightRisk": "low_adapted_not_copied",
-    "promptUseStatus": "not_ready_until_teacher_review"
+    "promptUseStatus": "prompt_ready",
+    "reviewedBy": "Smallcannon",
+    "reviewDate": "2026-06-20",
+    "reviewNote": "准入第一輪 A/B 測試用 few-shot。"
   }
 ]

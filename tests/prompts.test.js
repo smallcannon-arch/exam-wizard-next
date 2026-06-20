@@ -59,6 +59,21 @@ describe("worker prompts", () => {
     expect(prompt).toContain("不要輸出 internalVersion 與 studentVersion");
   });
 
+  it("預設 prompt 會載入同科目已准入 few-shot，且不載入未准入或跨科目範例", () => {
+    const prompt = buildGenerateItemsPrompt({
+      project,
+      materialText: "課文重點",
+      objectives,
+      intents,
+      checkedChineseSubcategories: ["提取訊息"],
+    });
+
+    expect(prompt).toContain("G4_CH_READ_001");
+    expect(prompt).toContain("G4_CH_SENTENCE_003");
+    expect(prompt).not.toContain("G4_CH_REFERENT_002");
+    expect(prompt).not.toContain("G4_MA_CLOCK_002");
+  });
+
   it("candidate 或未准入 few-shot 不會插入生成提示詞", () => {
     const prompt = buildGenerateItemsPrompt({
       project,
