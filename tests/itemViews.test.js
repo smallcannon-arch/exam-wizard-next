@@ -9,6 +9,8 @@ describe("item view projection", () => {
     options: ["甲", "乙", "丙", "丁"],
     answer: "A",
     explanation: "學生解析",
+    abilityFocus: "不應進學生版",
+    correctReason: "不應進學生版",
     teacherExplanation: "不應進學生版",
     selfCheck: { singleCorrectAnswer: true },
     distractorDesign: { B: { misconceptionTag: "keyword_trap" } },
@@ -30,6 +32,8 @@ describe("item view projection", () => {
       explanation: "學生解析",
     });
     expect(result.qualityMeta).toBeUndefined();
+    expect(result.abilityFocus).toBeUndefined();
+    expect(result.correctReason).toBeUndefined();
     expect(result.teacherExplanation).toBeUndefined();
     expect(result.distractorDesign).toBeUndefined();
     expect(result.selfCheck).toBeUndefined();

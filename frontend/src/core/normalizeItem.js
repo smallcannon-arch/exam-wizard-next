@@ -39,12 +39,14 @@ function normalizeQualityMeta(item, explanation) {
   const base = isPlainObject(item.qualityMeta) ? { ...item.qualityMeta } : {};
   const legacyDistractorDesign = isPlainObject(item.distractorDesign) ? item.distractorDesign : null;
   const legacySelfCheck = isPlainObject(item.selfCheck) ? item.selfCheck : null;
-  const teacherExplanation = firstNonEmptyText(item.teacherExplanation, base.teacherExplanation);
-  const correctReason = firstNonEmptyText(item.correctReason, base.correctReason);
+  const abilityFocus = firstNonEmptyText(base.abilityFocus, item.abilityFocus);
+  const teacherExplanation = firstNonEmptyText(base.teacherExplanation, item.teacherExplanation);
+  const correctReason = firstNonEmptyText(base.correctReason, item.correctReason);
 
   const hasQualityData = Object.keys(base).length > 0
     || legacyDistractorDesign
     || legacySelfCheck
+    || abilityFocus
     || teacherExplanation
     || correctReason;
 
@@ -53,9 +55,13 @@ function normalizeQualityMeta(item, explanation) {
   return {
     ...base,
     schemaVersion: firstNonEmptyText(base.schemaVersion, QUALITY_META_SCHEMA_VERSION),
+    subject: firstNonEmptyText(base.subject, item.subject),
+    grade: firstNonEmptyText(base.grade, item.grade),
+    unit: firstNonEmptyText(base.unit, item.unit, item.unitName),
     cognitiveLevel: firstNonEmptyText(base.cognitiveLevel, item.cognitiveLevel),
     difficulty: firstNonEmptyText(base.difficulty, item.difficulty),
     itemType: firstNonEmptyText(base.itemType, item.questionType),
+    abilityFocus,
     correctReason,
     teacherExplanation,
     distractorDesign: isPlainObject(base.distractorDesign)
@@ -70,6 +76,15 @@ function normalizeQualityMeta(item, explanation) {
 
 export function normalizeGeneratedItem(item) {
   if (!isPlainObject(item)) return item;
+
+  const {
+    abilityFocus: _legacyAbilityFocus,
+    correctReason: _legacyCorrectReason,
+    distractorDesign: _legacyDistractorDesign,
+    selfCheck: _legacySelfCheck,
+    teacherExplanation: _legacyTeacherExplanation,
+    ...canonicalItem
+  } = item;
 
   const question = firstNonEmptyText(
     item.question,
@@ -92,7 +107,7 @@ export function normalizeGeneratedItem(item) {
   );
 
   return {
-    ...item,
+    ...canonicalItem,
     question,
     options: normalizeOptions(item.options),
     answer: firstNonEmptyText(item.answer, item.correctAnswer, item.key),
