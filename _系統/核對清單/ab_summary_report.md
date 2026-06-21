@@ -35,6 +35,11 @@
 人工可用率 = (A 級題數 + B 級題數) / 總題數。  
 直接可用率 = A 級題數 / 總題數。
 
+重複相關判讀需區分 `hardFail` 與 `duplicateObservation`：
+
+- 跨版本同 slot 相似只列為 `duplicateObservation: cross_version_same_slot`，不得直接判 hard fail。
+- 同一份測驗內重複題、題幹/數字/選項幾乎逐字相同且缺乏獨立評量價值、明顯抄襲 few-shot 範例或公開題、或重複造成學生作答/評量結果失真，才可因重複判 hard fail。
+
 ## 三、整體結果
 
 | 組別 | 題數 | A 級 | B 級 | C 級 | D 級 | 人工可用率 | 直接可用率 | hard fail |
@@ -69,6 +74,19 @@
 | 解析與答案矛盾 |  |  |  |
 | 誘答明顯亂湊 |  |  |  |
 | 學生版露出內部資訊 |  |  |  |
+| 同一份測驗內重複題 |  |  |  |
+| near copy 且缺乏獨立評量價值 |  |  |  |
+
+## 五之一、duplicateObservation 統計
+
+| duplicateObservation | 舊版題數 | 新版題數 | 是否列入 hard fail | 備註 |
+|---|---:|---:|---|---|
+| none |  |  | 否 | 無重複觀察 |
+| cross_version_same_slot |  |  | 否 | A/B 不同版本針對同一 slot 題材相似，僅列觀察 |
+| within_group_duplicate |  |  | 是 | 同一組測驗內重複 |
+| fewshot_surface_similarity |  |  | 視嚴重程度 | 與 few-shot 表面題材過度相似 |
+| near_copy |  |  | 是 | 題幹、數字、選項幾乎複製 |
+| low_independence |  |  | 視情況 | 題目缺乏獨立評量價值 |
 
 ## 六、效能與穩定性
 
