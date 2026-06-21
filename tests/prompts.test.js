@@ -59,6 +59,23 @@ describe("worker prompts", () => {
     expect(prompt).toContain("不要輸出 internalVersion 與 studentVersion");
   });
 
+  it("明確區分學生解析、正答理由與教師版命題說明", () => {
+    const prompt = buildGenerateItemsPrompt({
+      project,
+      materialText: "課文重點",
+      objectives,
+      intents,
+      checkedChineseSubcategories: ["提取訊息"],
+    });
+
+    expect(prompt).toContain("explanation 是給學生看的簡明解析");
+    expect(prompt).toContain("qualityMeta.correctReason 用來說明正答為何正確");
+    expect(prompt).toContain("qualityMeta.teacherExplanation 用來給教師／審題者看");
+    expect(prompt).toContain("qualityMeta.teacherExplanation 是必填欄位，不得省略");
+    expect(prompt).toContain("即使已有 explanation 與 qualityMeta.correctReason，也必須另行填寫 qualityMeta.teacherExplanation");
+    expect(prompt).toContain("不要把 teacherExplanation、selfCheck 或誘答設計註記寫進 question、options 或 explanation");
+  });
+
   it("預設 prompt 會載入同科目已准入 few-shot，且不載入未准入或跨科目範例", () => {
     const prompt = buildGenerateItemsPrompt({
       project,
@@ -105,6 +122,8 @@ describe("worker prompts", () => {
     expect(prompt).toContain("【few-shot 優良題範例】");
     expect(prompt).toContain("這是一題已准入的 few-shot 範例題幹。");
     expect(prompt).toContain("qualityMeta.distractorDesign");
+    expect(prompt).toContain("qualityMeta.correctReason");
+    expect(prompt).toContain("qualityMeta.teacherExplanation");
     expect(prompt).toContain("teacherExplanation");
     expect(prompt).toContain("selfCheck");
 

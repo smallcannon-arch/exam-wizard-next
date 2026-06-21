@@ -331,6 +331,32 @@ describe("validateGeneratedPaper", () => {
     expect(result.errors).toEqual([]);
   });
 
+  it("v2 item 有 qualityMeta 但缺 teacherExplanation 時報錯", () => {
+    const meta = qualityMeta();
+    delete meta.teacherExplanation;
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-001", questionType: "選擇題", score: 2, primaryObjectiveId: "O-001" }],
+      objectives: [objectives[0]],
+      items: [item({ qualityMeta: meta })],
+      qualityMode: "v2",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("qualityMeta 缺少 teacherExplanation"))).toBe(true);
+  });
+
+  it("v2 item 的 teacherExplanation 為空字串時報錯", () => {
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-001", questionType: "選擇題", score: 2, primaryObjectiveId: "O-001" }],
+      objectives: [objectives[0]],
+      items: [item({ qualityMeta: qualityMeta({ teacherExplanation: "   " }) })],
+      qualityMode: "v2",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("qualityMeta 缺少 teacherExplanation"))).toBe(true);
+  });
+
   it("answer 不在選項中時報錯", () => {
     const result = validateGeneratedPaper({
       slots: [{ itemId: "Q-001", questionType: "選擇題", score: 2, primaryObjectiveId: "O-001" }],

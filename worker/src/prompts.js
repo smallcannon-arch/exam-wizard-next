@@ -121,9 +121,11 @@ const INTERNAL_OUTPUT_GUIDELINES = `
 # 命題輸出 v2：單一 canonical item + qualityMeta
 
 - 不要輸出 internalVersion 與 studentVersion 兩份完整題目資料；只輸出一份 canonical item。
-- question、options、answer、explanation、primaryObjectiveId 等核心欄位是學生版可見資料。explanation 是給學生看的解析，應簡明、可讀。
+- question、options、answer、explanation、primaryObjectiveId 等核心欄位是學生版可見資料。explanation 是給學生看的簡明解析，應只說明學生需要知道的解題理由。
 - 每題都必須新增 qualityMeta 作為教師／審題／系統內部資料。學生版會由系統自動隱藏 qualityMeta。
 - qualityMeta 必須包含：schemaVersion（固定為 "item-quality-meta/v1"）, subject, grade, unit, cognitiveLevel, difficulty, itemType, abilityFocus, correctReason, distractorDesign, teacherExplanation, selfCheck。
+- qualityMeta.correctReason 用來說明正答為何正確；qualityMeta.teacherExplanation 用來給教師／審題者看，必須說明本題的能力重點、誘答設計摘要、錯誤診斷價值與審題注意點。
+- qualityMeta.teacherExplanation 是必填欄位，不得省略；即使已有 explanation 與 qualityMeta.correctReason，也必須另行填寫 qualityMeta.teacherExplanation。
 - 選擇題形式題目的 qualityMeta.distractorDesign 請只為錯誤選項填寫；每個錯誤選項至少包含 misconceptionTag, misconceptionDescription, whyStudentsMayChooseIt, whyItIsWrong, revisionNote。正答選項不可放入 distractorDesign。
 - qualityMeta.selfCheck 必須包含 singleCorrectAnswer, matchesPrimaryObjectiveId, matchesCognitiveLevel, allDistractorsHaveMisconceptionTags, noObviousGiveaway, gradeAppropriate, noUnnecessaryDifficulty。
 - 不要把 teacherExplanation、selfCheck 或誘答設計註記寫進 question、options 或 explanation。
