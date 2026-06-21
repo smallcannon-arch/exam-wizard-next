@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildGenerateItemsPrompt, buildRegenerateItemPrompt } from "../worker/src/prompts.js";
 
 const project = { grade: "四年級", subject: "國語" };
+const mathProject = { grade: "四年級", subject: "數學" };
 const objectives = [{ objectiveId: "O-001", text: "能理解文章主旨", periodCount: 2 }];
 const intents = [{
   itemId: "Q-001",
@@ -10,6 +11,13 @@ const intents = [{
   primaryObjectiveId: "O-001",
   chineseDimension: "段篇讀寫",
 }];
+const mathIntent = {
+  itemId: "Q-M001",
+  questionType: "圖表判讀題",
+  itemType: "chart",
+  score: 2,
+  primaryObjectiveId: "O-001",
+};
 
 const promptReadyFewShot = {
   exampleId: "PROMPT-READY-001",
@@ -50,13 +58,121 @@ describe("worker prompts", () => {
     expect(prompt).toContain("不得臨時自造 few-shot 範例");
     expect(prompt).toContain("錯誤選項與迷思標籤規格");
     expect(prompt).toContain("keyword_trap");
-    expect(prompt).toContain("formula_transfer_error");
+    expect(prompt).not.toContain("formula_transfer_error");
     expect(prompt).toContain("qualityMeta");
     expect(prompt).toContain("distractorDesign");
     expect(prompt).toContain("misconceptionTag");
     expect(prompt).toContain("teacherExplanation");
     expect(prompt).toContain("selfCheck");
     expect(prompt).toContain("不要輸出 internalVersion 與 studentVersion");
+  });
+
+  it("依科目裁切迷思標籤與國語細項規則", () => {
+    const chinesePrompt = buildGenerateItemsPrompt({
+      project,
+      materialText: "課文重點",
+      objectives,
+      intents,
+      checkedChineseSubcategories: ["提取訊息"],
+    });
+    const mathPrompt = buildGenerateItemsPrompt({
+      project: mathProject,
+      materialText: "數學重點",
+      objectives,
+      intents: [mathIntent],
+    });
+
+    expect(chinesePrompt).toContain("keyword_trap");
+    expect(chinesePrompt).not.toContain("formula_transfer_error");
+    expect(chinesePrompt).toContain("國語科評量向度與細項特別要求");
+    expect(chinesePrompt).toContain("提取訊息");
+    expect(chinesePrompt).not.toContain("近音字");
+
+    expect(mathPrompt).toContain("formula_transfer_error");
+    expect(mathPrompt).not.toContain("keyword_trap");
+    expect(mathPrompt).not.toContain("國語科評量向度與細項特別要求");
+    expect(mathPrompt).not.toContain("字詞短語");
+  });
+
+  it("國語未指定勾選細項時保守載入完整細項清單", () => {
+    const prompt = buildGenerateItemsPrompt({
+      project: { grade: "四年級", subject: "國語文" },
+      materialText: "課文重點",
+      objectives,
+      intents,
+    });
+
+    expect(prompt).toContain("國語科評量向度與細項特別要求");
+    expect(prompt).toContain("近音字");
+    expect(prompt).toContain("標點符號");
+    expect(prompt).toContain("比較評估");
+  });
+
+  it("依題型裁切閱讀、標點、圖表與幾何規範", () => {
+    const readingPrompt = buildGenerateItemsPrompt({
+      project,
+      materialText: "課文重點",
+      objectives,
+      intents: [{ ...intents[0], questionType: "閱讀測驗" }],
+      checkedChineseSubcategories: ["推論訊息"],
+    });
+    const punctuationPrompt = buildGenerateItemsPrompt({
+      project,
+      materialText: "課文重點",
+      objectives,
+      intents: [{ ...intents[0], questionType: "標點題", chineseDimension: "句式語法" }],
+      checkedChineseSubcategories: ["標點符號"],
+    });
+    const chartPrompt = buildGenerateItemsPrompt({
+      project: mathProject,
+      materialText: "數學重點",
+      objectives,
+      intents: [mathIntent],
+    });
+    const geometryPrompt = buildGenerateItemsPrompt({
+      project: mathProject,
+      materialText: "數學重點",
+      objectives,
+      intents: [{ ...mathIntent, questionType: "角度題", itemType: "geometry" }],
+    });
+
+    expect(readingPrompt).toContain("## 15. 閱讀測驗");
+    expect(readingPrompt).toContain("閱讀文本");
+    expect(readingPrompt).not.toContain("## 9. 實驗探究題");
+    expect(readingPrompt).not.toContain("## 8. 作圖題");
+
+    expect(punctuationPrompt).toContain("## 13. 照樣造句 / 造句 / 重組");
+    expect(punctuationPrompt).toContain("標點符號");
+    expect(punctuationPrompt).not.toContain("## 10. 圖表判讀題");
+
+    expect(chartPrompt).toContain("## 10. 圖表判讀題");
+    expect(chartPrompt).toContain("Markdown 文字表格");
+    expect(chartPrompt).not.toContain("## 15. 閱讀測驗");
+
+    expect(geometryPrompt).toContain("## 8. 作圖題");
+    expect(geometryPrompt).toContain("幾何圖形");
+    expect(geometryPrompt).not.toContain("## 15. 閱讀測驗");
+  });
+
+  it("無法辨識科目或題型時 fallback 到完整規則", () => {
+    const unknownSubjectPrompt = buildGenerateItemsPrompt({
+      project: { grade: "四年級", subject: "自然" },
+      materialText: "自然重點",
+      objectives,
+      intents: [{ ...mathIntent, questionType: "圖表判讀題" }],
+    });
+    const unknownQuestionTypePrompt = buildGenerateItemsPrompt({
+      project: mathProject,
+      materialText: "數學重點",
+      objectives,
+      intents: [{ ...mathIntent, questionType: "神秘題型", itemType: "" }],
+    });
+
+    expect(unknownSubjectPrompt).toContain("keyword_trap");
+    expect(unknownSubjectPrompt).toContain("formula_transfer_error");
+    expect(unknownQuestionTypePrompt).toContain("## 12. 國字 / 注音 / 改錯");
+    expect(unknownQuestionTypePrompt).toContain("## 14. 短文寫作");
+    expect(unknownQuestionTypePrompt).toContain("## 15. 閱讀測驗");
   });
 
   it("明確區分學生解析、正答理由與教師版命題說明", () => {
