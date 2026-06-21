@@ -331,6 +331,26 @@ describe("validateGeneratedPaper", () => {
     expect(result.errors).toEqual([]);
   });
 
+  it("v2 compact qualityMeta 缺系統 metadata 仍可通過", () => {
+    const meta = qualityMeta();
+    delete meta.subject;
+    delete meta.grade;
+    delete meta.unit;
+    delete meta.cognitiveLevel;
+    delete meta.difficulty;
+    delete meta.itemType;
+
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-001", questionType: "選擇題", score: 2, primaryObjectiveId: "O-001" }],
+      objectives: [objectives[0]],
+      items: [item({ qualityMeta: meta })],
+      qualityMode: "v2",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
   it("v2 item 有 qualityMeta 但缺 teacherExplanation 時報錯", () => {
     const meta = qualityMeta();
     delete meta.teacherExplanation;

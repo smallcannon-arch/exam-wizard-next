@@ -263,8 +263,9 @@ const INTERNAL_OUTPUT_GUIDELINES = `
 - 不要輸出 internalVersion 與 studentVersion 兩份完整題目資料；只輸出一份 canonical item。
 - question、options、answer、explanation、primaryObjectiveId 等核心欄位是學生版可見資料。explanation 是給學生看的簡明解析，應只說明學生需要知道的解題理由。
 - 每題都必須新增 qualityMeta 作為教師／審題／系統內部資料。學生版會由系統自動隱藏 qualityMeta。
-- qualityMeta 必須包含：schemaVersion（固定為 "item-quality-meta/v1"）, subject, grade, unit, cognitiveLevel, difficulty, itemType, abilityFocus, correctReason, distractorDesign, teacherExplanation, selfCheck。
-- qualityMeta.correctReason 用來說明正答為何正確；qualityMeta.teacherExplanation 用來給教師／審題者看，必須說明本題的能力重點、誘答設計摘要、錯誤診斷價值與審題注意點。
+- qualityMeta 必須包含：schemaVersion（固定為 "item-quality-meta/v1"）, abilityFocus, correctReason, distractorDesign, teacherExplanation, selfCheck。
+- subject, grade, unit, cognitiveLevel, difficulty, itemType 屬於可由系統或題目資料補回的 metadata；若你已能從題位明確得知可輸出，但不要為了填滿欄位而重複長文或自行編造。
+- qualityMeta.correctReason 用來精簡說明正答為何正確；qualityMeta.teacherExplanation 用來給教師／審題者看，請用一句話摘要本題能力重點、誘答設計與審題注意。
 - qualityMeta.teacherExplanation 是必填欄位，不得省略；即使已有 explanation 與 qualityMeta.correctReason，也必須另行填寫 qualityMeta.teacherExplanation。
 - 選擇題形式題目的 qualityMeta.distractorDesign 必須是以錯誤選項代號為 key 的物件，不得是陣列；請只為錯誤選項填寫。每個錯誤選項至少包含 misconceptionTag, misconceptionDescription, whyStudentsMayChooseIt, whyItIsWrong, revisionNote。正答選項不可放入 distractorDesign。
 - qualityMeta.selfCheck 必須包含 singleCorrectAnswer, matchesPrimaryObjectiveId, matchesCognitiveLevel, allDistractorsHaveMisconceptionTags, noObviousGiveaway, gradeAppropriate, noUnnecessaryDifficulty。
@@ -282,7 +283,7 @@ const JSON_OUTPUT_STABILITY_GUIDELINES = `
 - 禁止格式範例："distractorDesign": [ { "option": "A", "misconceptionTag": "partial_reading" } ]。
 - qualityMeta.distractorDesign 中每個錯誤選項物件都必須包含 misconceptionTag, misconceptionDescription, whyStudentsMayChooseIt, whyItIsWrong, revisionNote。
 - 每一個 JSON 欄位之間都必須以逗號分隔，不得省略逗號，特別是 whyItIsWrong 與 revisionNote 之間。
-- 為降低 JSON 格式錯誤風險：whyItIsWrong 請控制在 40-80 字；revisionNote 請控制在 20-50 字；teacherExplanation 請控制在 80-120 字。以上欄位皆使用單一段落，不得條列、不得換行。
+- 為降低 JSON 格式錯誤風險與輸出長度：correctReason 請控制在 30-60 字；misconceptionDescription 請控制在 15-30 字；whyStudentsMayChooseIt 請控制在 20-40 字；whyItIsWrong 請控制在 30-60 字；revisionNote 請控制在 10-25 字；teacherExplanation 請控制在 40-80 字且只寫一句話。以上欄位皆使用單一段落，不得條列、不得換行。
 `;
 
 export function buildGenerateItemsPrompt({ project = {}, materialText = "", objectives = [], intents = [], checkedChineseSubcategories = [], fewShotExamples = FEWSHOT_EXAMPLES }) {

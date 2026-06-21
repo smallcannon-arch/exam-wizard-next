@@ -185,8 +185,11 @@ describe("worker prompts", () => {
     });
 
     expect(prompt).toContain("explanation 是給學生看的簡明解析");
-    expect(prompt).toContain("qualityMeta.correctReason 用來說明正答為何正確");
+    expect(prompt).toContain("qualityMeta.correctReason 用來精簡說明正答為何正確");
     expect(prompt).toContain("qualityMeta.teacherExplanation 用來給教師／審題者看");
+    expect(prompt).toContain("qualityMeta 必須包含：schemaVersion（固定為 \"item-quality-meta/v1\"）, abilityFocus, correctReason, distractorDesign, teacherExplanation, selfCheck");
+    expect(prompt).toContain("subject, grade, unit, cognitiveLevel, difficulty, itemType 屬於可由系統或題目資料補回的 metadata");
+    expect(prompt).not.toContain("qualityMeta 必須包含：schemaVersion（固定為 \"item-quality-meta/v1\"）, subject, grade");
     expect(prompt).toContain("qualityMeta.teacherExplanation 是必填欄位，不得省略");
     expect(prompt).toContain("即使已有 explanation 與 qualityMeta.correctReason，也必須另行填寫 qualityMeta.teacherExplanation");
     expect(prompt).toContain("不要把 teacherExplanation、selfCheck 或誘答設計註記寫進 question、options 或 explanation");
@@ -210,7 +213,13 @@ describe("worker prompts", () => {
     expect(prompt).toContain("\"distractorDesign\": { \"A\":");
     expect(prompt).toContain("\"distractorDesign\": [ { \"option\": \"A\"");
     expect(prompt).toContain("whyItIsWrong 與 revisionNote 之間");
-    expect(prompt).toContain("teacherExplanation 請控制在 80-120 字");
+    expect(prompt).toContain("correctReason 請控制在 30-60 字");
+    expect(prompt).toContain("misconceptionDescription 請控制在 15-30 字");
+    expect(prompt).toContain("whyStudentsMayChooseIt 請控制在 20-40 字");
+    expect(prompt).toContain("whyItIsWrong 請控制在 30-60 字");
+    expect(prompt).toContain("revisionNote 請控制在 10-25 字");
+    expect(prompt).toContain("teacherExplanation 請控制在 40-80 字且只寫一句話");
+    expect(prompt).not.toContain("teacherExplanation 請控制在 80-120 字");
     expect(prompt).toContain("qualityMeta.teacherExplanation 是必填欄位，不得省略");
   });
 

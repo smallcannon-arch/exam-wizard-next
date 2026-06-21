@@ -29,17 +29,20 @@ export const QUALITY_META_SCHEMA_VERSION = "item-quality-meta/v1";
 
 export const QUALITY_META_REQUIRED_FIELDS = Object.freeze([
   "schemaVersion",
+  "abilityFocus",
+  "correctReason",
+  "distractorDesign",
+  "teacherExplanation",
+  "selfCheck",
+]);
+
+export const QUALITY_META_SYSTEM_FIELDS = Object.freeze([
   "subject",
   "grade",
   "unit",
   "cognitiveLevel",
   "difficulty",
   "itemType",
-  "abilityFocus",
-  "correctReason",
-  "distractorDesign",
-  "teacherExplanation",
-  "selfCheck",
 ]);
 
 export const QUALITY_META_DISTRACTOR_REQUIRED_FIELDS = Object.freeze([

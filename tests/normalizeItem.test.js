@@ -174,6 +174,39 @@ describe("normalizeGeneratedItem", () => {
     expect(item.selfCheck).toBeUndefined();
   });
 
+  it("compact qualityMeta 可從 item context 補回系統 metadata", () => {
+    const item = normalizeGeneratedItem({
+      itemId: "Q-007",
+      question: "下列何者正確？",
+      answer: "A",
+      subject: "數學",
+      grade: "四年級",
+      unitName: "角度",
+      cognitiveLevel: "應用",
+      difficulty: "中",
+      itemType: "single_choice",
+      qualityMeta: {
+        abilityFocus: "能用鐘面模型判斷旋轉角。",
+        correctReason: "A 能正確對應鐘面格數與角度。",
+        teacherExplanation: "本題檢核學生是否能把鐘面格數轉換成旋轉角並避開方向混淆。",
+        distractorDesign: {
+          B: { misconceptionTag: "direction_confusion" },
+        },
+        selfCheck: {
+          singleCorrectAnswer: true,
+        },
+      },
+    });
+
+    expect(item.qualityMeta.schemaVersion).toBe("item-quality-meta/v1");
+    expect(item.qualityMeta.subject).toBe("數學");
+    expect(item.qualityMeta.grade).toBe("四年級");
+    expect(item.qualityMeta.unit).toBe("角度");
+    expect(item.qualityMeta.cognitiveLevel).toBe("應用");
+    expect(item.qualityMeta.difficulty).toBe("中");
+    expect(item.qualityMeta.itemType).toBe("single_choice");
+  });
+
   it("舊扁平品質欄位正規化後可通過 v2 品質驗證", () => {
     const item = normalizeGeneratedItem({
       itemId: "Q-001",

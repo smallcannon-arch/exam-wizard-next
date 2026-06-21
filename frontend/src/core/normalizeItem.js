@@ -60,7 +60,7 @@ function normalizeQualityMeta(item, explanation) {
     unit: firstNonEmptyText(base.unit, item.unit, item.unitName),
     cognitiveLevel: firstNonEmptyText(base.cognitiveLevel, item.cognitiveLevel),
     difficulty: firstNonEmptyText(base.difficulty, item.difficulty),
-    itemType: firstNonEmptyText(base.itemType, item.questionType),
+    itemType: firstNonEmptyText(base.itemType, item.itemType, item.questionType),
     abilityFocus,
     correctReason,
     teacherExplanation,
