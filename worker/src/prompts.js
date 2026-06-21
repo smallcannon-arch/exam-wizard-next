@@ -126,9 +126,23 @@ const INTERNAL_OUTPUT_GUIDELINES = `
 - qualityMeta 必須包含：schemaVersion（固定為 "item-quality-meta/v1"）, subject, grade, unit, cognitiveLevel, difficulty, itemType, abilityFocus, correctReason, distractorDesign, teacherExplanation, selfCheck。
 - qualityMeta.correctReason 用來說明正答為何正確；qualityMeta.teacherExplanation 用來給教師／審題者看，必須說明本題的能力重點、誘答設計摘要、錯誤診斷價值與審題注意點。
 - qualityMeta.teacherExplanation 是必填欄位，不得省略；即使已有 explanation 與 qualityMeta.correctReason，也必須另行填寫 qualityMeta.teacherExplanation。
-- 選擇題形式題目的 qualityMeta.distractorDesign 請只為錯誤選項填寫；每個錯誤選項至少包含 misconceptionTag, misconceptionDescription, whyStudentsMayChooseIt, whyItIsWrong, revisionNote。正答選項不可放入 distractorDesign。
+- 選擇題形式題目的 qualityMeta.distractorDesign 必須是以錯誤選項代號為 key 的物件，不得是陣列；請只為錯誤選項填寫。每個錯誤選項至少包含 misconceptionTag, misconceptionDescription, whyStudentsMayChooseIt, whyItIsWrong, revisionNote。正答選項不可放入 distractorDesign。
 - qualityMeta.selfCheck 必須包含 singleCorrectAnswer, matchesPrimaryObjectiveId, matchesCognitiveLevel, allDistractorsHaveMisconceptionTags, noObviousGiveaway, gradeAppropriate, noUnnecessaryDifficulty。
 - 不要把 teacherExplanation、selfCheck 或誘答設計註記寫進 question、options 或 explanation。
+`;
+
+const JSON_OUTPUT_STABILITY_GUIDELINES = `
+# JSON 輸出穩定性規則
+
+- 你必須只輸出一個合法 JSON 物件，不得輸出 Markdown、程式碼區塊、前言、後記、註解或任何 JSON 外文字。
+- 所有 JSON 字串欄位都必須是單行字串，不得在字串內直接換行。
+- 若字串內容需要表示引號，請使用中文引號「」或單引號，不得在字串內使用未跳脫的英文雙引號。
+- qualityMeta.distractorDesign 必須是以錯誤選項代號為 key 的物件，不得是陣列。
+- 正確格式範例："distractorDesign": { "A": { "misconceptionTag": "partial_reading", "whyItIsWrong": "此選項只符合局部資訊。", "revisionNote": "保留此誘答。" }, "C": { ... }, "D": { ... } }。
+- 禁止格式範例："distractorDesign": [ { "option": "A", "misconceptionTag": "partial_reading" } ]。
+- qualityMeta.distractorDesign 中每個錯誤選項物件都必須包含 misconceptionTag, misconceptionDescription, whyStudentsMayChooseIt, whyItIsWrong, revisionNote。
+- 每一個 JSON 欄位之間都必須以逗號分隔，不得省略逗號，特別是 whyItIsWrong 與 revisionNote 之間。
+- 為降低 JSON 格式錯誤風險：whyItIsWrong 請控制在 40-80 字；revisionNote 請控制在 20-50 字；teacherExplanation 請控制在 80-120 字。以上欄位皆使用單一段落，不得條列、不得換行。
 `;
 
 export function buildGenerateItemsPrompt({ project = {}, materialText = "", objectives = [], intents = [], checkedChineseSubcategories = [], fewShotExamples = FEWSHOT_EXAMPLES }) {
@@ -238,6 +252,8 @@ export function buildGenerateItemsPrompt({ project = {}, materialText = "", obje
 
   promptParts.push(
     QUESTION_TYPE_GUIDELINES,
+    "",
+    JSON_OUTPUT_STABILITY_GUIDELINES,
     "",
     "# 輸出要求",
     "只輸出 JSON，不要 Markdown。格式：{\"items\":[...]}。items 的排列順序就是考卷的出題順序，請依編排原則排好。",

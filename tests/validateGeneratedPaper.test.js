@@ -357,6 +357,50 @@ describe("validateGeneratedPaper", () => {
     expect(result.errors.some((e) => e.includes("qualityMeta 缺少 teacherExplanation"))).toBe(true);
   });
 
+  it("v2 item 的 qualityMeta.distractorDesign 為 array 時報錯", () => {
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-001", questionType: "選擇題", score: 2, primaryObjectiveId: "O-001" }],
+      objectives: [objectives[0]],
+      items: [item({
+        qualityMeta: qualityMeta({
+          distractorDesign: [
+            { option: "B", misconceptionTag: "keyword_trap" },
+          ],
+        }),
+      })],
+      qualityMode: "v2",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("qualityMeta.distractorDesign 必須是物件"))).toBe(true);
+  });
+
+  it("v2 item 的 qualityMeta.distractorDesign 為 null 時報錯", () => {
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-001", questionType: "選擇題", score: 2, primaryObjectiveId: "O-001" }],
+      objectives: [objectives[0]],
+      items: [item({ qualityMeta: qualityMeta({ distractorDesign: null }) })],
+      qualityMode: "v2",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("qualityMeta.distractorDesign 必須是物件"))).toBe(true);
+  });
+
+  it("v2 item 缺 qualityMeta.distractorDesign 時報錯", () => {
+    const meta = qualityMeta();
+    delete meta.distractorDesign;
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-001", questionType: "選擇題", score: 2, primaryObjectiveId: "O-001" }],
+      objectives: [objectives[0]],
+      items: [item({ qualityMeta: meta })],
+      qualityMode: "v2",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("qualityMeta.distractorDesign 必須是物件"))).toBe(true);
+  });
+
   it("answer 不在選項中時報錯", () => {
     const result = validateGeneratedPaper({
       slots: [{ itemId: "Q-001", questionType: "選擇題", score: 2, primaryObjectiveId: "O-001" }],

@@ -76,6 +76,28 @@ describe("worker prompts", () => {
     expect(prompt).toContain("不要把 teacherExplanation、selfCheck 或誘答設計註記寫進 question、options 或 explanation");
   });
 
+  it("明確要求合法 JSON 與 distractorDesign 物件格式", () => {
+    const prompt = buildGenerateItemsPrompt({
+      project,
+      materialText: "課文重點",
+      objectives,
+      intents,
+      checkedChineseSubcategories: ["提取訊息"],
+    });
+
+    expect(prompt).toContain("JSON 輸出穩定性規則");
+    expect(prompt).toContain("只輸出一個合法 JSON 物件");
+    expect(prompt).toContain("所有 JSON 字串欄位都必須是單行字串");
+    expect(prompt).toContain("不得在字串內直接換行");
+    expect(prompt).toContain("qualityMeta.distractorDesign 必須是以錯誤選項代號為 key 的物件");
+    expect(prompt).toContain("不得是陣列");
+    expect(prompt).toContain("\"distractorDesign\": { \"A\":");
+    expect(prompt).toContain("\"distractorDesign\": [ { \"option\": \"A\"");
+    expect(prompt).toContain("whyItIsWrong 與 revisionNote 之間");
+    expect(prompt).toContain("teacherExplanation 請控制在 80-120 字");
+    expect(prompt).toContain("qualityMeta.teacherExplanation 是必填欄位，不得省略");
+  });
+
   it("預設 prompt 會載入同科目已准入 few-shot，且不載入未准入或跨科目範例", () => {
     const prompt = buildGenerateItemsPrompt({
       project,
