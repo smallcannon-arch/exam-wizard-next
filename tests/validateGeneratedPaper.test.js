@@ -432,6 +432,24 @@ describe("validateGeneratedPaper", () => {
     expect(result.errors.some((e) => e.includes("answer") && e.includes("不在選項範圍內"))).toBe(true);
   });
 
+  it("選擇類題目的 options 為 object 時報錯", () => {
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-001", questionType: "選擇題", score: 2, primaryObjectiveId: "O-001" }],
+      objectives: [objectives[0]],
+      items: [item({
+        options: {
+          A: "甲",
+          B: "乙",
+          C: "丙",
+          D: "丁",
+        },
+      })],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("options 必須是陣列"))).toBe(true);
+  });
+
   it("v2 品質模式下錯誤選項缺 misconceptionTag 時報錯", () => {
     const meta = qualityMeta({
       distractorDesign: {

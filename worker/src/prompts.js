@@ -278,6 +278,8 @@ const JSON_OUTPUT_STABILITY_GUIDELINES = `
 - 你必須只輸出一個合法 JSON 物件，不得輸出 Markdown、程式碼區塊、前言、後記、註解或任何 JSON 外文字。
 - 所有 JSON 字串欄位都必須是單行字串，不得在字串內直接換行。
 - 若字串內容需要表示引號，請使用中文引號「」或單引號，不得在字串內使用未跳脫的英文雙引號。
+- options 必須是 JSON array（例如 ["選項一", "選項二", "選項三", "選項四"]），不得是 object，也不得寫成 {"A":"...","B":"..."}。
+- options 的順序就是學生看到的 A/B/C/D 選項順序；若使用選項物件，也必須放在 array 內，不得以 A/B/C/D 作為 options 物件 key。
 - qualityMeta.distractorDesign 必須是以錯誤選項代號為 key 的物件，不得是陣列。
 - 正確格式範例："distractorDesign": { "A": { "misconceptionTag": "partial_reading", "whyItIsWrong": "此選項只符合局部資訊。", "revisionNote": "保留此誘答。" }, "C": { ... }, "D": { ... } }。
 - 禁止格式範例："distractorDesign": [ { "option": "A", "misconceptionTag": "partial_reading" } ]。
@@ -511,6 +513,8 @@ export function buildRegenerateItemPrompt({ project = {}, materialText = "", obj
     INTERNAL_OUTPUT_GUIDELINES,
     "",
     questionTypeGuidelines,
+    "",
+    JSON_OUTPUT_STABILITY_GUIDELINES,
     "",
     "# 輸出要求",
     "只輸出 JSON，不要 Markdown。格式：{\"items\":[一題]}。",

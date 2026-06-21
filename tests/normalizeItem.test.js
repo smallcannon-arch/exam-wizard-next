@@ -86,7 +86,7 @@ describe("normalizeGeneratedItem", () => {
     expect(item.explanation).toBe("因為鐵生鏽需要水和空氣。");
   });
 
-  it("可整理物件形式的 options", () => {
+  it("可整理 options 陣列中的選項物件", () => {
     const item = normalizeGeneratedItem({
       itemId: "Q-004",
       questionText: "下列何者正確？",
@@ -99,6 +99,63 @@ describe("normalizeGeneratedItem", () => {
 
     expect(item.question).toBe("下列何者正確？");
     expect(item.options).toEqual(["A. 水", "B. 空氣", "C. 油漆"]);
+  });
+
+  it("可將 A/B/C/D key 的 options 物件轉成陣列", () => {
+    const item = normalizeGeneratedItem({
+      itemId: "Q-004A",
+      question: "下列何者正確？",
+      answer: "C",
+      options: {
+        C: "三號選項",
+        A: "一號選項",
+        D: "四號選項",
+        B: "二號選項",
+      },
+    });
+
+    expect(item.options).toEqual(["一號選項", "二號選項", "三號選項", "四號選項"]);
+    expect(item.answer).toBe("C");
+  });
+
+  it("可將 options 物件中的選項物件轉成陣列", () => {
+    const item = normalizeGeneratedItem({
+      itemId: "Q-004B",
+      question: "下列何者正確？",
+      answer: "B",
+      options: {
+        A: { text: "甲選項" },
+        B: { label: "乙選項" },
+        C: { value: "丙選項" },
+        D: { content: "丁選項" },
+      },
+    });
+
+    expect(item.options).toEqual(["甲選項", "乙選項", "丙選項", "丁選項"]);
+    expect(item.answer).toBe("B");
+  });
+
+  it("不會把 qualityMeta.distractorDesign 誤當成 options", () => {
+    const item = normalizeGeneratedItem({
+      itemId: "Q-004C",
+      question: "下列何者正確？",
+      answer: "A",
+      qualityMeta: {
+        abilityFocus: "辨識正確概念。",
+        correctReason: "A 正確。",
+        teacherExplanation: "本題檢核概念辨識。",
+        distractorDesign: {
+          B: { misconceptionTag: "keyword_trap" },
+          C: { misconceptionTag: "partial_reading" },
+        },
+        selfCheck: {
+          singleCorrectAnswer: true,
+        },
+      },
+    });
+
+    expect(item.options).toEqual([]);
+    expect(item.qualityMeta.distractorDesign.B.misconceptionTag).toBe("keyword_trap");
   });
 
   it("可將舊頂層命題設計欄位收進 qualityMeta", () => {

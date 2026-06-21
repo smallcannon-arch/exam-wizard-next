@@ -224,6 +224,15 @@ function validateChoiceAnswer(item, errors) {
   }
 }
 
+function validateChoiceOptionsArray(item, errors) {
+  const id = normalizeId(item?.itemId) || "未知題號";
+  const questionType = normalizeId(item?.questionType);
+  if (!CHOICE_LIKE_TYPES.includes(questionType)) return;
+  if (item?.options !== undefined && !Array.isArray(item.options)) {
+    errors.push(`${id}：options 必須是陣列，不可使用物件形式。`);
+  }
+}
+
 export function validateGeneratedPaper({ slots = [], objectives = [], items = [], qualityMode = "basic" } = {}) {
   const errors = [];
   const warnings = [];
@@ -326,6 +335,7 @@ export function validateGeneratedPaper({ slots = [], objectives = [], items = []
         }
 
         if (CHOICE_LIKE_TYPES.includes(normalizeId(item.questionType))) {
+          validateChoiceOptionsArray(item, errors);
           const optionCount = Array.isArray(item.options) ? item.options.length : 0;
           if (optionCount < 2) {
             errors.push(`${subId}：${item.questionType}子題採選擇題形式，缺少選項。`);
@@ -421,6 +431,7 @@ export function validateGeneratedPaper({ slots = [], objectives = [], items = []
       }
 
       if (CHOICE_LIKE_TYPES.includes(normalizeId(item.questionType))) {
+        validateChoiceOptionsArray(item, errors);
         const optionCount = Array.isArray(item.options) ? item.options.length : 0;
         if (optionCount < 2) {
           errors.push(`${id}：${item.questionType}採選擇題形式，缺少選項。`);

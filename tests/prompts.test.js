@@ -208,6 +208,10 @@ describe("worker prompts", () => {
     expect(prompt).toContain("只輸出一個合法 JSON 物件");
     expect(prompt).toContain("所有 JSON 字串欄位都必須是單行字串");
     expect(prompt).toContain("不得在字串內直接換行");
+    expect(prompt).toContain("options 必須是 JSON array");
+    expect(prompt).toContain("不得是 object");
+    expect(prompt).toContain("不得寫成 {\"A\":\"...\",\"B\":\"...\"}");
+    expect(prompt).toContain("不得以 A/B/C/D 作為 options 物件 key");
     expect(prompt).toContain("qualityMeta.distractorDesign 必須是以錯誤選項代號為 key 的物件");
     expect(prompt).toContain("不得是陣列");
     expect(prompt).toContain("\"distractorDesign\": { \"A\":");
@@ -303,6 +307,8 @@ describe("worker prompts", () => {
     expect(prompt).toContain("qualityMeta");
     expect(prompt).toContain("distractorDesign");
     expect(prompt).toContain("selfCheck");
+    expect(prompt).toContain("options 必須是 JSON array");
+    expect(prompt).toContain("不得以 A/B/C/D 作為 options 物件 key");
     expect(prompt).toContain("國語向度鎖定");
     expect(prompt).toContain("段篇讀寫");
   });

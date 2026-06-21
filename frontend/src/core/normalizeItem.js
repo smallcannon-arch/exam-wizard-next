@@ -15,24 +15,47 @@ function firstNonEmptyText(...values) {
 }
 
 function normalizeOptions(value) {
-  if (!Array.isArray(value)) return [];
+  const values = Array.isArray(value)
+    ? value
+    : optionsObjectValues(value);
 
-  return value
-    .map((option) => {
-      if (typeof option === "string") return option.trim();
-
-      if (isPlainObject(option)) {
-        return firstNonEmptyText(
-          option.text,
-          option.label,
-          option.value,
-          option.content,
-        );
-      }
-
-      return "";
-    })
+  return values
+    .map(normalizeOptionValue)
     .filter(Boolean);
+}
+
+function normalizeOptionValue(option) {
+  if (typeof option === "string") return option.trim();
+
+  if (isPlainObject(option)) {
+    return firstNonEmptyText(
+      option.text,
+      option.label,
+      option.value,
+      option.content,
+    );
+  }
+
+  return "";
+}
+
+function optionsObjectValues(value) {
+  if (!isPlainObject(value)) return [];
+
+  const entries = Object.entries(value);
+  const order = new Map(["A", "B", "C", "D"].map((key, index) => [key, index]));
+
+  return entries
+    .filter(([, option]) => typeof option === "string" || isPlainObject(option))
+    .sort(([left], [right]) => {
+      const leftKey = left.trim().toUpperCase();
+      const rightKey = right.trim().toUpperCase();
+      const leftOrder = order.has(leftKey) ? order.get(leftKey) : Number.POSITIVE_INFINITY;
+      const rightOrder = order.has(rightKey) ? order.get(rightKey) : Number.POSITIVE_INFINITY;
+      if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+      return entries.findIndex(([key]) => key === left) - entries.findIndex(([key]) => key === right);
+    })
+    .map(([, option]) => option);
 }
 
 function normalizeQualityMeta(item, explanation) {
