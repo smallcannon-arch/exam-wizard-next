@@ -17,6 +17,7 @@ import { getApiBaseUrl } from "./config.js";
 import { validateGeneratedPaper } from "./core/validateGeneratedPaper.js";
 import { buildAuditRows } from "./core/auditRows.js";
 import { renderAuditTable } from "./core/renderAuditTable.js";
+import { toReviewItem } from "./core/itemViews.js";
 
 // 目標提取 Gem（沿用現有連結）；教材提取 Gem 建立後，把網址填到 GEM_MATERIAL_URL。
 const GEM_OBJECTIVES_URL = "https://gemini.google.com/gem/1Xd6a-3N4dZvvzC7TdgP1yBjAa2IXDUFb?usp=sharing";
@@ -208,7 +209,11 @@ function buildBlueprint() {
   });
 
   const distributedSlots = distributeObjectivesToSlots(slotResult.slots, objectives, scoreById);
-  if (usesChineseDimension(state.project)) {
+  // 國語題位一律標註評量向度／細項：worker 出題、49 列向度審核表、excel 向度表都以 subject==="國語" 為準，
+  // 故此處亦改用相同判斷（不再受 framework 影響）。評量向度模式時目標多為指標編碼，可由細項回推向度；
+  // 教材目標模式時目標無細項編碼，回退以題型推估向度，確保題位必有非空 chineseDimension，避免 worker
+  // 收到「要與題位一致、但題位為空」的矛盾指令。配分策略仍由 computeTargetScores 依 framework 分流。
+  if (state.project.subject === "國語") {
     distributedSlots.forEach((slot) => {
       const obj = objectives.find(o => o.objectiveId === slot.primaryObjectiveId);
       if (obj) {
@@ -236,7 +241,7 @@ function buildBlueprint() {
     sections: [],
     items: [],
     errors: [],
-    messages: [`已建立藍圖：${slotResult.slots.length} 題、總分 ${totalScore} 分。各題對應的學習目標與出題順序，將在生成時由 AI 依節數比例與整卷整體性編排。`],
+    messages: [`已建立藍圖：${slotResult.slots.length} 題、總分 ${totalScore} 分。各題對應的學習目標與出題順序，將在生成時由 AI 依${usesChineseDimension(state.project) ? "評量向度比例" : "節數比例"}與整卷整體性編排。`],
     step: 3,
   });
 }
@@ -367,6 +372,7 @@ async function generateItems() {
       slots: state.intents,
       objectives: state.objectives,
       items: importedItems,
+      qualityMode: "v2",
     });
 
     if (!generatedCheck.ok) {
@@ -390,7 +396,7 @@ setState({
   sections,
   errors: [],
   messages: [
-    `已產生 ${importedItems.length} 題正式草稿（AI 已依節數比例與整卷整體性編排）。`,
+    `已產生 ${importedItems.length} 題正式草稿（AI 已依${usesChineseDimension(state.project) ? "評量向度比例" : "節數比例"}與整卷整體性編排）。`,
     ...(generatedCheck.warnings || []),
   ],
   step: 4,
@@ -525,8 +531,9 @@ async function regenerateItem(itemId) {
       itemId,
       primaryObjectiveId: primaryId,
       objectiveIds: newObjectiveIds,
-      chineseDimension: newItem.chineseDimension || slot?.chineseDimension || getChineseDimension(newItem.questionType),
-      chineseSubcategory: newItem.chineseSubcategory || slot?.chineseSubcategory || getChineseSubcategory(newItem.questionType, newItem.chineseDimension || slot?.chineseDimension),
+      // 向度鎖定：題位／原題向度優先，AI 回傳值僅在前兩者皆無時備用（replaceItem 亦會再鎖一次）。
+      chineseDimension: slot?.chineseDimension || originalItem.chineseDimension || newItem.chineseDimension || getChineseDimension(newItem.questionType),
+      chineseSubcategory: slot?.chineseSubcategory || originalItem.chineseSubcategory || newItem.chineseSubcategory || getChineseSubcategory(newItem.questionType, slot?.chineseDimension || originalItem.chineseDimension),
     };
 
     const replacement = replaceItemById({
@@ -568,6 +575,48 @@ function updateItemOption(itemId, optionIndex, value) {
   if (target && Array.isArray(target.options) && optionIndex >= 0 && optionIndex < target.options.length) {
     target.options[optionIndex] = value;
   }
+}
+
+function renderQualityMetaPanel(rawItem) {
+  const item = toReviewItem(rawItem);
+  const meta = item.qualityMeta;
+  if (!meta || typeof meta !== "object") return "";
+
+  const selfCheck = meta.selfCheck && typeof meta.selfCheck === "object" ? meta.selfCheck : {};
+  const design = meta.distractorDesign && typeof meta.distractorDesign === "object" ? meta.distractorDesign : {};
+
+  const designRows = Object.entries(design)
+    .map(([key, row]) => {
+      const value = row && typeof row === "object" ? row : {};
+      return `<tr>
+        <td>${escapeHtml(key)}</td>
+        <td>${escapeHtml(value.misconceptionTag || "")}</td>
+        <td>${escapeHtml(value.whyStudentsMayChooseIt || "")}</td>
+        <td>${escapeHtml(value.whyItIsWrong || "")}</td>
+      </tr>`;
+    })
+    .join("");
+
+  const selfCheckRows = Object.entries(selfCheck)
+    .map(([key, value]) => `<span style="display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border:1px solid var(--line); border-radius:999px; background:${value ? "#eef8f0" : "#fff1f1"};">${escapeHtml(key)}：${value ? "true" : "false"}</span>`)
+    .join("");
+
+  return `<details style="margin-top:12px; border:1px solid var(--line); border-radius:10px; padding:10px 12px; background:#fbfcfd;">
+    <summary style="cursor:pointer; font-weight:700; color:var(--dark);">命題設計資訊</summary>
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:8px; margin-top:12px; font-size:14px;">
+      <div><strong>能力重點</strong><br>${escapeHtml(meta.abilityFocus || "未提供")}</div>
+      <div><strong>認知歷程</strong><br>${escapeHtml(meta.cognitiveLevel || rawItem.cognitiveLevel || "未提供")}</div>
+      <div><strong>難度</strong><br>${escapeHtml(meta.difficulty || "未提供")}</div>
+      <div><strong>題型</strong><br>${escapeHtml(meta.itemType || rawItem.questionType || "未提供")}</div>
+    </div>
+    <div style="margin-top:10px; font-size:14px;"><strong>正答理由</strong><br>${escapeHtml(meta.correctReason || "未提供")}</div>
+    <div style="margin-top:10px; font-size:14px;"><strong>教師解析</strong><br>${escapeHtml(meta.teacherExplanation || "未提供")}</div>
+    ${designRows ? `<div class="table-wrap" style="margin-top:10px;"><table>
+      <thead><tr><th>選項</th><th>迷思標籤</th><th>學生為何會選</th><th>錯在哪</th></tr></thead>
+      <tbody>${designRows}</tbody>
+    </table></div>` : ""}
+    ${selfCheckRows ? `<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; font-size:12px;">${selfCheckRows}</div>` : ""}
+  </details>`;
 }
 
 function getFolderDisplay(file) {
@@ -749,8 +798,9 @@ function renderSteps() {
 }
 
 function renderStep1() {
-  const useDimension = usesChineseDimension(state.project);
-  const subChecklistHtml = useDimension ? renderChineseSubcategoryChecklist() : "";
+  // 國語兩模式皆顯示細項勾選清單：此清單一律隨生成請求送 worker，教材目標模式若隱藏＝「在送卻看不到也不能調」。
+  const isChinese = (state.project.subject === "國語");
+  const subChecklistHtml = isChinese ? renderChineseSubcategoryChecklist() : "";
 
   return `<section class="panel">
     <div class="grid">
@@ -889,7 +939,9 @@ function renderPlanTable() {
 }
 
 function renderChineseSubcategoryChecklist() {
-  if (!usesChineseDimension(state.project)) return "";
+  // 國語兩模式皆顯示細項勾選清單：此清單一律隨生成請求送 worker 限制 AI 用詞，
+  // 教材目標模式若隱藏會變成「在送、卻看不到也不能調」，故改與 subject 一致。
+  if (state.project.subject !== "國語") return "";
 
   const checkedSet = new Set(state.checkedChineseSubcategories || []);
   const recs = getMandarinRecommendation(state.project.grade);
@@ -1028,7 +1080,9 @@ function getMandarinRecommendation(grade) {
 }
 
 function renderStep3Or4() {
-  const isChinese = usesChineseDimension(state.project);
+  // 與 worker／審核表／excel 同慣例：國語一律顯示向度配分表與題位向度 selector（兩模式皆然）。
+  // framework 只決定配分策略，不再 gate 向度 UI 的顯示。
+  const isChinese = (state.project.subject === "國語");
   const targets = state.objectiveTargets || [];
   const intents = state.intents;
   const planRows = state.planRows;
@@ -1205,7 +1259,9 @@ function renderItems() {
     const groupId = item.groupId;
 
     const getChineseDimSelect = (subItem) => {
-      if (!usesChineseDimension(state.project)) return "";
+      // 國語兩模式皆可在修題畫面校正向度／細項：教材目標模式的向度來自題型推估（較粗），
+      // 開放編輯讓老師校正，避免審核表佔分失真。
+      if (state.project.subject !== "國語") return "";
       
       const currentDim = subItem.chineseDimension || "字詞短語";
       const currentSub = subItem.chineseSubcategory || getChineseSubcategory(subItem.questionType, currentDim);
@@ -1258,6 +1314,7 @@ function renderItems() {
           ${Array.isArray(subItem.options) && subItem.options.length > 0 ? `<div class="options-edit"><span class="options-label">選項</span>${subItem.options.map((option, optionIndex) => `<label class="option-row">(${String.fromCharCode(65 + optionIndex)})<input data-item-field="option" data-item-id="${escapeHtml(subId)}" data-option-index="${optionIndex}" value="${escapeHtml(option)}"></label>`).join("")}</div>` : ""}
           <label>答案<input data-item-field="answer" data-item-id="${escapeHtml(subId)}" value="${escapeHtml(subItem.answer)}"></label>
           <label>解析<textarea data-item-field="explanation" data-item-id="${escapeHtml(subId)}">${escapeHtml(subItem.explanation)}</textarea></label>
+          ${renderQualityMetaPanel(subItem)}
           ${getChineseDimSelect(subItem)}
           <div class="actions" style="margin-top:8px;">
             <button data-action="regenerate-item" data-item-id="${escapeHtml(subId)}" ${busy ? "disabled" : ""}>${busy && busyItemId === subId ? "AI 重出中……" : "AI 重出子題"}</button>
@@ -1295,6 +1352,7 @@ function renderItems() {
         ${Array.isArray(item.options) && item.options.length > 0 ? `<div class="options-edit"><span class="options-label">選項</span>${item.options.map((option, optionIndex) => `<label class="option-row">(${String.fromCharCode(65 + optionIndex)})<input data-item-field="option" data-item-id="${escapeHtml(item.itemId)}" data-option-index="${optionIndex}" value="${escapeHtml(option)}"></label>`).join("")}</div>` : ""}
         <label>答案<input data-item-field="answer" data-item-id="${escapeHtml(item.itemId)}" value="${escapeHtml(item.answer)}"></label>
         <label>解析<textarea data-item-field="explanation" data-item-id="${escapeHtml(item.itemId)}">${escapeHtml(item.explanation)}</textarea></label>
+        ${renderQualityMetaPanel(item)}
         ${getChineseDimSelect(item)}
         <div class="actions">
           <button data-action="regenerate-item" data-item-id="${escapeHtml(item.itemId)}" ${busy ? "disabled" : ""}>${busy && busyItemId === item.itemId ? "AI 重出中……" : "AI 重出此題"}</button>
@@ -1834,7 +1892,9 @@ app.addEventListener("change", (event) => {
     const scoreById = new Map(state.objectiveTargets.map(t => [t.objectiveId, t.targetScore]));
     state.intents = distributeObjectivesToSlots(state.intents, state.objectives, scoreById);
     
-    if (usesChineseDimension(state.project)) {
+    if (state.project.subject === "國語") {
+      // 與 buildBlueprint 同邏輯：配分調整後 distributeObjectivesToSlots 可能改變 slot 目標，
+      // 故國語兩模式都重算題位向度（向度模式由細項回推，否則以題型推估），避免向度/細項停留在舊值。
       state.intents.forEach((slot) => {
         const obj = state.objectives.find(o => o.objectiveId === slot.primaryObjectiveId);
         if (obj) {
@@ -1843,7 +1903,13 @@ app.addEventListener("change", (event) => {
           if (dimension) {
             slot.chineseDimension = dimension;
             slot.chineseSubcategory = label;
+          } else {
+            slot.chineseDimension = getChineseDimension(slot.questionType);
+            slot.chineseSubcategory = getChineseSubcategory(slot.questionType, slot.chineseDimension);
           }
+        } else {
+          slot.chineseDimension = getChineseDimension(slot.questionType);
+          slot.chineseSubcategory = getChineseSubcategory(slot.questionType, slot.chineseDimension);
         }
       });
     }

@@ -1,0 +1,413 @@
+[
+  {
+    "slotId": "G4_AB_CH_001",
+    "itemId": "G4_AB_CH_001",
+    "subject": "國語",
+    "grade": "四年級",
+    "unit": "閱讀理解：主旨判斷",
+    "primaryObjectiveId": "G4-CH-READ-MAIN-001",
+    "objectiveText": "能整合短文內容，判斷文章主要意思。",
+    "cognitiveLevel": "理解",
+    "itemType": "single_choice",
+    "questionType": "閱讀測驗",
+    "difficulty": "中",
+    "score": 2,
+    "constraints": [
+      "需提供 120-180 字原創短文 stimulus。",
+      "題幹只問一件事：文章主要意思。",
+      "需有 A-D 四個選項。",
+      "錯誤選項需分別對應局部閱讀、關鍵詞直覺或主旨與細節混淆。",
+      "不得使用任務一 few-shot 候選題的雨天、花圃、道路或操場情境。"
+    ],
+    "notes": "測主旨整合，不測生字字義。"
+  },
+  {
+    "slotId": "G4_AB_CH_002",
+    "itemId": "G4_AB_CH_002",
+    "subject": "國語",
+    "grade": "四年級",
+    "unit": "閱讀理解：推論人物心情",
+    "primaryObjectiveId": "G4-CH-READ-INFER-002",
+    "objectiveText": "能根據人物行動與語句推論人物心情或態度。",
+    "cognitiveLevel": "分析",
+    "itemType": "single_choice",
+    "questionType": "閱讀測驗",
+    "difficulty": "中",
+    "score": 2,
+    "constraints": [
+      "需提供 120-180 字原創短文 stimulus。",
+      "正答不得直接出現在文本字面。",
+      "誘答需包含只看單一句子造成的錯誤推論。",
+      "選項語氣與長度需平衡。"
+    ],
+    "notes": "測推論訊息與人物理解。"
+  },
+  {
+    "slotId": "G4_AB_CH_003",
+    "itemId": "G4_AB_CH_003",
+    "subject": "國語",
+    "grade": "四年級",
+    "unit": "閱讀理解：指稱判讀",
+    "primaryObjectiveId": "G4-CH-READ-REFERENT-003",
+    "objectiveText": "能依上下文判斷代詞或指稱詞所指的對象。",
+    "cognitiveLevel": "理解",
+    "itemType": "single_choice",
+    "questionType": "選擇題",
+    "difficulty": "中",
+    "score": 2,
+    "constraints": [
+      "題幹需包含 2-3 句短文，並詢問「這、那、他們、當地」等指稱詞。",
+      "錯誤選項須來自文本中曾出現但不是正確指稱的對象。",
+      "不得使用任務一社區花圃情境。"
+    ],
+    "notes": "測上下文回指，不測生活常識。"
+  },
+  {
+    "slotId": "G4_AB_CH_004",
+    "itemId": "G4_AB_CH_004",
+    "subject": "國語",
+    "grade": "四年級",
+    "unit": "句式語法：因果關係",
+    "primaryObjectiveId": "G4-CH-GRAMMAR-CAUSE-004",
+    "objectiveText": "能依句意選用合適的因果關聯詞。",
+    "cognitiveLevel": "應用",
+    "itemType": "single_choice",
+    "questionType": "選擇題",
+    "difficulty": "中",
+    "score": 2,
+    "constraints": [
+      "題幹提供一個缺關聯詞的句子。",
+      "四個選項需為常見關聯詞組。",
+      "誘答須能診斷因果、轉折、條件、遞進混淆。",
+      "不得使用任務一道路與樹蔭句型。"
+    ],
+    "notes": "測句式語法，不測詞語記憶。"
+  },
+  {
+    "slotId": "G4_AB_CH_005",
+    "itemId": "G4_AB_CH_005",
+    "subject": "國語",
+    "grade": "四年級",
+    "unit": "標點符號：對話標點",
+    "primaryObjectiveId": "G4-CH-PUNCT-DIALOG-005",
+    "objectiveText": "能依對話語氣與句子結構判斷適當標點符號。",
+    "cognitiveLevel": "應用",
+    "itemType": "single_choice",
+    "questionType": "選擇題",
+    "difficulty": "中",
+    "score": 2,
+    "constraints": [
+      "題幹需含一個短對話或引號句。",
+      "選項須包含不同標點組合。",
+      "誘答需對應疑問語氣、驚嘆語氣、句子切分錯誤。",
+      "不得使用任務一操場與麻雀句子。"
+    ],
+    "notes": "測標點符號的語氣與結構功能。"
+  },
+  {
+    "slotId": "G4_AB_CH_006",
+    "itemId": "G4_AB_CH_006",
+    "subject": "國語",
+    "grade": "四年級",
+    "unit": "字詞短語：近義詞辨析",
+    "primaryObjectiveId": "G4-CH-WORD-SYN-006",
+    "objectiveText": "能依語境判斷詞語的相近意義與適切用法。",
+    "cognitiveLevel": "理解",
+    "itemType": "single_choice",
+    "questionType": "選擇題",
+    "difficulty": "中",
+    "score": 2,
+    "constraints": [
+      "題幹需提供完整語境句。",
+      "四個選項皆為可能混淆的詞語。",
+      "正答需依語境唯一成立。",
+      "誘答需避免荒謬或非同類詞。"
+    ],
+    "notes": "測語境詞義，不測孤立背誦。"
+  },
+  {
+    "slotId": "G4_AB_CH_007",
+    "itemId": "G4_AB_CH_007",
+    "subject": "國語",
+    "grade": "四年級",
+    "unit": "修辭：譬喻判斷",
+    "primaryObjectiveId": "G4-CH-RHETORIC-007",
+    "objectiveText": "能辨識句子中的譬喻修辭及其效果。",
+    "cognitiveLevel": "分析",
+    "itemType": "single_choice",
+    "questionType": "選擇題",
+    "difficulty": "中",
+    "score": 2,
+    "constraints": [
+      "題幹需提供一句具譬喻的句子。",
+      "需問此句使用何種修辭或此譬喻強調什麼。",
+      "誘答需包含擬人、誇飾、排比等常見混淆。",
+      "解析需說明判斷線索。"
+    ],
+    "notes": "測常用修辭，不測文學常識。"
+  },
+  {
+    "slotId": "G4_AB_CH_008",
+    "itemId": "G4_AB_CH_008",
+    "subject": "國語",
+    "grade": "四年級",
+    "unit": "閱讀理解：文章結構",
+    "primaryObjectiveId": "G4-CH-READ-STRUCT-008",
+    "objectiveText": "能辨識短文中的事件順序或段落安排。",
+    "cognitiveLevel": "分析",
+    "itemType": "single_choice",
+    "questionType": "閱讀測驗",
+    "difficulty": "中偏難",
+    "score": 2,
+    "constraints": [
+      "需提供 150-220 字原創短文 stimulus。",
+      "題目需詢問事件順序、段落作用或文章安排。",
+      "錯誤選項需包含順序調換與局部資訊誤判。",
+      "不得只問文本明示細節。"
+    ],
+    "notes": "測文章結構混淆。"
+  },
+  {
+    "slotId": "G4_AB_CH_009",
+    "itemId": "G4_AB_CH_009",
+    "subject": "國語",
+    "grade": "四年級",
+    "unit": "閱讀理解：比較評估",
+    "primaryObjectiveId": "G4-CH-READ-EVAL-009",
+    "objectiveText": "能比較文本中兩種作法或觀點，判斷較合理的說法。",
+    "cognitiveLevel": "評鑑",
+    "itemType": "single_choice",
+    "questionType": "閱讀測驗",
+    "difficulty": "中偏難",
+    "score": 2,
+    "constraints": [
+      "需提供含兩個人物或兩種作法的短文 stimulus。",
+      "正答需有文本依據，不可只靠生活常識。",
+      "誘答需包含生活經驗覆蓋文本與過度推論。"
+    ],
+    "notes": "測比較評估與文本證據。"
+  },
+  {
+    "slotId": "G4_AB_CH_010",
+    "itemId": "G4_AB_CH_010",
+    "subject": "國語",
+    "grade": "四年級",
+    "unit": "摘要整合",
+    "primaryObjectiveId": "G4-CH-READ-SUMMARY-010",
+    "objectiveText": "能選出最能概括短文內容的摘要句。",
+    "cognitiveLevel": "分析",
+    "itemType": "single_choice",
+    "questionType": "閱讀測驗",
+    "difficulty": "中",
+    "score": 2,
+    "constraints": [
+      "需提供 150-220 字原創短文 stimulus。",
+      "四個選項皆須是完整句子。",
+      "誘答需包含過窄細節、過度推論與偏離主題三類。",
+      "正答不可只是複製文本首句。"
+    ],
+    "notes": "測摘要整合。"
+  },
+  {
+    "slotId": "G4_AB_MA_001",
+    "itemId": "G4_AB_MA_001",
+    "subject": "數學",
+    "grade": "四年級",
+    "unit": "整數四則：兩步驟應用",
+    "primaryObjectiveId": "G4-MA-NUM-2STEP-001",
+    "objectiveText": "能依生活情境判斷兩步驟整數四則運算關係。",
+    "cognitiveLevel": "應用",
+    "itemType": "single_choice",
+    "questionType": "選擇題",
+    "difficulty": "中",
+    "score": 2,
+    "constraints": [
+      "題幹需是四年級生活情境。",
+      "數字可心算或簡單直式計算。",
+      "誘答需對應運算順序錯誤、只做一步、加減乘除方向混淆。",
+      "不得使用任務一三明治與果汁情境。"
+    ],
+    "notes": "測列式與運算關係。"
+  },
+  {
+    "slotId": "G4_AB_MA_002",
+    "itemId": "G4_AB_MA_002",
+    "subject": "數學",
+    "grade": "四年級",
+    "unit": "面積：複合圖形",
+    "primaryObjectiveId": "G4-MA-GEO-AREA-002",
+    "objectiveText": "能將簡單複合圖形拆成長方形並求面積。",
+    "cognitiveLevel": "解題思考",
+    "itemType": "single_choice",
+    "questionType": "圖表判讀題",
+    "difficulty": "中偏難",
+    "score": 2,
+    "constraints": [
+      "需用文字表格或文字描述給出複合圖形尺寸。",
+      "不可要求學生看不存在的圖片；若需要圖形需標示「請在此處補上圖片」。",
+      "誘答需包含只算一塊、周長公式誤套、單位錯誤。",
+      "不得使用任務一長 8 寬 5 菜圃題。"
+    ],
+    "notes": "測面積拆解。"
+  },
+  {
+    "slotId": "G4_AB_MA_003",
+    "itemId": "G4_AB_MA_003",
+    "subject": "數學",
+    "grade": "四年級",
+    "unit": "分數：同分母比較",
+    "primaryObjectiveId": "G4-MA-FRAC-COMP-003",
+    "objectiveText": "能比較同分母分數的大小並說明理由。",
+    "cognitiveLevel": "概念理解",
+    "itemType": "single_choice",
+    "questionType": "選擇題",
+    "difficulty": "中",
+    "score": 2,
+    "constraints": [
+      "題幹需包含同分母分數比較。",
+      "誘答需包含分子分母混淆、數字大就大、相等誤判。",
+      "解析需說明同分母時比較分子。"
+    ],
+    "notes": "測分數概念。"
+  },
+  {
+    "slotId": "G4_AB_MA_004",
+    "itemId": "G4_AB_MA_004",
+    "subject": "數學",
+    "grade": "四年級",
+    "unit": "小數：位值",
+    "primaryObjectiveId": "G4-MA-DEC-PLACE-004",
+    "objectiveText": "能辨識一位小數與二位小數的位值意義。",
+    "cognitiveLevel": "理解",
+    "itemType": "single_choice",
+    "questionType": "選擇題",
+    "difficulty": "中",
+    "score": 2,
+    "constraints": [
+      "選項需包含常見位值錯誤。",
+      "不得只考讀法，需連結大小或位值。",
+      "誘答需包含把 0.5 誤認為 0.05 或把小數位數多誤判為較大。"
+    ],
+    "notes": "測小數位值。"
+  },
+  {
+    "slotId": "G4_AB_MA_005",
+    "itemId": "G4_AB_MA_005",
+    "subject": "數學",
+    "grade": "四年級",
+    "unit": "時間：經過時間",
+    "primaryObjectiveId": "G4-MA-TIME-DURATION-005",
+    "objectiveText": "能計算同一天內跨整點的經過時間。",
+    "cognitiveLevel": "程序執行",
+    "itemType": "single_choice",
+    "questionType": "選擇題",
+    "difficulty": "中",
+    "score": 2,
+    "constraints": [
+      "題幹需包含開始時刻與結束時刻。",
+      "誘答需對應時刻與時間量混淆、分鐘借位錯誤、只算小時不算分鐘。",
+      "不得使用任務一鐘面從 12 到 4 旋轉角題。"
+    ],
+    "notes": "測時間量，不測角度。"
+  },
+  {
+    "slotId": "G4_AB_MA_006",
+    "itemId": "G4_AB_MA_006",
+    "subject": "數學",
+    "grade": "四年級",
+    "unit": "統計圖表：長條圖判讀",
+    "primaryObjectiveId": "G4-MA-DATA-BAR-006",
+    "objectiveText": "能讀取長條圖資料並進行比較或差量判斷。",
+    "cognitiveLevel": "分析",
+    "itemType": "single_choice",
+    "questionType": "圖表判讀題",
+    "difficulty": "中",
+    "score": 2,
+    "constraints": [
+      "question 內需提供文字表格作為資料來源。",
+      "不得只問最大值，需有比較或相差判斷。",
+      "誘答需包含絕對差錯誤、讀錯欄位、只看單一資料點。"
+    ],
+    "notes": "測資料判讀。"
+  },
+  {
+    "slotId": "G4_AB_MA_007",
+    "itemId": "G4_AB_MA_007",
+    "subject": "數學",
+    "grade": "四年級",
+    "unit": "周長：不規則邊界",
+    "primaryObjectiveId": "G4-MA-GEO-PERIM-007",
+    "objectiveText": "能依圖形邊長關係求出周長。",
+    "cognitiveLevel": "解題思考",
+    "itemType": "single_choice",
+    "questionType": "選擇題",
+    "difficulty": "中偏難",
+    "score": 2,
+    "constraints": [
+      "可用文字描述階梯形或 L 形圖形，必要時標示「請在此處補上圖片」。",
+      "誘答需包含面積公式誤套、漏算一邊、重複計算一邊。",
+      "解析需說明哪些邊被加總。"
+    ],
+    "notes": "測周長與邊界概念。"
+  },
+  {
+    "slotId": "G4_AB_MA_008",
+    "itemId": "G4_AB_MA_008",
+    "subject": "數學",
+    "grade": "四年級",
+    "unit": "倍數與除法：每份量",
+    "primaryObjectiveId": "G4-MA-DIV-UNIT-008",
+    "objectiveText": "能依等分或每份量情境判斷除法算式。",
+    "cognitiveLevel": "應用",
+    "itemType": "single_choice",
+    "questionType": "選擇題",
+    "difficulty": "中",
+    "score": 2,
+    "constraints": [
+      "題幹需清楚區分總量、份數與每份量。",
+      "誘答需包含把份數與每份量對調、乘除方向錯誤、只看關鍵字做運算。"
+    ],
+    "notes": "測除法情境判斷。"
+  },
+  {
+    "slotId": "G4_AB_MA_009",
+    "itemId": "G4_AB_MA_009",
+    "subject": "數學",
+    "grade": "四年級",
+    "unit": "角度：直角與平角",
+    "primaryObjectiveId": "G4-MA-GEO-ANGLE-009",
+    "objectiveText": "能辨識直角、銳角、鈍角與平角的大小關係。",
+    "cognitiveLevel": "概念理解",
+    "itemType": "single_choice",
+    "questionType": "選擇題",
+    "difficulty": "中",
+    "score": 2,
+    "constraints": [
+      "題幹需避免依賴不存在的圖片。",
+      "可用角度數值或文字描述。",
+      "誘答需包含直角與鈍角混淆、平角與周角混淆。",
+      "不得使用任務一 90 度三角形分類題。"
+    ],
+    "notes": "測角度分類。"
+  },
+  {
+    "slotId": "G4_AB_MA_010",
+    "itemId": "G4_AB_MA_010",
+    "subject": "數學",
+    "grade": "四年級",
+    "unit": "單位換算：長度",
+    "primaryObjectiveId": "G4-MA-MEASURE-LEN-010",
+    "objectiveText": "能進行公尺與公分之間的長度換算並應用於情境。",
+    "cognitiveLevel": "程序執行",
+    "itemType": "single_choice",
+    "questionType": "選擇題",
+    "difficulty": "中",
+    "score": 2,
+    "constraints": [
+      "題幹需包含公尺與公分混合資訊。",
+      "誘答需包含乘 10 / 乘 100 混淆、單位未統一、加法前未換算。",
+      "解析需明確寫出換算過程。"
+    ],
+    "notes": "測長度單位換算。"
+  }
+]
