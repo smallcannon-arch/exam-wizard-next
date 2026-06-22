@@ -287,3 +287,77 @@ repo 外產物：
 - `D:\User\Nhps\Documents\exam-wizard-ab\math_compact_regression_outputs_20260621.json`
 - `D:\User\Nhps\Documents\exam-wizard-ab\math_compact_regression_summary_20260621.md`
 - `D:\User\Nhps\Documents\exam-wizard-ab\math_compact_regression_20260621.mjs`
+
+## 任務 5C-6：B5 vs main 標準整卷重測結果
+
+測試版本：
+
+| 組別 | 說明 |
+| -- | -- |
+| main | production baseline |
+| B5 | B4 + 數學 qualityMeta / distractorDesign targeted compact |
+
+測試情境：
+
+| scenarioId | scenarioName | itemCount | 說明 |
+| -- | -- | --: | -- |
+| fullpaper-standard-12 | 標準整卷 | 12 | 使用與 4C / 4F 相同題位 |
+
+核心結果：
+
+| 指標 | 結果 |
+| -- | --: |
+| B5 整卷成功率 | 12/12 |
+| 國語成功率 | 6/6 |
+| 數學成功率 | 6/6 |
+| JSON parse failure | 0 |
+| validation failure | 0 |
+| qualityMeta failure | 0 |
+| answer contract failure | 0 |
+| distractorDesign key failure | 0 |
+| student leakage | 0 |
+| structure gate | 通過 |
+
+效能與 budget：
+
+| 指標 | main | B5 | 變化 / 結果 |
+| -- | --: | --: | --: |
+| totalDuration | 82.5s | 80.6s | -2.3% |
+| overBudgetItemCount | - | 0 | 通過 |
+| QUALITY_META_OVER_BUDGET | - | 0 | 通過 |
+| SINGLE_DISTRACTOR_OVER_BUDGET | - | 0 | 通過 |
+| raw output | - | - | B5 相對 main +180.1% |
+
+與 B4 對照：
+
+| 指標 | B4 | B5 | 判斷 |
+| -- | --: | --: | -- |
+| 成功題數 | 12/12 | 12/12 | 維持 |
+| structure gate | 通過 | 通過 | 維持 |
+| totalDuration | 92.1s | 80.6s | 改善 |
+| 相對 main duration | +26.4% | -2.3% | 明顯改善 |
+| overBudgetItemCount | 3 | 0 | 改善 |
+| QUALITY_META_OVER_BUDGET | 3 | 0 | 改善 |
+| SINGLE_DISTRACTOR_OVER_BUDGET | 2 | 0 | 改善 |
+| raw output 相對 main | +181.6% | +180.1% | 幾乎持平 |
+
+判斷：
+
+- B5 通過 structure gate。
+- B5 整卷 12/12 成功，國語與數學均 6/6 成功。
+- B5 未出現 JSON parse failure、validation failure、qualityMeta failure、answer contract failure、distractorDesign key failure 或學生版內部資訊外洩。
+- B5 totalDuration 為 80.6s，main 為 82.5s，B5 相對 main 快 2.3%。
+- B5 已將 overBudgetItemCount 降至 0。
+- QUALITY_META_OVER_BUDGET 已降至 0。
+- SINGLE_DISTRACTOR_OVER_BUDGET 已降至 0。
+- 數學 targeted compact 對 budget warning 與 duration 有效。
+- 但 B5 raw output 相對 main 仍增加 180.1%，與 B4 的 +181.6% 幾乎持平。
+- 目前不建議再盲目做第三輪 compact，因為 budget warning 已歸零，raw output 增幅可能主要來自 qualityMeta 本身與新架構固定欄位。
+- 下一步應做 deploy gate 重新判讀與 raw output 風險決策，而不是直接繼續壓縮 prompt。
+
+repo 外產物：
+
+- `D:\User\Nhps\Documents\exam-wizard-ab\b5_vs_main_standard_fullpaper_summary_20260621.md`
+- `D:\User\Nhps\Documents\exam-wizard-ab\b5_vs_main_standard_fullpaper_outputs_20260621.json`
+- `D:\User\Nhps\Documents\exam-wizard-ab\b5_vs_main_standard_fullpaper_outputs_with_diagnostics_20260621.json`
+- `D:\User\Nhps\Documents\exam-wizard-ab\b5_vs_main_standard_fullpaper_20260621.mjs`
