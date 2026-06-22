@@ -167,3 +167,60 @@ createPaperOutputDiagnostics(itemDiagnostics, { budget });
 - `node --check worker/src/prompts.js`
 
 5C 完成後，建議先做 5C-3 回算 4F 產物，再進 5D 分批生成 POC。不要直接做完整非同步 job queue。
+
+## 任務 5C-3：以 4F 產物回算 output budget 分布結果
+
+分析來源：
+
+- `D:\User\Nhps\Documents\exam-wizard-ab\b4_vs_main_standard_fullpaper_outputs_20260621.json`
+- `D:\User\Nhps\Documents\exam-wizard-ab\b4_vs_main_standard_fullpaper_summary_20260621.md`
+
+repo 外分析產物：
+
+- `D:\User\Nhps\Documents\exam-wizard-ab\output_budget_recalc_4f_20260621.json`
+- `D:\User\Nhps\Documents\exam-wizard-ab\output_budget_recalc_4f_summary_20260621.md`
+- `D:\User\Nhps\Documents\exam-wizard-ab\output_budget_recalc_4f_20260621.mjs`
+
+核心結果：
+
+| 指標 | 結果 | 判斷 |
+|---|---:|---|
+| B4 raw output 相對 main | +181.6% | deploy blocker 仍成立 |
+| qualityMeta 占 raw output 增量 | 約 90.7% | 主要膨脹來源 |
+| distractorDesign 占 qualityMeta | 約 51.0% | qualityMeta 內最大來源 |
+| teacherExplanation 平均長度 | 58 字 | 已維持 compact |
+| item-level 超 budget 題數 | 3 題 | 需 targeted compact |
+| paperOverBudget | YES | 因超 budget 題數達 3 題 |
+
+超 budget 題位：
+
+| slotId | subject | 判斷 |
+|---|---|---|
+| G4_AB_MA_001 | 數學 | qualityMeta / distractorDesign 偏胖 |
+| G4_AB_MA_002 | 數學 | qualityMeta / distractorDesign 偏胖 |
+| G4_AB_MA_005 | 數學 | qualityMeta / distractorDesign 偏胖 |
+
+warning code 統計：
+
+| warning code | count | 說明 |
+|---|---:|---|
+| QUALITY_META_OVER_BUDGET | 3 | 集中於數學題 |
+| SINGLE_DISTRACTOR_OVER_BUDGET | 2 | 單一誘答說明過長 |
+
+判斷：
+
+- B4 raw output 膨脹主要不是學生題目本體，而是 qualityMeta。
+- qualityMeta 約占 raw output 增量的 90.7%，是 deploy blocker 的主要來源。
+- qualityMeta 內部又以 distractorDesign 為最大來源，約占 qualityMeta 的 51.0%。
+- teacherExplanation 平均 58 字，已符合 compact 方向，暫不列為下一刀優先目標。
+- 超 budget 題目集中於數學題，表示下一步應做數學題 qualityMeta / distractorDesign targeted compact，而不是全面大改。
+- 整卷 totalRawOutputLength 與 totalQualityMetaLength 未超 paper budget，但因超 budget 題數達 3 題，paperOverBudget 為 YES。
+- 下一步建議先把 diagnostics 接入 repo 外 A/B 腳本，再做 5C-4 targeted compact。
+
+後續建議順序：
+
+1. 5C-3b：把 diagnostics 接入 repo 外 A/B 腳本。
+2. 5C-4：數學題 qualityMeta / distractorDesign targeted compact。
+3. 5C-5：針對 G4_AB_MA_001、G4_AB_MA_002、G4_AB_MA_005 做 compact 後回歸。
+4. 5D：分批生成 POC。
+5. 5B-impl：同步生成進度 UI MVP 可並行或後續接上。
