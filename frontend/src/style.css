@@ -205,6 +205,75 @@ button.danger {
   animation: spin 0.7s linear infinite;
   flex: 0 0 auto;
 }
+.notice.loading.generation-progress {
+  display: block;
+  font-weight: 400;
+  padding: 16px;
+}
+.generation-progress-head {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.generation-progress-head strong {
+  display: block;
+  font-size: 1.05rem;
+  line-height: 1.35;
+}
+.generation-progress-head p,
+.generation-progress-meta,
+.generation-progress-timeout {
+  margin: 4px 0 0;
+}
+.generation-progress-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+}
+.generation-progress-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 6px 8px;
+  border: 1px solid #cbd8f2;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.generation-progress-step.active {
+  color: var(--blue);
+  border-color: var(--blue);
+  font-weight: 700;
+}
+.generation-progress-step.done {
+  color: var(--success);
+  border-color: #bfe3cb;
+  background: #f6fbf7;
+}
+.generation-progress-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: 0 0 auto;
+}
+.generation-progress-meta {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.generation-progress-timeout {
+  color: #704a00;
+  background: #fff8df;
+  border: 1px solid #efd78a;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-weight: 600;
+}
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .table-wrap { overflow-x: auto; }
