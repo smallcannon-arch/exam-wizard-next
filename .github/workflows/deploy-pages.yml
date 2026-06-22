@@ -1,8 +1,7 @@
 name: Deploy frontend to GitHub Pages
 
 on:
-  push:
-    branches: [main]
+  # Manual deploy only: merging to main must not publish automatically.
   workflow_dispatch:
 
 permissions:
