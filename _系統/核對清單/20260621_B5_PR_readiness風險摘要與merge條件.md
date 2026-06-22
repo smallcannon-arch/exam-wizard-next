@@ -203,7 +203,14 @@ B5 可進入 PR readiness 與 final review，但不建議未經 release risk rev
 - 修正：`validateGeneratedPaper` 不再放行 `學力檢測題 + answer: A/B/C/D + 無 options` 或 `學力檢測題 + distractorDesign + 無 options`。進入選擇題檢核後，`options` 必須存在且為 array，`answer` 必須是 A/B/C/D 並對應選項，`distractorDesign` 必須是錯誤選項代號 key 的 object，且不得包含正答 key。
 - 測試：新增 reviewer 重現案例、`answer` / `correctAnswer` / `distractorDesign` 訊號擋下案例、舊式非選擇題相容案例，以及完整 `學力檢測題` 選擇題 v2 通過案例。
 
-## 11. 下一步建議
+## 11. PR #2 Review Fix：distractorDesign key 大小寫邊界
+
+- Reviewer finding：`distractorDesign` key 的正答檢查使用原始 key，比對時可能漏掉小寫正答 key；例如 `answer: "A"` 搭配 `distractorDesign` key `a` 時，未必會被視為包含正答。
+- 決策：`distractorDesign` key 檢核一律使用 normalize 後的 A/B/C/D option code 判斷。正答 key、選項範圍、錯誤選項資料取用都以 normalize 後 key 為準。
+- 修正：`answer: "A"` 搭配 `distractorDesign` key `a` 會被視為包含正答 key 並 fail；小寫錯誤選項 key（例如 `b` / `c` / `d`）仍可依正規化後 contract 處理。
+- 測試：新增小寫正答 key 失敗案例、小寫 `B` 正答 key 失敗案例，以及小寫錯誤選項 key 通過案例。P1 `學力檢測題` 選擇題訊號檢核仍維持。
+
+## 12. 下一步建議
 
 1. 更新 / 開啟 generation-stabilization stacked PR。
 2. PR 維持 Draft。

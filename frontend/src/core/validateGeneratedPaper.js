@@ -230,6 +230,7 @@ function validateQualityMeta(item, { requireQualityMeta = false } = {}) {
   const answerKey = normalizeAnswerKey(item?.answer);
   const answerIndex = answerKey ? answerKey.charCodeAt(0) - 65 : -1;
   const distractorDesign = isPlainObject(qualityMeta.distractorDesign) ? qualityMeta.distractorDesign : {};
+  const normalizedDistractorDesign = new Map();
 
   for (const key of Object.keys(distractorDesign)) {
     const normalizedKey = normalizeAnswerKey(key);
@@ -237,14 +238,14 @@ function validateQualityMeta(item, { requireQualityMeta = false } = {}) {
       errors.push(`${id}：qualityMeta.distractorDesign key「${key}」必須是錯誤選項代號 A/B/C/D，不可使用選項文字。`);
       continue;
     }
+    normalizedDistractorDesign.set(normalizedKey, distractorDesign[key]);
     const keyIndex = normalizedKey.charCodeAt(0) - 65;
     if (keyIndex < 0 || keyIndex >= options.length) {
       errors.push(`${id}：qualityMeta.distractorDesign key「${key}」不在選項範圍內。`);
     }
-  }
-
-  if (answerKey && Object.prototype.hasOwnProperty.call(distractorDesign, answerKey)) {
-    errors.push(`${id}：正答 ${answerKey} 不應出現在 qualityMeta.distractorDesign 中。`);
+    if (answerKey && normalizedKey === answerKey) {
+      errors.push(`${id}：正答 ${answerKey} 不應出現在 qualityMeta.distractorDesign 中。`);
+    }
   }
 
   const tags = [];
@@ -252,7 +253,8 @@ function validateQualityMeta(item, { requireQualityMeta = false } = {}) {
     const key = optionKey(index);
     if (index === answerIndex) return;
 
-    const design = isPlainObject(distractorDesign[key]) ? distractorDesign[key] : null;
+    const designValue = normalizedDistractorDesign.get(key);
+    const design = isPlainObject(designValue) ? designValue : null;
     if (!design) {
       errors.push(`${id}：錯誤選項 ${key} 缺少 distractorDesign。`);
       return;

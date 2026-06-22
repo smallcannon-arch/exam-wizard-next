@@ -666,6 +666,78 @@ describe("validateGeneratedPaper", () => {
     expect(result.errors.some((e) => e.includes("正答 A 不應出現在 qualityMeta.distractorDesign"))).toBe(true);
   });
 
+  it("distractorDesign 小寫 key 若為正答時報錯", () => {
+    const meta = qualityMeta({
+      distractorDesign: {
+        a: {
+          misconceptionTag: "should_not_exist",
+          misconceptionDescription: "正答不應放入誘答設計。",
+          whyStudentsMayChooseIt: "無。",
+          whyItIsWrong: "無。",
+          revisionNote: "移除。",
+        },
+        B: qualityMeta().distractorDesign.B,
+        C: qualityMeta().distractorDesign.C,
+        D: qualityMeta().distractorDesign.D,
+      },
+    });
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-001", questionType: "選擇題", score: 2, primaryObjectiveId: "O-001" }],
+      objectives: [objectives[0]],
+      items: [item({ qualityMeta: meta })],
+      qualityMode: "v2",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("正答 A 不應出現在 qualityMeta.distractorDesign"))).toBe(true);
+  });
+
+  it("distractorDesign 小寫 key 若為 B 正答時報錯", () => {
+    const meta = qualityMeta({
+      correctReason: "B 為正確答案。",
+      distractorDesign: {
+        A: qualityMeta().distractorDesign.B,
+        b: {
+          misconceptionTag: "should_not_exist",
+          misconceptionDescription: "正答不應放入誘答設計。",
+          whyStudentsMayChooseIt: "無。",
+          whyItIsWrong: "無。",
+          revisionNote: "移除。",
+        },
+        C: qualityMeta().distractorDesign.C,
+        D: qualityMeta().distractorDesign.D,
+      },
+    });
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-001", questionType: "選擇題", score: 2, primaryObjectiveId: "O-001" }],
+      objectives: [objectives[0]],
+      items: [item({ answer: "B", qualityMeta: meta })],
+      qualityMode: "v2",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("正答 B 不應出現在 qualityMeta.distractorDesign"))).toBe(true);
+  });
+
+  it("distractorDesign 小寫錯誤選項 key 會依正規化後契約通過", () => {
+    const meta = qualityMeta({
+      distractorDesign: {
+        b: qualityMeta().distractorDesign.B,
+        c: qualityMeta().distractorDesign.C,
+        d: qualityMeta().distractorDesign.D,
+      },
+    });
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-001", questionType: "選擇題", score: 2, primaryObjectiveId: "O-001" }],
+      objectives: [objectives[0]],
+      items: [item({ qualityMeta: meta })],
+      qualityMode: "v2",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
   it("distractorDesign key 使用選項文字時報錯（需先 normalize）", () => {
     const meta = qualityMeta({
       distractorDesign: {
