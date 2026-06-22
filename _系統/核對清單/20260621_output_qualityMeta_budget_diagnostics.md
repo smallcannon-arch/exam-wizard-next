@@ -224,3 +224,11 @@ warning code 統計：
 3. 5C-5：針對 G4_AB_MA_001、G4_AB_MA_002、G4_AB_MA_005 做 compact 後回歸。
 4. 5D：分批生成 POC。
 5. 5B-impl：同步生成進度 UI MVP 可並行或後續接上。
+
+## 任務 5C-4 targeted compact 設計
+
+5C-3 的 output budget 回算顯示，B4 raw output 膨脹的主要來源是 `qualityMeta`，而 `distractorDesign` 約占 `qualityMeta` 的 51.0%。超 budget 題位集中在數學題，尤其是 `G4_AB_MA_001`、`G4_AB_MA_002`、`G4_AB_MA_005`，warning code 以 `QUALITY_META_OVER_BUDGET` 與 `SINGLE_DISTRACTOR_OVER_BUDGET` 為主。
+
+本任務採取 targeted compact，而不是移除 `qualityMeta` 或 `distractorDesign`。調整方向只收斂數學題的 `qualityMeta / distractorDesign` 輸出契約：保留診斷價值，但要求 `correctReason`、`teacherExplanation`、每個錯誤選項的 `misconceptionDescription`、`whyStudentsMayChooseIt`、`whyItIsWrong`、`revisionNote` 都使用短句，並限制單一錯誤選項的 `distractorDesign` JSON 總長度不超過 220 字。
+
+這次不改 schema、不改學生版資料結構、不改 diagnostics budget，也不重跑 4F fullpaper。下一步 5C-5 應針對 `G4_AB_MA_001`、`G4_AB_MA_002`、`G4_AB_MA_005` 做 compact 後回歸，確認 validation、qualityMeta、answer contract、distractorDesign key 均維持通過，且 `QUALITY_META_OVER_BUDGET` 與 `SINGLE_DISTRACTOR_OVER_BUDGET` 明顯下降或消失。

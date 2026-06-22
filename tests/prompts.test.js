@@ -235,6 +235,60 @@ describe("worker prompts", () => {
     expect(prompt).toContain("qualityMeta.teacherExplanation 是必填欄位，不得省略");
   });
 
+  it("數學 prompt 套用 qualityMeta / distractorDesign 壓縮契約且保留既有 JSON contract", () => {
+    const mathPrompt = buildGenerateItemsPrompt({
+      project: mathProject,
+      materialText: "數學重點",
+      objectives,
+      intents: [mathIntent],
+    });
+    const chinesePrompt = buildGenerateItemsPrompt({
+      project,
+      materialText: "課文重點",
+      objectives,
+      intents,
+      checkedChineseSubcategories: ["提取訊息"],
+    });
+
+    expect(mathPrompt).toContain("數學 qualityMeta / distractorDesign 壓縮規則");
+    expect(mathPrompt).toContain("qualityMeta.correctReason 請控制在 20-45 字");
+    expect(mathPrompt).toContain("單一錯誤選項的 distractorDesign JSON 總長度不超過 220 字");
+    expect(mathPrompt).toContain("不要在每個錯誤選項重複完整解題流程");
+    expect(mathPrompt).toContain("每個錯誤選項最多 1 個短算式或 1 個關鍵錯誤點");
+    expect(mathPrompt).toContain("answer 必須是 \"A\"、\"B\"、\"C\"、\"D\" 其中之一");
+    expect(mathPrompt).toContain("answer 不得是選項文字");
+    expect(mathPrompt).toContain("qualityMeta.distractorDesign 必須是以錯誤選項代號為 key 的物件");
+    expect(mathPrompt).toContain("qualityMeta.distractorDesign keys 必須只能從 \"A\"、\"B\"、\"C\"、\"D\" 中選擇");
+    expect(mathPrompt).toContain("必須排除正確答案代號");
+    expect(chinesePrompt).not.toContain("數學 qualityMeta / distractorDesign 壓縮規則");
+    expect(chinesePrompt).toContain("answer 必須是 \"A\"、\"B\"、\"C\"、\"D\" 其中之一");
+    expect(chinesePrompt).toContain("國語科評量向度與細項特別要求");
+  });
+
+  it("數學單題重出也套用 qualityMeta compact 契約", () => {
+    const prompt = buildRegenerateItemPrompt({
+      project: mathProject,
+      materialText: "數學重點",
+      objectives,
+      originalItem: {
+        itemId: "Q-M001",
+        questionType: "選擇題",
+        score: 2,
+        objectiveIds: ["O-001"],
+        options: ["12", "15", "18", "20"],
+        answer: "B",
+      },
+      reason: "誘答過長",
+    });
+
+    expect(prompt).toContain("數學 qualityMeta / distractorDesign 壓縮規則");
+    expect(prompt).toContain("qualityMeta.teacherExplanation 請控制在 40-80 字，不要寫長篇逐步解題流程");
+    expect(prompt).toContain("misconceptionDescription 請控制在 10-24 字");
+    expect(prompt).toContain("revisionNote 請控制在 8-20 字");
+    expect(prompt).toContain("qualityMeta.distractorDesign keys 必須只能從 \"A\"、\"B\"、\"C\"、\"D\" 中選擇");
+    expect(prompt).toContain("answer 不得是選項文字");
+  });
+
   it("預設 prompt 會載入同科目已准入 few-shot，且不載入未准入或跨科目範例", () => {
     const prompt = buildGenerateItemsPrompt({
       project,

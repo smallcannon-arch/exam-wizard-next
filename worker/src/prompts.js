@@ -293,9 +293,28 @@ const JSON_OUTPUT_STABILITY_GUIDELINES = `
 - 為降低 JSON 格式錯誤風險與輸出長度：correctReason 請控制在 30-60 字；misconceptionDescription 請控制在 15-30 字；whyStudentsMayChooseIt 請控制在 20-40 字；whyItIsWrong 請控制在 30-60 字；revisionNote 請控制在 10-25 字；teacherExplanation 請控制在 40-80 字且只寫一句話。以上欄位皆使用單一段落，不得條列、不得換行。
 `;
 
+const MATH_QUALITY_META_COMPACT_GUIDELINES = `
+# 數學 qualityMeta / distractorDesign 壓縮規則
+
+- 僅適用數學題；仍必須保留 qualityMeta 與 qualityMeta.distractorDesign，不得省略或改成扁平欄位。
+- 數學題 qualityMeta.correctReason 請控制在 20-45 字，只寫正答成立的關鍵理由。
+- 數學題 qualityMeta.teacherExplanation 請控制在 40-80 字，不要寫長篇逐步解題流程。
+- 每個 distractorDesign[optionCode] 使用短句，單一錯誤選項的 distractorDesign JSON 總長度不超過 220 字。
+- misconceptionDescription 請控制在 10-24 字；whyStudentsMayChooseIt 請控制在 15-32 字；whyItIsWrong 請控制在 20-45 字；revisionNote 請控制在 8-20 字。
+- 不要在每個錯誤選項重複完整解題流程，也不要重複題幹資訊。
+- 數學題每個錯誤選項最多 1 個短算式或 1 個關鍵錯誤點。
+- 若多個迷思相近，請聚焦差異，不要複寫同一段說明。
+- distractorDesign 只說明該錯誤選項的誘答性與錯誤點，不要寫成完整教案。
+`;
+
+function getQualityMetaCompactGuidelines(subject) {
+  return normalizeSubject(subject) === "數學" ? MATH_QUALITY_META_COMPACT_GUIDELINES : "";
+}
+
 export function buildGenerateItemsPrompt({ project = {}, materialText = "", objectives = [], intents = [], checkedChineseSubcategories = [], fewShotExamples = FEWSHOT_EXAMPLES }) {
   const normalizedSubject = normalizeSubject(project.subject);
   const isChinese = normalizedSubject === "國語";
+  const qualityMetaCompactGuidelines = getQualityMetaCompactGuidelines(project.subject);
   const intentList = Array.isArray(intents) ? intents : [];
 
   const slots = intentList.map((slot) => {
@@ -402,7 +421,8 @@ export function buildGenerateItemsPrompt({ project = {}, materialText = "", obje
     getDistractorDesignGuidelines(project.subject),
     "",
     INTERNAL_OUTPUT_GUIDELINES,
-    ""
+    "",
+    ...(qualityMetaCompactGuidelines ? [qualityMetaCompactGuidelines, ""] : [])
   );
 
   if (isChinese) {
@@ -482,6 +502,7 @@ export function buildExtractObjectivesPrompt({ project = {}, materialText = "", 
 
 export function buildRegenerateItemPrompt({ project = {}, materialText = "", objectives = [], originalItem, reason = "" }) {
   const isChinese = normalizeSubject(project.subject) === "國語";
+  const qualityMetaCompactGuidelines = getQualityMetaCompactGuidelines(project.subject);
   const questionTypeGuidelines = getQuestionTypeGuidelines([originalItem], project.subject);
 
   const promptParts = [
@@ -517,6 +538,7 @@ export function buildRegenerateItemPrompt({ project = {}, materialText = "", obj
     "",
     INTERNAL_OUTPUT_GUIDELINES,
     "",
+    ...(qualityMetaCompactGuidelines ? [qualityMetaCompactGuidelines, ""] : []),
     questionTypeGuidelines,
     "",
     JSON_OUTPUT_STABILITY_GUIDELINES,
