@@ -4,6 +4,8 @@ function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+const OPTION_KEYS = ["A", "B", "C", "D"];
+
 function firstNonEmptyText(...values) {
   for (const value of values) {
     if (typeof value === "string" && value.trim() !== "") {
@@ -22,6 +24,43 @@ function normalizeOptions(value) {
   return values
     .map(normalizeOptionValue)
     .filter(Boolean);
+}
+
+function normalizeCompareText(value) {
+  return String(value ?? "")
+    .trim()
+    .replace(/^[（(]?\s*[A-Da-d]\s*[）)]?\s*[.．、:：]\s*/, "")
+    .replace(/\s+/g, " ");
+}
+
+function normalizeOptionKey(value) {
+  const text = String(value ?? "").trim();
+  const match = text.match(/^[（(]?\s*([A-Da-d])\s*[）)]?\s*[.．。、:：]?$/);
+  return match ? match[1].toUpperCase() : "";
+}
+
+function findOptionKeyByText(value, options) {
+  const target = normalizeCompareText(value);
+  if (!target) return "";
+
+  const matches = [];
+  options.forEach((option, index) => {
+    if (normalizeCompareText(option) === target) {
+      matches.push(OPTION_KEYS[index]);
+    }
+  });
+
+  return matches.length === 1 ? matches[0] : "";
+}
+
+function normalizeAnswerValue(value, options) {
+  const text = firstNonEmptyText(value);
+  if (!text) return "";
+
+  const key = normalizeOptionKey(text);
+  if (key) return key;
+
+  return findOptionKeyByText(text, options) || text;
 }
 
 function normalizeOptionValue(option) {
@@ -58,7 +97,19 @@ function optionsObjectValues(value) {
     .map(([, option]) => option);
 }
 
-function normalizeQualityMeta(item, explanation) {
+function normalizeDistractorDesign(value, options, answerKey) {
+  if (!isPlainObject(value)) return {};
+
+  const normalized = {};
+  for (const [rawKey, design] of Object.entries(value)) {
+    const key = normalizeOptionKey(rawKey) || findOptionKeyByText(rawKey, options) || rawKey;
+    if (key === answerKey) continue;
+    normalized[key] = design;
+  }
+  return normalized;
+}
+
+function normalizeQualityMeta(item, explanation, options, answerKey) {
   const base = isPlainObject(item.qualityMeta) ? { ...item.qualityMeta } : {};
   const legacyDistractorDesign = isPlainObject(item.distractorDesign) ? item.distractorDesign : null;
   const legacySelfCheck = isPlainObject(item.selfCheck) ? item.selfCheck : null;
@@ -87,9 +138,11 @@ function normalizeQualityMeta(item, explanation) {
     abilityFocus,
     correctReason,
     teacherExplanation,
-    distractorDesign: isPlainObject(base.distractorDesign)
-      ? base.distractorDesign
-      : (legacyDistractorDesign || {}),
+    distractorDesign: normalizeDistractorDesign(
+      isPlainObject(base.distractorDesign) ? base.distractorDesign : legacyDistractorDesign,
+      options,
+      answerKey,
+    ),
     selfCheck: isPlainObject(base.selfCheck)
       ? base.selfCheck
       : (legacySelfCheck || {}),
@@ -101,9 +154,12 @@ export function normalizeGeneratedItem(item) {
   if (!isPlainObject(item)) return item;
 
   const {
+    answer: _rawAnswer,
     abilityFocus: _legacyAbilityFocus,
+    correctAnswer: _rawCorrectAnswer,
     correctReason: _legacyCorrectReason,
     distractorDesign: _legacyDistractorDesign,
+    key: _rawKey,
     selfCheck: _legacySelfCheck,
     teacherExplanation: _legacyTeacherExplanation,
     ...canonicalItem
@@ -129,14 +185,23 @@ export function normalizeGeneratedItem(item) {
     item.solution,
   );
 
-  return {
+  const options = normalizeOptions(item.options);
+  const answer = normalizeAnswerValue(firstNonEmptyText(item.answer, item.correctAnswer, item.key), options);
+  const correctAnswer = normalizeAnswerValue(item.correctAnswer, options);
+  const normalizedItem = {
     ...canonicalItem,
     question,
-    options: normalizeOptions(item.options),
-    answer: firstNonEmptyText(item.answer, item.correctAnswer, item.key),
+    options,
+    answer,
     explanation,
-    qualityMeta: normalizeQualityMeta(item, explanation),
+    qualityMeta: normalizeQualityMeta(item, explanation, options, answer),
   };
+
+  if (firstNonEmptyText(item.correctAnswer)) {
+    normalizedItem.correctAnswer = correctAnswer;
+  }
+
+  return normalizedItem;
 }
 
 export function normalizeGeneratedItems(items) {

@@ -212,9 +212,17 @@ describe("worker prompts", () => {
     expect(prompt).toContain("不得是 object");
     expect(prompt).toContain("不得寫成 {\"A\":\"...\",\"B\":\"...\"}");
     expect(prompt).toContain("不得以 A/B/C/D 作為 options 物件 key");
+    expect(prompt).toContain("answer 必須是 \"A\"、\"B\"、\"C\"、\"D\" 其中之一");
+    expect(prompt).toContain("answer 不得是選項文字");
+    expect(prompt).toContain("answer 不得是選項文字、完整句子、數字或選項內容");
     expect(prompt).toContain("qualityMeta.distractorDesign 必須是以錯誤選項代號為 key 的物件");
+    expect(prompt).toContain("qualityMeta.distractorDesign keys 必須只能從 \"A\"、\"B\"、\"C\"、\"D\" 中選擇");
+    expect(prompt).toContain("必須排除正確答案代號");
+    expect(prompt).toContain("不得使用選項文字、完整句子或數字索引作為 key");
     expect(prompt).toContain("不得是陣列");
     expect(prompt).toContain("\"distractorDesign\": { \"A\":");
+    expect(prompt).toContain("\"answer\": \"從容\"");
+    expect(prompt).toContain("\"distractorDesign\": { \"從容\":");
     expect(prompt).toContain("\"distractorDesign\": [ { \"option\": \"A\"");
     expect(prompt).toContain("whyItIsWrong 與 revisionNote 之間");
     expect(prompt).toContain("correctReason 請控制在 30-60 字");
@@ -308,6 +316,10 @@ describe("worker prompts", () => {
     expect(prompt).toContain("distractorDesign");
     expect(prompt).toContain("selfCheck");
     expect(prompt).toContain("options 必須是 JSON array");
+    expect(prompt).toContain("answer 必須是 \"A\"、\"B\"、\"C\"、\"D\" 其中之一");
+    expect(prompt).toContain("answer 不得是選項文字");
+    expect(prompt).toContain("qualityMeta.distractorDesign keys 必須只能從 \"A\"、\"B\"、\"C\"、\"D\" 中選擇");
+    expect(prompt).toContain("不得使用選項文字、完整句子或數字索引作為 key");
     expect(prompt).toContain("不得以 A/B/C/D 作為 options 物件 key");
     expect(prompt).toContain("國語向度鎖定");
     expect(prompt).toContain("段篇讀寫");

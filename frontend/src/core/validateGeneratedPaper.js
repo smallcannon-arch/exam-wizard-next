@@ -78,8 +78,7 @@ function dimensionLockWarning(item, slot) {
 
 function getParentId(itemId) {
   const id = normalizeId(itemId);
-  const hyphenCount = (id.match(/-/g) || []).length;
-  if (hyphenCount > 1) {
+  if (isGroupItem(id)) {
     const hyphenIndex = id.lastIndexOf("-");
     return id.substring(0, hyphenIndex);
   }
@@ -88,7 +87,7 @@ function getParentId(itemId) {
 
 function isGroupItem(itemId) {
   const id = normalizeId(itemId);
-  return (id.match(/-/g) || []).length > 1;
+  return /-[1-9]\d*$/.test(id) && (id.match(/-/g) || []).length > 1;
 }
 
 const CHOICE_LIKE_TYPES = ["選擇題", "圖表判讀題", "實驗探究題", "學力檢測題", "閱讀測驗"];
@@ -99,21 +98,30 @@ function optionKey(index) {
 
 function normalizeAnswerKey(value) {
   const text = normalizeId(value).toUpperCase().replace(/[()（）\s.。]/g, "");
-  return /^[A-Z]$/.test(text) ? text : "";
+  return /^[A-D]$/.test(text) ? text : "";
 }
 
 function answerMatchesOptions(item) {
   const options = Array.isArray(item?.options) ? item.options : [];
   if (options.length === 0) return false;
 
-  const answer = normalizeId(item?.answer);
-  const answerKey = normalizeAnswerKey(answer);
+  const answerKey = normalizeAnswerKey(item?.answer);
   if (answerKey) {
     const index = answerKey.charCodeAt(0) - 65;
     return index >= 0 && index < options.length;
   }
 
-  return options.filter((option) => normalizeId(option) === answer).length === 1;
+  return false;
+}
+
+function hasChoiceOptions(item) {
+  return Array.isArray(item?.options) && item.options.length > 0;
+}
+
+function shouldValidateChoiceForm(item) {
+  const questionType = normalizeId(item?.questionType);
+  if (!CHOICE_LIKE_TYPES.includes(questionType)) return false;
+  return !(questionType === "學力檢測題" && item?.options === undefined);
 }
 
 function answerIsSingleChoiceKey(item) {
@@ -175,11 +183,24 @@ function validateQualityMeta(item, { requireQualityMeta = false } = {}) {
   const questionType = normalizeId(item?.questionType);
   const isChoiceLike = CHOICE_LIKE_TYPES.includes(questionType);
   if (!isChoiceLike) return { errors, warnings };
+  if (!shouldValidateChoiceForm(item)) return { errors, warnings };
 
   const options = Array.isArray(item?.options) ? item.options : [];
   const answerKey = normalizeAnswerKey(item?.answer);
   const answerIndex = answerKey ? answerKey.charCodeAt(0) - 65 : -1;
   const distractorDesign = isPlainObject(qualityMeta.distractorDesign) ? qualityMeta.distractorDesign : {};
+
+  for (const key of Object.keys(distractorDesign)) {
+    const normalizedKey = normalizeAnswerKey(key);
+    if (!normalizedKey) {
+      errors.push(`${id}：qualityMeta.distractorDesign key「${key}」必須是錯誤選項代號 A/B/C/D，不可使用選項文字。`);
+      continue;
+    }
+    const keyIndex = normalizedKey.charCodeAt(0) - 65;
+    if (keyIndex < 0 || keyIndex >= options.length) {
+      errors.push(`${id}：qualityMeta.distractorDesign key「${key}」不在選項範圍內。`);
+    }
+  }
 
   if (answerKey && Object.prototype.hasOwnProperty.call(distractorDesign, answerKey)) {
     errors.push(`${id}：正答 ${answerKey} 不應出現在 qualityMeta.distractorDesign 中。`);
@@ -217,17 +238,30 @@ function validateQualityMeta(item, { requireQualityMeta = false } = {}) {
 function validateChoiceAnswer(item, errors) {
   const id = normalizeId(item?.itemId) || "未知題號";
   const questionType = normalizeId(item?.questionType);
-  if (!CHOICE_LIKE_TYPES.includes(questionType)) return;
-  if (!answerIsSingleChoiceKey(item)) return;
+  if (!shouldValidateChoiceForm(item)) return;
+  if (!hasChoiceOptions(item)) return;
+  if (!answerIsSingleChoiceKey(item)) {
+    errors.push(`${id}：answer 必須是 A/B/C/D 選項代號，不可使用選項文字。`);
+    return;
+  }
   if (!answerMatchesOptions(item)) {
     errors.push(`${id}：answer「${item.answer}」不在選項範圍內。`);
+  }
+
+  if (hasText(item?.correctAnswer)) {
+    const correctAnswerKey = normalizeAnswerKey(item.correctAnswer);
+    if (!correctAnswerKey) {
+      errors.push(`${id}：correctAnswer 必須是 A/B/C/D 選項代號，不可使用選項文字。`);
+    } else if (correctAnswerKey !== normalizeAnswerKey(item.answer)) {
+      errors.push(`${id}：answer 與 correctAnswer 不一致。`);
+    }
   }
 }
 
 function validateChoiceOptionsArray(item, errors) {
   const id = normalizeId(item?.itemId) || "未知題號";
   const questionType = normalizeId(item?.questionType);
-  if (!CHOICE_LIKE_TYPES.includes(questionType)) return;
+  if (!shouldValidateChoiceForm(item)) return;
   if (item?.options !== undefined && !Array.isArray(item.options)) {
     errors.push(`${id}：options 必須是陣列，不可使用物件形式。`);
   }
@@ -334,7 +368,7 @@ export function validateGeneratedPaper({ slots = [], objectives = [], items = []
           errors.push(`${subId}：缺少 answer。`);
         }
 
-        if (CHOICE_LIKE_TYPES.includes(normalizeId(item.questionType))) {
+        if (shouldValidateChoiceForm(item)) {
           validateChoiceOptionsArray(item, errors);
           const optionCount = Array.isArray(item.options) ? item.options.length : 0;
           if (optionCount < 2) {
@@ -430,7 +464,7 @@ export function validateGeneratedPaper({ slots = [], objectives = [], items = []
         }
       }
 
-      if (CHOICE_LIKE_TYPES.includes(normalizeId(item.questionType))) {
+      if (shouldValidateChoiceForm(item)) {
         validateChoiceOptionsArray(item, errors);
         const optionCount = Array.isArray(item.options) ? item.options.length : 0;
         if (optionCount < 2) {

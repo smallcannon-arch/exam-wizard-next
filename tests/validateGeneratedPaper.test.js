@@ -74,7 +74,7 @@ describe("validateGeneratedPaper", () => {
       slots, objectives,
       items: [
         item({}),
-        item({ itemId: "Q-002", questionType: "學力檢測題", score: 5, primaryObjectiveId: "O-002", objectiveIds: ["O-002"], answer: "(1)A (2)B" }),
+        item({ itemId: "Q-002", questionType: "學力檢測題", score: 5, primaryObjectiveId: "O-002", objectiveIds: ["O-002"], answer: "(1)A (2)B", options: undefined }),
       ],
     });
     expect(result.ok).toBe(true);
@@ -126,7 +126,7 @@ describe("validateGeneratedPaper", () => {
       objectives,
       items: [
         item({ chineseDimension: "句式語法" }),
-        item({ itemId: "Q-002", questionType: "學力檢測題", score: 5, primaryObjectiveId: "O-002", objectiveIds: ["O-002"], answer: "(1)A (2)B", chineseDimension: "段篇讀寫" }),
+        item({ itemId: "Q-002", questionType: "學力檢測題", score: 5, primaryObjectiveId: "O-002", objectiveIds: ["O-002"], answer: "(1)A (2)B", options: undefined, chineseDimension: "段篇讀寫" }),
       ],
     });
     expect(result.ok).toBe(true);
@@ -429,7 +429,29 @@ describe("validateGeneratedPaper", () => {
     });
 
     expect(result.ok).toBe(false);
-    expect(result.errors.some((e) => e.includes("answer") && e.includes("不在選項範圍內"))).toBe(true);
+    expect(result.errors.some((e) => e.includes("answer 必須是 A/B/C/D"))).toBe(true);
+  });
+
+  it("選擇題 answer 為選項文字時報錯（需先 normalize）", () => {
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-001", questionType: "選擇題", score: 2, primaryObjectiveId: "O-001" }],
+      objectives: [objectives[0]],
+      items: [item({ answer: "甲" })],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("answer 必須是 A/B/C/D"))).toBe(true);
+  });
+
+  it("correctAnswer 與 answer 不一致時報錯", () => {
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-001", questionType: "選擇題", score: 2, primaryObjectiveId: "O-001" }],
+      objectives: [objectives[0]],
+      items: [item({ answer: "A", correctAnswer: "B" })],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("answer 與 correctAnswer 不一致"))).toBe(true);
   });
 
   it("選擇類題目的 options 為 object 時報錯", () => {
@@ -498,5 +520,24 @@ describe("validateGeneratedPaper", () => {
 
     expect(result.ok).toBe(false);
     expect(result.errors.some((e) => e.includes("正答 A 不應出現在 qualityMeta.distractorDesign"))).toBe(true);
+  });
+
+  it("distractorDesign key 使用選項文字時報錯（需先 normalize）", () => {
+    const meta = qualityMeta({
+      distractorDesign: {
+        乙: qualityMeta().distractorDesign.B,
+        丙: qualityMeta().distractorDesign.C,
+        丁: qualityMeta().distractorDesign.D,
+      },
+    });
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-001", questionType: "選擇題", score: 2, primaryObjectiveId: "O-001" }],
+      objectives: [objectives[0]],
+      items: [item({ qualityMeta: meta })],
+      qualityMode: "v2",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("distractorDesign key") && e.includes("不可使用選項文字"))).toBe(true);
   });
 });

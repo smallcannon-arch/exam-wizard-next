@@ -267,7 +267,7 @@ const INTERNAL_OUTPUT_GUIDELINES = `
 - subject, grade, unit, cognitiveLevel, difficulty, itemType 屬於可由系統或題目資料補回的 metadata；若你已能從題位明確得知可輸出，但不要為了填滿欄位而重複長文或自行編造。
 - qualityMeta.correctReason 用來精簡說明正答為何正確；qualityMeta.teacherExplanation 用來給教師／審題者看，請用一句話摘要本題能力重點、誘答設計與審題注意。
 - qualityMeta.teacherExplanation 是必填欄位，不得省略；即使已有 explanation 與 qualityMeta.correctReason，也必須另行填寫 qualityMeta.teacherExplanation。
-- 選擇題形式題目的 qualityMeta.distractorDesign 必須是以錯誤選項代號為 key 的物件，不得是陣列；請只為錯誤選項填寫。每個錯誤選項至少包含 misconceptionTag, misconceptionDescription, whyStudentsMayChooseIt, whyItIsWrong, revisionNote。正答選項不可放入 distractorDesign。
+- 選擇題形式題目的 answer 必須是正確選項代號（"A"、"B"、"C"、"D"），不可填選項文字；qualityMeta.distractorDesign 必須是以錯誤選項代號為 key 的物件，不得是陣列；請只為錯誤選項填寫。每個錯誤選項至少包含 misconceptionTag, misconceptionDescription, whyStudentsMayChooseIt, whyItIsWrong, revisionNote。正答選項不可放入 distractorDesign。
 - qualityMeta.selfCheck 必須包含 singleCorrectAnswer, matchesPrimaryObjectiveId, matchesCognitiveLevel, allDistractorsHaveMisconceptionTags, noObviousGiveaway, gradeAppropriate, noUnnecessaryDifficulty。
 - 不要把 teacherExplanation、selfCheck 或誘答設計註記寫進 question、options 或 explanation。
 `;
@@ -280,8 +280,13 @@ const JSON_OUTPUT_STABILITY_GUIDELINES = `
 - 若字串內容需要表示引號，請使用中文引號「」或單引號，不得在字串內使用未跳脫的英文雙引號。
 - options 必須是 JSON array（例如 ["選項一", "選項二", "選項三", "選項四"]），不得是 object，也不得寫成 {"A":"...","B":"..."}。
 - options 的順序就是學生看到的 A/B/C/D 選項順序；若使用選項物件，也必須放在 array 內，不得以 A/B/C/D 作為 options 物件 key。
+- answer 必須是 "A"、"B"、"C"、"D" 其中之一；answer 不得是選項文字、完整句子、數字或選項內容。
+- 若輸出 correctAnswer，也必須與 answer 一樣使用 A/B/C/D 選項代號，且必須與 answer 相同。
 - qualityMeta.distractorDesign 必須是以錯誤選項代號為 key 的物件，不得是陣列。
+- qualityMeta.distractorDesign keys 必須只能從 "A"、"B"、"C"、"D" 中選擇，必須排除正確答案代號，不得使用選項文字、完整句子或數字索引作為 key。
+- 4 選 1 題目的 qualityMeta.distractorDesign 通常應剛好包含 3 個 key，分別對應三個錯誤選項。
 - 正確格式範例："distractorDesign": { "A": { "misconceptionTag": "partial_reading", "whyItIsWrong": "此選項只符合局部資訊。", "revisionNote": "保留此誘答。" }, "C": { ... }, "D": { ... } }。
+- 禁止格式範例："answer": "從容"、"answer": "正確選項全文"、"distractorDesign": { "從容": { ... } }。
 - 禁止格式範例："distractorDesign": [ { "option": "A", "misconceptionTag": "partial_reading" } ]。
 - qualityMeta.distractorDesign 中每個錯誤選項物件都必須包含 misconceptionTag, misconceptionDescription, whyStudentsMayChooseIt, whyItIsWrong, revisionNote。
 - 每一個 JSON 欄位之間都必須以逗號分隔，不得省略逗號，特別是 whyItIsWrong 與 revisionNote 之間。
@@ -358,11 +363,11 @@ export function buildGenerateItemsPrompt({ project = {}, materialText = "", obje
   ];
 
   if (hasQuestionTypeKey("chart")) {
-    promptParts.push("- 若 questionType 為「圖表判讀題」，請做成『選擇題形式』：先在 question 內以「文字表格」呈現一份資料（實驗記錄表、觀察統整表、數據或統計表；用對齊的文字表格），接著問一個判讀問題（讀值、比較、找規律或推論），並提供 options 共 4 個選項、answer 為單一正確選項。表格數據需合理、與教材概念相符。學生看到的就是一般選擇題。");
+    promptParts.push("- 若 questionType 為「圖表判讀題」，請做成『選擇題形式』：先在 question 內以「文字表格」呈現一份資料（實驗記錄表、觀察統整表、數據或統計表；用對齊的文字表格），接著問一個判讀問題（讀值、比較、找規律或推論），並提供 options 共 4 個選項、answer 為單一正確選項代號（A/B/C/D）。表格數據需合理、與教材概念相符。學生看到的就是一般選擇題。");
   }
 
   if (hasQuestionTypeKey("experiment")) {
-    promptParts.push("- 若 questionType 為「實驗探究題」，同樣做成『選擇題形式』：question 內先描述實驗情境（目的、做法、變因或記錄結果，可用文字表格），再問一個探究問題（變因控制、預測、推論或結論），提供 options 共 4 個選項、answer 為單一正確選項。");
+    promptParts.push("- 若 questionType 為「實驗探究題」，同樣做成『選擇題形式』：question 內先描述實驗情境（目的、做法、變因或記錄結果，可用文字表格），再問一個探究問題（變因控制、預測、推論或結論），提供 options 共 4 個選項、answer 為單一正確選項代號（A/B/C/D）。");
   }
 
   if (hasQuestionTypeKey("chart") || hasQuestionTypeKey("experiment")) {
