@@ -18,6 +18,7 @@ import { validateGeneratedPaper } from "./core/validateGeneratedPaper.js";
 import { buildAuditRows } from "./core/auditRows.js";
 import { renderAuditTable } from "./core/renderAuditTable.js";
 import { toReviewItem } from "./core/itemViews.js";
+import { buildGenerationFailureMessages, createGenerationProgress, getGenerationProgressView } from "./core/generationProgress.js";
 
 // 目標提取 Gem（沿用現有連結）；教材提取 Gem 建立後，把網址填到 GEM_MATERIAL_URL。
 const GEM_OBJECTIVES_URL = "https://gemini.google.com/gem/1Xd6a-3N4dZvvzC7TdgP1yBjAa2IXDUFb?usp=sharing";
@@ -34,6 +35,8 @@ let state = createInitialState();
 let busy = false;
 let busyItemId = null;
 let busyLabel = "";
+let generationProgress = null;
+let generationProgressTimerId = null;
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -56,6 +59,34 @@ function setState(patch) {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
   }
+}
+
+function stopGenerationProgressTimer() {
+  if (generationProgressTimerId !== null && typeof window !== "undefined") {
+    window.clearInterval(generationProgressTimerId);
+  }
+  generationProgressTimerId = null;
+}
+
+function startGenerationProgress(totalItems) {
+  stopGenerationProgressTimer();
+  generationProgress = createGenerationProgress({ totalItems });
+  if (typeof window !== "undefined") {
+    generationProgressTimerId = window.setInterval(() => {
+      if (busy && generationProgress) render();
+    }, 1000);
+  }
+}
+
+function updateGenerationProgress(phase) {
+  if (!generationProgress) return;
+  generationProgress = { ...generationProgress, phase, updatedAt: Date.now() };
+  render();
+}
+
+function finishGenerationProgress() {
+  stopGenerationProgressTimer();
+  generationProgress = null;
 }
 
 function setProjectField(field, value) {
@@ -258,7 +289,9 @@ async function generateItems() {
   busy = true;
   busyItemId = null;
   busyLabel = "AI 正在生成整卷試題，題目較多時可能要 30 秒以上，請耐心等候，不要關閉或重整……";
+  startGenerationProgress(state.intents.length);
   setState({ errors: [], messages: [] });
+  updateGenerationProgress("generating");
 
   try {
     // 連線／逾時／格式失敗時自動重試一次（內容檢核失敗不在此重試，交由教師決定）。
@@ -267,7 +300,7 @@ async function generateItems() {
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       if (attempt > 1) {
         busyLabel = "第一次未成功（可能逾時），正在自動重試一次，請再稍候……";
-        render();
+        updateGenerationProgress("retrying");
       }
       result = await generateItemsViaApi({
         apiBaseUrl: getApiBaseUrl(),
@@ -282,11 +315,13 @@ async function generateItems() {
 
     if (!result?.ok || !Array.isArray(result.items)) {
       setState({
-        errors: [result?.error || "AI 回傳格式錯誤。", "已自動重試一次仍未成功；題目較多時建議減少題數或分批生成。"],
+        errors: buildGenerationFailureMessages(result?.error, { type: "validation" }),
         messages: [],
       });
       return;
     }
+
+    updateGenerationProgress("validating");
 
     const importedItems = result.items.map((item) => {
       let normalizedItemId = String(item.itemId).trim();
@@ -377,11 +412,13 @@ async function generateItems() {
 
     if (!generatedCheck.ok) {
       setState({
-        errors: generatedCheck.errors,
-        messages: ["AI 回傳的試卷題型或配分被更動、或有缺漏，尚未匯入。請重新生成。"],
+        errors: buildGenerationFailureMessages(generatedCheck.errors, { type: "validation" }),
+        messages: [],
       });
       return;
     }
+
+    updateGenerationProgress("finalizing");
 
 const sectionResult = buildSectionsByQuestionType({
   items: importedItems,
@@ -403,16 +440,14 @@ setState({
 });
   } catch (error) {
     setState({
-      errors: [
-        `AI 生成請求失敗：${error?.message || String(error)}`,
-        `請確認 Worker 是否仍在 ${getApiBaseUrl()} 執行。`,
-      ],
+      errors: buildGenerationFailureMessages(error, { type: "network" }),
       messages: [],
     });
   } finally {
     busy = false;
     busyItemId = null;
     busyLabel = "";
+    finishGenerationProgress();
     render();
   }
 }
@@ -1563,8 +1598,32 @@ function renderCurrentStep() {
 // 顯示在動作按鈕下方的進行中提示（取代原本最上方的橫幅）。
 function loadingLine() {
   if (!busy) return "";
+  if (generationProgress) return renderGenerationProgressPanel();
   const label = busyLabel || "AI 處理中，請稍候……";
   return `<div class="notice loading" role="status" aria-live="polite"><span class="spinner" aria-hidden="true"></span>${escapeHtml(label)}</div>`;
+}
+
+function renderGenerationProgressPanel() {
+  const view = getGenerationProgressView(generationProgress);
+  const stepsHtml = view.steps.map((step) => `
+    <li class="generation-progress-step ${step.state}">
+      <span class="generation-progress-dot" aria-hidden="true"></span>
+      <span>${escapeHtml(step.label)}</span>
+    </li>
+  `).join("");
+
+  return `<div class="notice loading generation-progress" role="status" aria-live="polite">
+    <div class="generation-progress-head">
+      <span class="spinner" aria-hidden="true"></span>
+      <div>
+        <strong>${escapeHtml(view.title)}</strong>
+        <p>${escapeHtml(view.statusText)}</p>
+      </div>
+    </div>
+    <ol class="generation-progress-steps">${stepsHtml}</ol>
+    <p class="generation-progress-meta">${escapeHtml(view.elapsedLabel)}。${escapeHtml(view.reminder)}</p>
+    ${view.timeoutNotice ? `<p class="generation-progress-timeout">${escapeHtml(view.timeoutNotice)}</p>` : ""}
+  </div>`;
 }
 
 function render() {
