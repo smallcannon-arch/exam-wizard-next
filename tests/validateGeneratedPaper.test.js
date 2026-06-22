@@ -74,7 +74,7 @@ describe("validateGeneratedPaper", () => {
       slots, objectives,
       items: [
         item({}),
-        item({ itemId: "Q-002", questionType: "學力檢測題", score: 5, primaryObjectiveId: "O-002", objectiveIds: ["O-002"], answer: "(1)A (2)B" }),
+        item({ itemId: "Q-002", questionType: "學力檢測題", score: 5, primaryObjectiveId: "O-002", objectiveIds: ["O-002"], answer: "(1)A (2)B", options: undefined }),
       ],
     });
     expect(result.ok).toBe(true);
@@ -126,7 +126,7 @@ describe("validateGeneratedPaper", () => {
       objectives,
       items: [
         item({ chineseDimension: "句式語法" }),
-        item({ itemId: "Q-002", questionType: "學力檢測題", score: 5, primaryObjectiveId: "O-002", objectiveIds: ["O-002"], answer: "(1)A (2)B", chineseDimension: "段篇讀寫" }),
+        item({ itemId: "Q-002", questionType: "學力檢測題", score: 5, primaryObjectiveId: "O-002", objectiveIds: ["O-002"], answer: "(1)A (2)B", options: undefined, chineseDimension: "段篇讀寫" }),
       ],
     });
     expect(result.ok).toBe(true);
@@ -331,6 +331,26 @@ describe("validateGeneratedPaper", () => {
     expect(result.errors).toEqual([]);
   });
 
+  it("v2 compact qualityMeta 缺系統 metadata 仍可通過", () => {
+    const meta = qualityMeta();
+    delete meta.subject;
+    delete meta.grade;
+    delete meta.unit;
+    delete meta.cognitiveLevel;
+    delete meta.difficulty;
+    delete meta.itemType;
+
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-001", questionType: "選擇題", score: 2, primaryObjectiveId: "O-001" }],
+      objectives: [objectives[0]],
+      items: [item({ qualityMeta: meta })],
+      qualityMode: "v2",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
   it("v2 item 有 qualityMeta 但缺 teacherExplanation 時報錯", () => {
     const meta = qualityMeta();
     delete meta.teacherExplanation;
@@ -409,7 +429,191 @@ describe("validateGeneratedPaper", () => {
     });
 
     expect(result.ok).toBe(false);
-    expect(result.errors.some((e) => e.includes("answer") && e.includes("不在選項範圍內"))).toBe(true);
+    expect(result.errors.some((e) => e.includes("answer 必須是 A/B/C/D"))).toBe(true);
+  });
+
+  it("選擇題 answer 為選項文字時報錯（需先 normalize）", () => {
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-001", questionType: "選擇題", score: 2, primaryObjectiveId: "O-001" }],
+      objectives: [objectives[0]],
+      items: [item({ answer: "甲" })],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("answer 必須是 A/B/C/D"))).toBe(true);
+  });
+
+  it("correctAnswer 與 answer 不一致時報錯", () => {
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-001", questionType: "選擇題", score: 2, primaryObjectiveId: "O-001" }],
+      objectives: [objectives[0]],
+      items: [item({ answer: "A", correctAnswer: "B" })],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("answer 與 correctAnswer 不一致"))).toBe(true);
+  });
+
+  it("選擇類題目的 options 為 object 時報錯", () => {
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-001", questionType: "選擇題", score: 2, primaryObjectiveId: "O-001" }],
+      objectives: [objectives[0]],
+      items: [item({
+        options: {
+          A: "甲",
+          B: "乙",
+          C: "丙",
+          D: "丁",
+        },
+      })],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("options 必須是陣列"))).toBe(true);
+  });
+
+  it("學力檢測題缺 options 但 answer 為選項代號時，v2 檢核應報錯", () => {
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-002", questionType: "學力檢測題", score: 5, primaryObjectiveId: "O-002" }],
+      objectives: [objectives[1]],
+      items: [
+        item({
+          itemId: "Q-002",
+          questionType: "學力檢測題",
+          score: 5,
+          primaryObjectiveId: "O-002",
+          objectiveIds: ["O-002"],
+          answer: "A",
+          options: undefined,
+          qualityMeta: qualityMeta({ distractorDesign: {} }),
+        }),
+      ],
+      qualityMode: "v2",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("學力檢測題採選擇題形式，缺少選項"))).toBe(true);
+  });
+
+  it("學力檢測題缺 options 但 correctAnswer 為選項代號時，v2 檢核應報錯", () => {
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-002", questionType: "學力檢測題", score: 5, primaryObjectiveId: "O-002" }],
+      objectives: [objectives[1]],
+      items: [
+        item({
+          itemId: "Q-002",
+          questionType: "學力檢測題",
+          score: 5,
+          primaryObjectiveId: "O-002",
+          objectiveIds: ["O-002"],
+          answer: "作答略",
+          correctAnswer: "B",
+          options: undefined,
+          qualityMeta: qualityMeta({ distractorDesign: {} }),
+        }),
+      ],
+      qualityMode: "v2",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("學力檢測題採選擇題形式，缺少選項"))).toBe(true);
+  });
+
+  it("學力檢測題缺 options 但 qualityMeta.distractorDesign 存在時，v2 檢核應報錯", () => {
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-002", questionType: "學力檢測題", score: 5, primaryObjectiveId: "O-002" }],
+      objectives: [objectives[1]],
+      items: [
+        item({
+          itemId: "Q-002",
+          questionType: "學力檢測題",
+          score: 5,
+          primaryObjectiveId: "O-002",
+          objectiveIds: ["O-002"],
+          answer: "作答略",
+          options: undefined,
+          qualityMeta: qualityMeta(),
+        }),
+      ],
+      qualityMode: "v2",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("學力檢測題採選擇題形式，缺少選項"))).toBe(true);
+  });
+
+  it("學力檢測題缺 options 且有 reviewer 重現的選擇題訊號時，v2 檢核應報錯", () => {
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-002", questionType: "學力檢測題", score: 5, primaryObjectiveId: "O-002" }],
+      objectives: [objectives[1]],
+      items: [
+        item({
+          itemId: "Q-002",
+          questionType: "學力檢測題",
+          score: 5,
+          primaryObjectiveId: "O-002",
+          objectiveIds: ["O-002"],
+          answer: "A",
+          options: undefined,
+          qualityMeta: {
+            schemaVersion: "item-quality-meta/v1",
+            abilityFocus: "能理解情境並作答。",
+            correctReason: "A 為正確答案。",
+            distractorDesign: {},
+            teacherExplanation: "本題檢核學生是否能理解情境並作答。",
+            selfCheck: qualityMeta().selfCheck,
+          },
+        }),
+      ],
+      qualityMode: "v2",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("學力檢測題採選擇題形式，缺少選項"))).toBe(true);
+  });
+
+  it("舊式無選擇題訊號的學力檢測題仍保留相容行為", () => {
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-002", questionType: "學力檢測題", score: 5, primaryObjectiveId: "O-002" }],
+      objectives: [objectives[1]],
+      items: [
+        item({
+          itemId: "Q-002",
+          questionType: "學力檢測題",
+          score: 5,
+          primaryObjectiveId: "O-002",
+          objectiveIds: ["O-002"],
+          answer: "作答略",
+          options: undefined,
+        }),
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  it("學力檢測題具完整選擇題資料時，v2 檢核可通過", () => {
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-002", questionType: "學力檢測題", score: 5, primaryObjectiveId: "O-002" }],
+      objectives: [objectives[1]],
+      items: [
+        item({
+          itemId: "Q-002",
+          questionType: "學力檢測題",
+          score: 5,
+          primaryObjectiveId: "O-002",
+          objectiveIds: ["O-002"],
+          answer: "A",
+          options: ["甲", "乙", "丙", "丁"],
+          qualityMeta: qualityMeta(),
+        }),
+      ],
+      qualityMode: "v2",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
   });
 
   it("v2 品質模式下錯誤選項缺 misconceptionTag 時報錯", () => {
@@ -460,5 +664,96 @@ describe("validateGeneratedPaper", () => {
 
     expect(result.ok).toBe(false);
     expect(result.errors.some((e) => e.includes("正答 A 不應出現在 qualityMeta.distractorDesign"))).toBe(true);
+  });
+
+  it("distractorDesign 小寫 key 若為正答時報錯", () => {
+    const meta = qualityMeta({
+      distractorDesign: {
+        a: {
+          misconceptionTag: "should_not_exist",
+          misconceptionDescription: "正答不應放入誘答設計。",
+          whyStudentsMayChooseIt: "無。",
+          whyItIsWrong: "無。",
+          revisionNote: "移除。",
+        },
+        B: qualityMeta().distractorDesign.B,
+        C: qualityMeta().distractorDesign.C,
+        D: qualityMeta().distractorDesign.D,
+      },
+    });
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-001", questionType: "選擇題", score: 2, primaryObjectiveId: "O-001" }],
+      objectives: [objectives[0]],
+      items: [item({ qualityMeta: meta })],
+      qualityMode: "v2",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("正答 A 不應出現在 qualityMeta.distractorDesign"))).toBe(true);
+  });
+
+  it("distractorDesign 小寫 key 若為 B 正答時報錯", () => {
+    const meta = qualityMeta({
+      correctReason: "B 為正確答案。",
+      distractorDesign: {
+        A: qualityMeta().distractorDesign.B,
+        b: {
+          misconceptionTag: "should_not_exist",
+          misconceptionDescription: "正答不應放入誘答設計。",
+          whyStudentsMayChooseIt: "無。",
+          whyItIsWrong: "無。",
+          revisionNote: "移除。",
+        },
+        C: qualityMeta().distractorDesign.C,
+        D: qualityMeta().distractorDesign.D,
+      },
+    });
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-001", questionType: "選擇題", score: 2, primaryObjectiveId: "O-001" }],
+      objectives: [objectives[0]],
+      items: [item({ answer: "B", qualityMeta: meta })],
+      qualityMode: "v2",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("正答 B 不應出現在 qualityMeta.distractorDesign"))).toBe(true);
+  });
+
+  it("distractorDesign 小寫錯誤選項 key 會依正規化後契約通過", () => {
+    const meta = qualityMeta({
+      distractorDesign: {
+        b: qualityMeta().distractorDesign.B,
+        c: qualityMeta().distractorDesign.C,
+        d: qualityMeta().distractorDesign.D,
+      },
+    });
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-001", questionType: "選擇題", score: 2, primaryObjectiveId: "O-001" }],
+      objectives: [objectives[0]],
+      items: [item({ qualityMeta: meta })],
+      qualityMode: "v2",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  it("distractorDesign key 使用選項文字時報錯（需先 normalize）", () => {
+    const meta = qualityMeta({
+      distractorDesign: {
+        乙: qualityMeta().distractorDesign.B,
+        丙: qualityMeta().distractorDesign.C,
+        丁: qualityMeta().distractorDesign.D,
+      },
+    });
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-001", questionType: "選擇題", score: 2, primaryObjectiveId: "O-001" }],
+      objectives: [objectives[0]],
+      items: [item({ qualityMeta: meta })],
+      qualityMode: "v2",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("distractorDesign key") && e.includes("不可使用選項文字"))).toBe(true);
   });
 });
