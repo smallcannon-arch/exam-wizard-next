@@ -232,3 +232,58 @@ warning code 統計：
 本任務採取 targeted compact，而不是移除 `qualityMeta` 或 `distractorDesign`。調整方向只收斂數學題的 `qualityMeta / distractorDesign` 輸出契約：保留診斷價值，但要求 `correctReason`、`teacherExplanation`、每個錯誤選項的 `misconceptionDescription`、`whyStudentsMayChooseIt`、`whyItIsWrong`、`revisionNote` 都使用短句，並限制單一錯誤選項的 `distractorDesign` JSON 總長度不超過 220 字。
 
 這次不改 schema、不改學生版資料結構、不改 diagnostics budget，也不重跑 4F fullpaper。下一步 5C-5 應針對 `G4_AB_MA_001`、`G4_AB_MA_002`、`G4_AB_MA_005` 做 compact 後回歸，確認 validation、qualityMeta、answer contract、distractorDesign key 均維持通過，且 `QUALITY_META_OVER_BUDGET` 與 `SINGLE_DISTRACTOR_OVER_BUDGET` 明顯下降或消失。
+
+## 任務 5C-5：數學超 budget 題位 compact 後回歸結果
+
+測試版本：
+
+| 組別 | commit | 說明 |
+| -- | -- | -- |
+| B5 | 42eee52 | B4 + 數學 qualityMeta / distractorDesign targeted compact |
+
+測試題位：
+
+- G4_AB_MA_001
+- G4_AB_MA_002
+- G4_AB_MA_005
+
+測試結果：
+
+| 指標 | 結果 |
+| -- | --: |
+| 成功率 | 3/3 |
+| JSON parse failure | 0 |
+| validation failure | 0 |
+| qualityMeta failure | 0 |
+| answer contract failure | 0 |
+| distractorDesign key failure | 0 |
+| student leakage | 0 |
+
+compact 前後比較：
+
+| 指標 | B4 baseline | B5 | 變化 |
+| -- | --: | --: | --: |
+| qualityMetaLength 平均 | 1,453 | 1,346 | -7.4% |
+| distractorDesignLength 平均 | 770 | 670 | -13.0% |
+| rawOutputLength 平均 | 2,257 | 2,259 | +0.1% |
+| SINGLE_DISTRACTOR_OVER_BUDGET | 2 | 0 | 改善 |
+| QUALITY_META_OVER_BUDGET | 3 | 1 | 改善 |
+
+判斷：
+
+- 5C-4 targeted compact 對數學題 qualityMeta / distractorDesign warning 有效。
+- SINGLE_DISTRACTOR_OVER_BUDGET 已由 2 題降為 0 題。
+- QUALITY_META_OVER_BUDGET 已由 3 題降為 1 題。
+- qualityMetaLength 平均下降 7.4%。
+- distractorDesignLength 平均下降 13.0%。
+- answer contract、distractorDesign key contract、validation、student leakage 均維持穩定。
+- 但 rawOutputLength 幾乎持平，平均僅從 2,257 變為 2,259，約 +0.1%，沒有實質下降。
+- 因此本輪可判定為 green pass，但 deploy blocker 仍需透過 B5 vs main 標準整卷重測確認。
+- 暫不需要立刻進入 distractorDesign tiered detail / debug mode。
+- 下一步可進入 B5 vs main 標準整卷重測。
+
+repo 外產物：
+
+- `D:\User\Nhps\Documents\exam-wizard-ab\math_compact_regression_outputs_20260621.json`
+- `D:\User\Nhps\Documents\exam-wizard-ab\math_compact_regression_summary_20260621.md`
+- `D:\User\Nhps\Documents\exam-wizard-ab\math_compact_regression_20260621.mjs`
