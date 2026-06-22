@@ -472,6 +472,150 @@ describe("validateGeneratedPaper", () => {
     expect(result.errors.some((e) => e.includes("options 必須是陣列"))).toBe(true);
   });
 
+  it("學力檢測題缺 options 但 answer 為選項代號時，v2 檢核應報錯", () => {
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-002", questionType: "學力檢測題", score: 5, primaryObjectiveId: "O-002" }],
+      objectives: [objectives[1]],
+      items: [
+        item({
+          itemId: "Q-002",
+          questionType: "學力檢測題",
+          score: 5,
+          primaryObjectiveId: "O-002",
+          objectiveIds: ["O-002"],
+          answer: "A",
+          options: undefined,
+          qualityMeta: qualityMeta({ distractorDesign: {} }),
+        }),
+      ],
+      qualityMode: "v2",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("學力檢測題採選擇題形式，缺少選項"))).toBe(true);
+  });
+
+  it("學力檢測題缺 options 但 correctAnswer 為選項代號時，v2 檢核應報錯", () => {
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-002", questionType: "學力檢測題", score: 5, primaryObjectiveId: "O-002" }],
+      objectives: [objectives[1]],
+      items: [
+        item({
+          itemId: "Q-002",
+          questionType: "學力檢測題",
+          score: 5,
+          primaryObjectiveId: "O-002",
+          objectiveIds: ["O-002"],
+          answer: "作答略",
+          correctAnswer: "B",
+          options: undefined,
+          qualityMeta: qualityMeta({ distractorDesign: {} }),
+        }),
+      ],
+      qualityMode: "v2",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("學力檢測題採選擇題形式，缺少選項"))).toBe(true);
+  });
+
+  it("學力檢測題缺 options 但 qualityMeta.distractorDesign 存在時，v2 檢核應報錯", () => {
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-002", questionType: "學力檢測題", score: 5, primaryObjectiveId: "O-002" }],
+      objectives: [objectives[1]],
+      items: [
+        item({
+          itemId: "Q-002",
+          questionType: "學力檢測題",
+          score: 5,
+          primaryObjectiveId: "O-002",
+          objectiveIds: ["O-002"],
+          answer: "作答略",
+          options: undefined,
+          qualityMeta: qualityMeta(),
+        }),
+      ],
+      qualityMode: "v2",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("學力檢測題採選擇題形式，缺少選項"))).toBe(true);
+  });
+
+  it("學力檢測題缺 options 且有 reviewer 重現的選擇題訊號時，v2 檢核應報錯", () => {
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-002", questionType: "學力檢測題", score: 5, primaryObjectiveId: "O-002" }],
+      objectives: [objectives[1]],
+      items: [
+        item({
+          itemId: "Q-002",
+          questionType: "學力檢測題",
+          score: 5,
+          primaryObjectiveId: "O-002",
+          objectiveIds: ["O-002"],
+          answer: "A",
+          options: undefined,
+          qualityMeta: {
+            schemaVersion: "item-quality-meta/v1",
+            abilityFocus: "能理解情境並作答。",
+            correctReason: "A 為正確答案。",
+            distractorDesign: {},
+            teacherExplanation: "本題檢核學生是否能理解情境並作答。",
+            selfCheck: qualityMeta().selfCheck,
+          },
+        }),
+      ],
+      qualityMode: "v2",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.includes("學力檢測題採選擇題形式，缺少選項"))).toBe(true);
+  });
+
+  it("舊式無選擇題訊號的學力檢測題仍保留相容行為", () => {
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-002", questionType: "學力檢測題", score: 5, primaryObjectiveId: "O-002" }],
+      objectives: [objectives[1]],
+      items: [
+        item({
+          itemId: "Q-002",
+          questionType: "學力檢測題",
+          score: 5,
+          primaryObjectiveId: "O-002",
+          objectiveIds: ["O-002"],
+          answer: "作答略",
+          options: undefined,
+        }),
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  it("學力檢測題具完整選擇題資料時，v2 檢核可通過", () => {
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-002", questionType: "學力檢測題", score: 5, primaryObjectiveId: "O-002" }],
+      objectives: [objectives[1]],
+      items: [
+        item({
+          itemId: "Q-002",
+          questionType: "學力檢測題",
+          score: 5,
+          primaryObjectiveId: "O-002",
+          objectiveIds: ["O-002"],
+          answer: "A",
+          options: ["甲", "乙", "丙", "丁"],
+          qualityMeta: qualityMeta(),
+        }),
+      ],
+      qualityMode: "v2",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
   it("v2 品質模式下錯誤選項缺 misconceptionTag 時報錯", () => {
     const meta = qualityMeta({
       distractorDesign: {

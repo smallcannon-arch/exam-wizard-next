@@ -196,7 +196,14 @@ deploy 條件比 merge 更嚴格：
 B5 可進入 PR readiness 與 final review，但不建議未經 release risk review 直接 deploy。raw output +180.1% 應列為 cost / observability risk disclosure；若實際使用成本或 latency 惡化，需啟動 tiered qualityMeta / teacher-review mode / debug mode 或進一步 compact。
 ```
 
-## 10. 下一步建議
+## 10. PR #2 Review Fix：學力檢測題選擇題訊號檢核
+
+- Reviewer finding：`學力檢測題` 在缺少 `options` 時，只要題型是舊式相容路徑，就可能跳過 v2 選擇題契約；reviewer 重現案例為 `answer: "A"` 且有基本 `qualityMeta`，但 `options` 缺失時，validator 仍回傳 `ok: true`。
+- 決策：保留舊式非選擇題 `學力檢測題` 相容性；但只要有選擇題訊號（例如 `answer` / `correctAnswer` 為 A/B/C/D、`options` 存在、`qualityMeta.distractorDesign` 存在，或 itemType / responseType / selectionPolicy 顯示為選擇題），就必須套用選擇題契約。
+- 修正：`validateGeneratedPaper` 不再放行 `學力檢測題 + answer: A/B/C/D + 無 options` 或 `學力檢測題 + distractorDesign + 無 options`。進入選擇題檢核後，`options` 必須存在且為 array，`answer` 必須是 A/B/C/D 並對應選項，`distractorDesign` 必須是錯誤選項代號 key 的 object，且不得包含正答 key。
+- 測試：新增 reviewer 重現案例、`answer` / `correctAnswer` / `distractorDesign` 訊號擋下案例、舊式非選擇題相容案例，以及完整 `學力檢測題` 選擇題 v2 通過案例。
+
+## 11. 下一步建議
 
 1. 更新 / 開啟 generation-stabilization stacked PR。
 2. PR 維持 Draft。

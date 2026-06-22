@@ -118,10 +118,51 @@ function hasChoiceOptions(item) {
   return Array.isArray(item?.options) && item.options.length > 0;
 }
 
+function hasOptionCodeAnswer(item) {
+  return !!normalizeAnswerKey(item?.answer) || !!normalizeAnswerKey(item?.correctAnswer);
+}
+
+function hasOwnField(value, field) {
+  return isPlainObject(value) && Object.prototype.hasOwnProperty.call(value, field);
+}
+
+function hasDistractorDesignSignals(item) {
+  return hasOwnField(item, "distractorDesign")
+    || (isPlainObject(item?.qualityMeta) && hasOwnField(item.qualityMeta, "distractorDesign"));
+}
+
+function hasChoiceTypeSignal(item) {
+  const signals = [
+    item?.itemType,
+    item?.responseType,
+    item?.selectionPolicy,
+  ];
+
+  return signals.some((value) => {
+    const text = normalizeId(value).toLowerCase();
+    if (!text) return false;
+    return text.includes("choice")
+      || text.includes("select")
+      || text.includes("option")
+      || text.includes("選擇")
+      || text.includes("單選")
+      || text.includes("複選")
+      || text.includes("選項");
+  });
+}
+
+function hasChoiceSignals(item) {
+  return hasOptionCodeAnswer(item)
+    || item?.options !== undefined
+    || hasDistractorDesignSignals(item)
+    || hasChoiceTypeSignal(item);
+}
+
 function shouldValidateChoiceForm(item) {
   const questionType = normalizeId(item?.questionType);
   if (!CHOICE_LIKE_TYPES.includes(questionType)) return false;
-  return !(questionType === "學力檢測題" && item?.options === undefined);
+  if (questionType !== "學力檢測題") return true;
+  return hasChoiceSignals(item);
 }
 
 function answerIsSingleChoiceKey(item) {
