@@ -87,6 +87,10 @@ export function createGenerationProgress({ totalItems = 0, now = Date.now() } = 
   return {
     phase: "submitted",
     totalItems: Math.max(0, Number(totalItems) || 0),
+    batchIndex: 0,
+    batchCount: 0,
+    completedItems: 0,
+    currentBatchItems: 0,
     startedAt: now,
     updatedAt: now,
   };
@@ -100,12 +104,28 @@ export function getGenerationProgressView(progress, now = Date.now()) {
     ? RETRY_PHASE
     : PHASES.find((phase) => phase.key === currentPhase) || PHASES[0];
   const timeoutNotice = WAIT_NOTICES.find((notice) => elapsedSeconds >= notice.seconds)?.text || "";
+  const batchCount = Math.max(0, Number(progress?.batchCount) || 0);
+  const totalItems = Math.max(0, Number(progress?.totalItems) || 0);
+  const completedItems = Math.min(totalItems, Math.max(0, Number(progress?.completedItems) || 0));
+  const currentBatchItems = Math.max(0, Number(progress?.currentBatchItems) || 0);
+  const batchNumber = Math.min(
+    batchCount,
+    Math.max(1, Math.floor(Number(progress?.batchIndex) || 0) + 1),
+  );
+  const batchStatus = batchCount > 1
+    ? `正在處理第 ${batchNumber} / ${batchCount} 批，已完成 ${completedItems} / ${totalItems} 題`
+    : "";
 
   return {
     title: phaseMeta.title,
     statusText: phaseMeta.statusText,
     reminder: "題目越多，等待時間可能越長。請先不要關閉頁面。",
     elapsedSeconds,
+    batchStatus,
+    batchCount,
+    batchNumber,
+    completedItems,
+    currentBatchItems,
     elapsedLabel: elapsedSeconds < 60
       ? `已等待 ${elapsedSeconds} 秒`
       : `已等待 ${Math.floor(elapsedSeconds / 60)} 分 ${elapsedSeconds % 60} 秒`,

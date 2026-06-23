@@ -221,6 +221,7 @@ button.danger {
   line-height: 1.35;
 }
 .generation-progress-head p,
+.generation-progress-batch,
 .generation-progress-meta,
 .generation-progress-timeout {
   margin: 4px 0 0;
@@ -265,6 +266,14 @@ button.danger {
 .generation-progress-meta {
   color: var(--muted);
   font-size: 0.9rem;
+}
+.generation-progress-batch {
+  color: var(--blue);
+  background: #f4f8ff;
+  border: 1px solid #cbd8f2;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-weight: 700;
 }
 .generation-progress-timeout {
   color: #704a00;
