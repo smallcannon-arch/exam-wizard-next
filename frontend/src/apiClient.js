@@ -24,6 +24,7 @@ async function postJson({ apiBaseUrl = getApiBaseUrl(), path, body, timeoutMs = 
       return {
         ok: false,
         error: data?.error || `HTTP ${response.status}`,
+        errorCode: data?.errorCode,
       };
     }
 

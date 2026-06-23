@@ -19,6 +19,7 @@ import { buildAuditRows } from "./core/auditRows.js";
 import { renderAuditTable } from "./core/renderAuditTable.js";
 import { toReviewItem } from "./core/itemViews.js";
 import { buildGenerationFailureMessages, createGenerationProgress, getGenerationProgressView } from "./core/generationProgress.js";
+import { createGenerationBatches, mergeSerialBatchItems, shouldUseSerialBatching } from "./core/generationBatching.js";
 
 // 目標提取 Gem（沿用現有連結）；教材提取 Gem 建立後，把網址填到 GEM_MATERIAL_URL。
 const GEM_OBJECTIVES_URL = "https://gemini.google.com/gem/1Xd6a-3N4dZvvzC7TdgP1yBjAa2IXDUFb?usp=sharing";
@@ -68,9 +69,12 @@ function stopGenerationProgressTimer() {
   generationProgressTimerId = null;
 }
 
-function startGenerationProgress(totalItems) {
+function startGenerationProgress(totalItems, progressState = {}) {
   stopGenerationProgressTimer();
-  generationProgress = createGenerationProgress({ totalItems });
+  generationProgress = {
+    ...createGenerationProgress({ totalItems }),
+    ...progressState,
+  };
   if (typeof window !== "undefined") {
     generationProgressTimerId = window.setInterval(() => {
       if (busy && generationProgress) render();
@@ -78,9 +82,9 @@ function startGenerationProgress(totalItems) {
   }
 }
 
-function updateGenerationProgress(phase) {
+function updateGenerationProgress(phase, progressState = {}) {
   if (!generationProgress) return;
-  generationProgress = { ...generationProgress, phase, updatedAt: Date.now() };
+  generationProgress = { ...generationProgress, ...progressState, phase, updatedAt: Date.now() };
   render();
 }
 
@@ -277,6 +281,109 @@ function buildBlueprint() {
   });
 }
 
+async function requestGeneratedItemsWithRetry(intents) {
+  let result = null;
+  const maxAttempts = 2;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    if (attempt > 1) {
+      busyLabel = "第一次未成功（可能逾時），正在自動重試一次，請再稍候……";
+      updateGenerationProgress("retrying");
+    }
+    result = await generateItemsViaApi({
+      apiBaseUrl: getApiBaseUrl(),
+      project: state.project,
+      materialText: state.materialText,
+      objectives: state.objectives,
+      intents,
+      checkedChineseSubcategories: state.checkedChineseSubcategories,
+    });
+    if (result?.ok && Array.isArray(result.items)) break;
+  }
+  return result;
+}
+
+function mapGeneratedItemsToSlots(items, slots, objectives) {
+  return items.map((item) => {
+    let normalizedItemId = String(item.itemId).trim();
+    const parts = normalizedItemId.split("-");
+    let slot = null;
+
+    if (parts.length >= 2) {
+      const parentNum = parseInt(parts[1], 10) || parseInt(parts[0], 10);
+      if (!isNaN(parentNum)) {
+        slot = slots.find(s => {
+          const sParts = s.itemId.split("-");
+          return sParts.length >= 2 && parseInt(sParts[1], 10) === parentNum;
+        });
+      }
+    } else {
+      const num = parseInt(normalizedItemId, 10);
+      if (!isNaN(num)) {
+        slot = slots.find(s => {
+          const sParts = s.itemId.split("-");
+          return sParts.length >= 2 && parseInt(sParts[1], 10) === num;
+        });
+      }
+    }
+
+    if (slot) {
+      if (slot.isGroup) {
+        const subIndex = parts.length > 2 ? parts[2] : (parts.length === 2 ? parts[1] : "1");
+        normalizedItemId = `${slot.itemId}-${subIndex}`;
+      } else {
+        normalizedItemId = slot.itemId;
+      }
+    } else {
+      slot = slots.find(s => s.itemId.toLowerCase() === normalizedItemId.toLowerCase());
+    }
+
+    let groupId = item.groupId ? String(item.groupId).trim() : "";
+    if (slot && slot.isGroup) {
+      groupId = `G-${slot.itemId.substring(slot.itemId.indexOf("-") + 1)}`;
+    }
+
+    let primaryId = item.primaryObjectiveId ? String(item.primaryObjectiveId).trim() : "";
+    if (primaryId && !objectives.some(o => o.objectiveId === primaryId)) {
+      const matchedObj = objectives.find(o =>
+        o.text.trim() === primaryId ||
+        splitObjectiveCode(o.text).label === primaryId ||
+        o.objectiveId.toLowerCase() === primaryId.toLowerCase()
+      );
+      if (matchedObj) {
+        primaryId = matchedObj.objectiveId;
+      }
+    }
+
+    if (!primaryId && slot) {
+      primaryId = slot.primaryObjectiveId || "";
+    }
+
+    let objectiveIds = Array.isArray(item.objectiveIds) ? item.objectiveIds : [];
+    objectiveIds = objectiveIds.map(id => {
+      const trimmed = String(id).trim();
+      if (objectives.some(o => o.objectiveId === trimmed)) return trimmed;
+      const matched = objectives.find(o =>
+        o.text.trim() === trimmed ||
+        splitObjectiveCode(o.text).label === trimmed
+      );
+      return matched ? matched.objectiveId : trimmed;
+    });
+    if (primaryId && !objectiveIds.includes(primaryId)) {
+      objectiveIds.unshift(primaryId);
+    }
+
+    return {
+      ...item,
+      itemId: normalizedItemId,
+      groupId,
+      primaryObjectiveId: primaryId,
+      objectiveIds,
+      chineseDimension: item.chineseDimension || slot?.chineseDimension || getChineseDimension(item.questionType),
+      chineseSubcategory: item.chineseSubcategory || slot?.chineseSubcategory || getChineseSubcategory(item.questionType, item.chineseDimension || slot?.chineseDimension),
+    };
+  });
+}
+
 async function generateItems() {
   if (state.intents.length === 0) {
     setState({
@@ -289,126 +396,113 @@ async function generateItems() {
   busy = true;
   busyItemId = null;
   busyLabel = "AI 正在生成整卷試題，題目較多時可能要 30 秒以上，請耐心等候，不要關閉或重整……";
-  startGenerationProgress(state.intents.length);
+  const useSerialBatching = shouldUseSerialBatching(state.intents);
+  const generationBatches = useSerialBatching ? createGenerationBatches(state.intents) : [];
+  startGenerationProgress(state.intents.length, useSerialBatching ? {
+    batchIndex: 0,
+    batchCount: generationBatches.length,
+    completedItems: 0,
+    currentBatchItems: generationBatches[0]?.requestedCount || 0,
+  } : {});
   setState({ errors: [], messages: [] });
   updateGenerationProgress("generating");
 
   try {
-    // 連線／逾時／格式失敗時自動重試一次（內容檢核失敗不在此重試，交由教師決定）。
-    let result = null;
-    const maxAttempts = 2;
-    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-      if (attempt > 1) {
-        busyLabel = "第一次未成功（可能逾時），正在自動重試一次，請再稍候……";
-        updateGenerationProgress("retrying");
+    let importedItems = [];
+    let generatedCheck = null;
+
+    if (useSerialBatching) {
+      const batchItems = [];
+      let completedItems = 0;
+
+      for (const batch of generationBatches) {
+        updateGenerationProgress("generating", {
+          batchIndex: batch.batchIndex,
+          batchCount: batch.batchCount,
+          completedItems,
+          currentBatchItems: batch.requestedCount,
+        });
+
+        const result = await requestGeneratedItemsWithRetry(batch.intents);
+
+        if (!result?.ok || !Array.isArray(result.items)) {
+          setState({
+            errors: buildGenerationFailureMessages(result?.error, { type: "validation" }),
+            messages: [],
+          });
+          return;
+        }
+
+        updateGenerationProgress("validating", {
+          batchIndex: batch.batchIndex,
+          batchCount: batch.batchCount,
+          completedItems,
+          currentBatchItems: batch.requestedCount,
+        });
+
+        const importedBatchItems = mapGeneratedItemsToSlots(result.items, batch.intents, state.objectives);
+        const batchCheck = validateGeneratedPaper({
+          slots: batch.intents,
+          objectives: state.objectives,
+          items: importedBatchItems,
+          qualityMode: "v2",
+        });
+
+        if (!batchCheck.ok) {
+          setState({
+            errors: buildGenerationFailureMessages(batchCheck.errors, { type: "validation" }),
+            messages: [],
+          });
+          return;
+        }
+
+        batchItems.push(importedBatchItems);
+        completedItems += importedBatchItems.length;
+        updateGenerationProgress("finalizing", {
+          batchIndex: batch.batchIndex,
+          batchCount: batch.batchCount,
+          completedItems,
+          currentBatchItems: batch.requestedCount,
+        });
       }
-      result = await generateItemsViaApi({
-        apiBaseUrl: getApiBaseUrl(),
-        project: state.project,
-        materialText: state.materialText,
+
+      const mergeResult = mergeSerialBatchItems({ batches: generationBatches, batchItems });
+      if (!mergeResult.ok) {
+        setState({
+          errors: buildGenerationFailureMessages(mergeResult.error, { type: "validation" }),
+          messages: [],
+        });
+        return;
+      }
+
+      importedItems = mergeResult.items;
+      generatedCheck = validateGeneratedPaper({
+        slots: state.intents,
         objectives: state.objectives,
-        intents: state.intents,
-        checkedChineseSubcategories: state.checkedChineseSubcategories,
+        items: importedItems,
+        qualityMode: "v2",
       });
-      if (result?.ok && Array.isArray(result.items)) break;
+    } else {
+      const result = await requestGeneratedItemsWithRetry(state.intents);
+
+      if (!result?.ok || !Array.isArray(result.items)) {
+        setState({
+          errors: buildGenerationFailureMessages(result?.error, { type: "validation" }),
+          messages: [],
+        });
+        return;
+      }
+
+      updateGenerationProgress("validating");
+
+      importedItems = mapGeneratedItemsToSlots(result.items, state.intents, state.objectives);
+      generatedCheck = validateGeneratedPaper({
+        slots: state.intents,
+        objectives: state.objectives,
+        items: importedItems,
+        qualityMode: "v2",
+      });
     }
-
-    if (!result?.ok || !Array.isArray(result.items)) {
-      setState({
-        errors: buildGenerationFailureMessages(result?.error, { type: "validation" }),
-        messages: [],
-      });
-      return;
-    }
-
-    updateGenerationProgress("validating");
-
-    const importedItems = result.items.map((item) => {
-      let normalizedItemId = String(item.itemId).trim();
-      const parts = normalizedItemId.split("-");
-      let slot = null;
-
-      if (parts.length >= 2) {
-        const parentNum = parseInt(parts[1], 10) || parseInt(parts[0], 10);
-        if (!isNaN(parentNum)) {
-          slot = state.intents.find(s => {
-            const sParts = s.itemId.split("-");
-            return sParts.length >= 2 && parseInt(sParts[1], 10) === parentNum;
-          });
-        }
-      } else {
-        const num = parseInt(normalizedItemId, 10);
-        if (!isNaN(num)) {
-          slot = state.intents.find(s => {
-            const sParts = s.itemId.split("-");
-            return sParts.length >= 2 && parseInt(sParts[1], 10) === num;
-          });
-        }
-      }
-
-      if (slot) {
-        if (slot.isGroup) {
-          const subIndex = parts.length > 2 ? parts[2] : (parts.length === 2 ? parts[1] : "1");
-          normalizedItemId = `${slot.itemId}-${subIndex}`;
-        } else {
-          normalizedItemId = slot.itemId;
-        }
-      } else {
-        slot = state.intents.find(s => s.itemId.toLowerCase() === normalizedItemId.toLowerCase());
-      }
-
-      let groupId = item.groupId ? String(item.groupId).trim() : "";
-      if (slot && slot.isGroup) {
-        groupId = `G-${slot.itemId.substring(slot.itemId.indexOf("-") + 1)}`;
-      }
-
-      let primaryId = item.primaryObjectiveId ? String(item.primaryObjectiveId).trim() : "";
-      if (primaryId && !state.objectives.some(o => o.objectiveId === primaryId)) {
-        const matchedObj = state.objectives.find(o => 
-          o.text.trim() === primaryId || 
-          splitObjectiveCode(o.text).label === primaryId ||
-          o.objectiveId.toLowerCase() === primaryId.toLowerCase()
-        );
-        if (matchedObj) {
-          primaryId = matchedObj.objectiveId;
-        }
-      }
-
-      if (!primaryId && slot) {
-        primaryId = slot.primaryObjectiveId || "";
-      }
-
-      let objectiveIds = Array.isArray(item.objectiveIds) ? item.objectiveIds : [];
-      objectiveIds = objectiveIds.map(id => {
-        const trimmed = String(id).trim();
-        if (state.objectives.some(o => o.objectiveId === trimmed)) return trimmed;
-        const matched = state.objectives.find(o => 
-          o.text.trim() === trimmed || 
-          splitObjectiveCode(o.text).label === trimmed
-        );
-        return matched ? matched.objectiveId : trimmed;
-      });
-      if (primaryId && !objectiveIds.includes(primaryId)) {
-        objectiveIds.unshift(primaryId);
-      }
-
-      return {
-        ...item,
-        itemId: normalizedItemId,
-        groupId,
-        primaryObjectiveId: primaryId,
-        objectiveIds,
-        chineseDimension: item.chineseDimension || slot?.chineseDimension || getChineseDimension(item.questionType),
-        chineseSubcategory: item.chineseSubcategory || slot?.chineseSubcategory || getChineseSubcategory(item.questionType, item.chineseDimension || slot?.chineseDimension),
-      };
-    });
-
-    const generatedCheck = validateGeneratedPaper({
-      slots: state.intents,
-      objectives: state.objectives,
-      items: importedItems,
-      qualityMode: "v2",
-    });
 
     if (!generatedCheck.ok) {
       setState({
@@ -418,7 +512,7 @@ async function generateItems() {
       return;
     }
 
-    updateGenerationProgress("finalizing");
+    updateGenerationProgress("finalizing", { completedItems: importedItems.length });
 
 const sectionResult = buildSectionsByQuestionType({
   items: importedItems,
@@ -1620,6 +1714,7 @@ function renderGenerationProgressPanel() {
         <p>${escapeHtml(view.statusText)}</p>
       </div>
     </div>
+    ${view.batchStatus ? `<p class="generation-progress-batch">${escapeHtml(view.batchStatus)}</p>` : ""}
     <ol class="generation-progress-steps">${stepsHtml}</ol>
     <p class="generation-progress-meta">${escapeHtml(view.elapsedLabel)}。${escapeHtml(view.reminder)}</p>
     ${view.timeoutNotice ? `<p class="generation-progress-timeout">${escapeHtml(view.timeoutNotice)}</p>` : ""}

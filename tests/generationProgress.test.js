@@ -50,6 +50,22 @@ describe("generation progress UI helpers", () => {
     expect(view.steps.map((step) => step.state)).toEqual(["done", "done", "active", "pending"]);
   });
 
+  it("shows real batch status without fake percentages", () => {
+    const progress = {
+      ...createGenerationProgress({ totalItems: 8, now: 0 }),
+      batchIndex: 0,
+      batchCount: 2,
+      completedItems: 4,
+      currentBatchItems: 4,
+      phase: "generating",
+    };
+    const view = getGenerationProgressView(progress, 5000);
+
+    expect(view.batchStatus).toContain("1 / 2");
+    expect(view.batchStatus).toContain("4 / 8");
+    expect(view.batchStatus).not.toContain("%");
+  });
+
   it("returns user-facing timeout messages without raw technical details", () => {
     const messages = buildGenerationFailureMessages("AbortError: GEMINI_API_KEY timeout raw output stack", { type: "validation" });
 
