@@ -24,6 +24,7 @@ This document evaluates whether the project should move from one synchronous ful
 | #001 | 國語 | 四年級 | 4 | 4 | 24.54s | PASS | 4/4 | yes |
 | #002 | 數學 | 四年級 | 4 | 4 | 33.84s | PASS | 4/4 | yes |
 | #003 | 自然 | 五年級 | 4 | 4 | 37.39s | PASS | 4/4 | yes |
+| #004 | 社會 | 四年級 | 4 | 4 | 36.02s | PASS | 4/4 | yes |
 
 Additional failed signal:
 
@@ -168,7 +169,7 @@ Recommended next observations:
 
 | Step | Sample | Purpose |
 |---|---|---|
-| 8B-4 | 社會 4 items | Add fourth low-count subject if supported. |
+| 8B-4 | 社會 4 items | Completed; added fourth low-count subject. |
 | 8C-lite | 8-item single-call sample | Check whether latency roughly doubles or failure rate changes. |
 | 8C-lite | 12-item single-call sample | Decide whether sync path remains tolerable. |
 
@@ -187,7 +188,7 @@ Recommended sequence:
 
 1. Keep current single-call synchronous generation in production.
 2. Preserve Worker safe diagnostics and `qualityMeta` gate.
-3. Add one optional 社會 low-count observation if owner wants broader subject coverage.
+3. Treat the four low-count core-subject observations as baseline coverage.
 4. Run a separate owner-approved 8-item single-call observation before implementation work.
 5. If 8-item or 12-item samples show unacceptable latency or repeated failures, open an 8D implementation PR for frontend serial batching first.
 

@@ -1,6 +1,6 @@
 # Observation Baseline Summary - 2026-06-23
 
-Status: 3 effective low-count samples collected.
+Status: 4 effective low-count samples collected.
 
 This summary consolidates the first observation baseline set after the prompt-quality, generation-stabilization, progress UI, and Worker safe diagnostics work. It stores only summarized metrics and references the individual observation files. It does not include raw prompt, raw output, full API response, generated item text, API key, token, request headers, or cookies.
 
@@ -11,8 +11,8 @@ This summary consolidates the first observation baseline set after the prompt-qu
 | Environment | production Worker direct API |
 | Pages deployment | not changed by this observation batch |
 | Worker version scope | latest deployed Worker after safe diagnostics / qualityMeta gate |
-| Samples included | Observation #001, #002, #003 |
-| API call count in effective samples | 3 |
+| Samples included | Observation #001, #002, #003, #004 |
+| API call count in effective samples | 4 |
 | Item count per sample | 4 |
 | Raw output stored | no |
 | Full generated item text stored | no |
@@ -25,6 +25,7 @@ This summary consolidates the first observation baseline set after the prompt-qu
 | #001 | 國語 | 四年級 | 4 | 4 | 24.54s | PASS | PASS | 4/4 | none | yes |
 | #002 | 數學 | 四年級 | 4 | 4 | 33.84s | PASS | PASS | 4/4 | none | yes |
 | #003 | 自然 | 五年級 | 4 | 4 | 37.39s | PASS | PASS | 4/4 | none | yes |
+| #004 | 社會 | 四年級 | 4 | 4 | 36.02s | PASS | PASS | 4/4 | none | yes |
 
 ## Failed / Non-effective Attempts
 
@@ -35,10 +36,10 @@ This summary consolidates the first observation baseline set after the prompt-qu
 
 ## Current Findings
 
-1. Low-count generation is currently contract-stable across 國語, 數學, and 自然.
-2. All three effective samples returned 4/4 generated items.
-3. All three effective samples passed v2 validation.
-4. All three effective samples returned `qualityMeta` for every item.
+1. Low-count generation is currently contract-stable across 國語, 數學, 自然, and 社會.
+2. All four effective samples returned 4/4 generated items.
+3. All four effective samples passed v2 validation.
+4. All four effective samples returned `qualityMeta` for every item.
 5. No visible leakage was found in summarized response fields.
 6. Token usage and direct estimated cost are still unavailable from the summarized response.
 7. Latency for 4-item samples ranged from 24.54s to 37.39s.
@@ -50,7 +51,7 @@ This summary consolidates the first observation baseline set after the prompt-qu
 |---|---:|
 | Minimum effective sample latency | 24.54s |
 | Maximum effective sample latency | 37.39s |
-| Average effective sample latency | 31.92s |
+| Average effective sample latency | 32.95s |
 | Highest observed failed latency | 40.25s |
 
 Interpretation:
@@ -63,8 +64,8 @@ Interpretation:
 
 | Risk | Current Read | Decision Impact |
 |---|---|---|
-| Output contract failure | Low in effective samples; 3/3 v2 PASS | Continue baseline collection before large design changes. |
-| `qualityMeta` missing | Resolved after Worker deployment; 3/3 effective samples have 4/4 present | Keep Worker qualityMeta gate deployed. |
+| Output contract failure | Low in effective samples; 4/4 v2 PASS | Continue staged baseline collection before large design changes. |
+| `qualityMeta` missing | Resolved after Worker deployment; 4/4 effective samples have 4/4 present | Keep Worker qualityMeta gate deployed. |
 | HTTP 502 / upstream failure | Still possible; one failed audit trail exists | Keep safe diagnostics and avoid treating one retry as full stability proof. |
 | Latency | Medium; 24.54s to 37.39s for 4 items | Supports 8D design discussion, not immediate batching implementation. |
 | Cost visibility | Unknown; token usage unavailable | Need metrics or manual cost tracking before cost optimization decisions. |
@@ -78,7 +79,7 @@ Interpretation:
 | Async job queue | Do not implement yet | Evidence is insufficient; current failures do not prove queue is required. |
 | Prompt compression | Do not start broad compression yet | qualityMeta output is now stable; cost data remains unavailable. |
 | Diagnostics improvement | Continue small, targeted improvements | Safe errorCode and qualityMeta gate are useful for future failed observations. |
-| More observations | Recommended before major architecture work | Add 1-2 low-count samples, preferably 社會 and one repeated math sample if owner accepts cost. |
+| More observations | Optional before medium-count testing | Four core subjects now have low-count coverage; next useful step is an owner-approved 8-item sample. |
 
 ## Suggested Next Step
 
