@@ -25,6 +25,7 @@ This document evaluates whether the project should move from one synchronous ful
 | #002 | 數學 | 四年級 | 4 | 4 | 33.84s | PASS | 4/4 | yes |
 | #003 | 自然 | 五年級 | 4 | 4 | 37.39s | PASS | 4/4 | yes |
 | #004 | 社會 | 四年級 | 4 | 4 | 36.02s | PASS | 4/4 | yes |
+| #005 | 數學 | 四年級 | 8 | 8 | 69.84s | PASS | 8/8 | yes |
 
 Additional failed signal:
 
@@ -41,7 +42,7 @@ Batching should not be treated as a feature by itself. It is only worth doing if
 4. Cost / output diagnostics need clearer per-batch observation.
 5. User perception needs progress tied to real completed chunks rather than frontend-only stage hints.
 
-Current evidence supports design exploration for latency and reliability, but does not yet prove implementation is required.
+Current evidence supports implementation design for latency and reliability, but does not yet justify immediate production rollout.
 
 ## Non-goals For 8D
 
@@ -64,7 +65,7 @@ Current evidence supports design exploration for latency and reliability, but do
 | Pros | Lowest implementation risk; current 4-item samples pass; no API contract changes. |
 | Cons | Larger papers may remain slow; one failure loses all items; progress remains approximate. |
 | Best fit | Near-term default while evidence remains limited. |
-| Recommendation | Keep as current production behavior. |
+| Recommendation | Keep as current production behavior until a batching PR is designed, tested, and reviewed. |
 
 ### Option B: Frontend Serial Batching Against Existing Worker Endpoint
 
@@ -74,7 +75,7 @@ Current evidence supports design exploration for latency and reliability, but do
 | Pros | No new Worker endpoint required; can show real batch progress; smaller model outputs may reduce JSON failure risk. |
 | Cons | More API calls; total latency may increase; partial failure handling becomes user-visible; item ordering and validation must be carefully merged. |
 | Best fit | First implementation candidate if observations show larger requests are unreliable. |
-| Recommendation | Feasible, but only after another design pass and tests. |
+| Recommendation | First implementation candidate. Start with design and tests before production rollout. |
 
 ### Option C: Worker Internal Batching
 
@@ -94,7 +95,7 @@ Current evidence supports design exploration for latency and reliability, but do
 | Pros | Best long-term shape for large papers and durable retries. |
 | Cons | Much larger architecture change; requires job state, status model, cleanup, failure semantics, and likely new UI states. |
 | Best fit | Later phase after batching evidence or repeated production pain. |
-| Recommendation | Do not start yet. |
+| Recommendation | Do not start yet. The 8-item sample is slow, but not enough to justify async job infrastructure. |
 
 ## Proposed Batch Boundaries If Implemented Later
 
@@ -170,7 +171,7 @@ Recommended next observations:
 | Step | Sample | Purpose |
 |---|---|---|
 | 8B-4 | 社會 4 items | Completed; added fourth low-count subject. |
-| 8C-lite | 8-item single-call sample | Check whether latency roughly doubles or failure rate changes. |
+| 8C-lite | 8-item single-call sample | Completed; passed contract checks but reached 69.84s latency. |
 | 8C-lite | 12-item single-call sample | Decide whether sync path remains tolerable. |
 
 Constraints:
@@ -182,15 +183,16 @@ Constraints:
 
 ## Recommendation
 
-Do not implement batching yet.
+Do not deploy batching yet.
 
 Recommended sequence:
 
 1. Keep current single-call synchronous generation in production.
 2. Preserve Worker safe diagnostics and `qualityMeta` gate.
 3. Treat the four low-count core-subject observations as baseline coverage.
-4. Run a separate owner-approved 8-item single-call observation before implementation work.
-5. If 8-item or 12-item samples show unacceptable latency or repeated failures, open an 8D implementation PR for frontend serial batching first.
+4. Treat Observation #005 as evidence that 8-item single-call generation is contract-stable but slow.
+5. Decide whether to run one 12-item single-call observation or open an 8D frontend serial batching implementation design PR.
+6. If batching is implemented, start with frontend serial batching and keep production rollout behind separate review.
 
 ## Decision
 
@@ -198,11 +200,11 @@ Current decision:
 
 | Question | Answer |
 |---|---|
-| Is batching justified for immediate implementation? | No |
-| Is batching justified for design exploration? | Yes |
+| Is batching justified for immediate production rollout? | No |
+| Is batching justified for implementation design? | Yes |
 | Should async job queue start now? | No |
 | Should prompt compression start now? | No |
-| Should observations continue? | Yes, low-count or carefully staged medium-count only |
+| Should observations continue? | Yes, but only staged medium-count or batching prototype validation |
 
 ## Data Boundary
 
