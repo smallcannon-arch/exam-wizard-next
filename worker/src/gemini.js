@@ -1,7 +1,14 @@
+import { ERROR_CODES } from "./json.js";
+
 export async function callGemini({ env, prompt, files = [] }) {
   const apiKey = env.GEMINI_API_KEY;
   if (!apiKey) {
-    return { ok: false, status: 500, error: "後端尚未設定 GEMINI_API_KEY。" };
+    return {
+      ok: false,
+      status: 500,
+      error: "後端 AI 服務尚未完成設定。",
+      errorCode: ERROR_CODES.GEMINI_UPSTREAM_ERROR,
+    };
   }
 
   const apiVersion = env.GEMINI_API_VERSION || "v1beta";
@@ -50,9 +57,19 @@ export async function callGemini({ env, prompt, files = [] }) {
   } catch (error) {
     clearTimeout(timer);
     if (error?.name === "AbortError") {
-      return { ok: false, status: 504, error: "AI 生成逾時，題目較多時請稍候再重試一次（或減少題數／分批生成）。" };
+      return {
+        ok: false,
+        status: 504,
+        error: "AI 生成逾時，題目較多時請稍候再重試一次（或減少題數／分批生成）。",
+        errorCode: ERROR_CODES.GEMINI_TIMEOUT,
+      };
     }
-    return { ok: false, status: 502, error: `連線 Gemini 失敗：${error?.message || String(error)}` };
+    return {
+      ok: false,
+      status: 502,
+      error: "AI 服務暫時無法連線，請稍後再試。",
+      errorCode: ERROR_CODES.GEMINI_UPSTREAM_ERROR,
+    };
   }
   clearTimeout(timer);
 
@@ -63,14 +80,19 @@ export async function callGemini({ env, prompt, files = [] }) {
       ok: false,
       status: response.status,
       error: "Gemini API 呼叫失敗。請檢查 API key、模型名稱、版本與額度。",
-      detail: data?.error?.message || "",
+      errorCode: ERROR_CODES.GEMINI_UPSTREAM_ERROR,
     };
   }
 
   const text = data?.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("") || "";
 
   if (!text.trim()) {
-    return { ok: false, status: 502, error: "Gemini 回應為空。" };
+    return {
+      ok: false,
+      status: 502,
+      error: "Gemini 回應為空。",
+      errorCode: ERROR_CODES.AI_EMPTY_RESPONSE,
+    };
   }
 
   return { ok: true, text };
