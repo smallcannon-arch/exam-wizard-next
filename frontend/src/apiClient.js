@@ -41,6 +41,7 @@ async function postJson({ apiBaseUrl = getApiBaseUrl(), path, body, timeoutMs = 
       return {
         ok: false,
         error: `連線超時：AI 伺服器超過 ${Math.round(timeout / 1000)} 秒仍未回應，請稍後再試。`,
+        errorCode: "CLIENT_TIMEOUT",
       };
     }
     return {
