@@ -20,6 +20,7 @@ import { renderAuditTable } from "./core/renderAuditTable.js";
 import { toReviewItem } from "./core/itemViews.js";
 import { buildGenerationFailureMessages, createGenerationProgress, getGenerationProgressView } from "./core/generationProgress.js";
 import { createGenerationBatches, mergeSerialBatchItems, shouldUseSerialBatching } from "./core/generationBatching.js";
+import { shouldRetryGeneration } from "./core/generationRetry.js";
 
 // 目標提取 Gem（沿用現有連結）；教材提取 Gem 建立後，把網址填到 GEM_MATERIAL_URL。
 const GEM_OBJECTIVES_URL = "https://gemini.google.com/gem/1Xd6a-3N4dZvvzC7TdgP1yBjAa2IXDUFb?usp=sharing";
@@ -298,6 +299,7 @@ async function requestGeneratedItemsWithRetry(intents) {
       checkedChineseSubcategories: state.checkedChineseSubcategories,
     });
     if (result?.ok && Array.isArray(result.items)) break;
+    if (!shouldRetryGeneration({ result, attempt, maxAttempts })) break;
   }
   return result;
 }

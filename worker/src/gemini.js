@@ -1,5 +1,14 @@
 import { ERROR_CODES } from "./json.js";
 
+export const DEFAULT_GEMINI_TIMEOUT_MS = 300000;
+
+export function resolveGeminiTimeoutMs(env = {}) {
+  const configuredTimeout = Number(env.GEMINI_TIMEOUT_MS);
+  return Number.isFinite(configuredTimeout) && configuredTimeout > 0
+    ? configuredTimeout
+    : DEFAULT_GEMINI_TIMEOUT_MS;
+}
+
 export async function callGemini({ env, prompt, files = [] }) {
   const apiKey = env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -24,9 +33,9 @@ export async function callGemini({ env, prompt, files = [] }) {
       },
     }));
 
-  // 受控逾時：避免整卷生成拖到 Cloudflare 閘道逾時（約 100 秒）才回應，
-  // 改成在時限內主動中止並回傳清楚的逾時訊息，讓前端能重試。
-  const timeoutMs = Number(env.GEMINI_TIMEOUT_MS) || 90000;
+  // 受控逾時：保留上限避免請求卡死，但預設對齊前端 5 分鐘等待，
+  // 避免模型仍在生成時被 Worker 90 秒過早中止。
+  const timeoutMs = resolveGeminiTimeoutMs(env);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
