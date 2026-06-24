@@ -1,0 +1,266 @@
+import { handleOptions, jsonResponse } from "./cors.js";
+import { ERROR_CODES, readJson, safeErrorPayload } from "./json.js";
+
+export const ASYNC_GENERATION_MAX_ITEM_COUNT = 50;
+export const ASYNC_GENERATION_BATCH_SIZE = 4;
+
+const JOB_STATUS = Object.freeze({
+  QUEUED: "queued",
+  RUNNING: "running",
+  VALIDATING: "validating",
+  COMPLETED: "completed",
+  FAILED: "failed",
+  PARTIAL_FAILED: "partial_failed",
+  EXPIRED: "expired",
+});
+
+const WORKFLOW_STATUS_MAP = Object.freeze({
+  queued: JOB_STATUS.QUEUED,
+  waiting: JOB_STATUS.RUNNING,
+  running: JOB_STATUS.RUNNING,
+  paused: JOB_STATUS.RUNNING,
+  sleeping: JOB_STATUS.RUNNING,
+  validating: JOB_STATUS.VALIDATING,
+  complete: JOB_STATUS.COMPLETED,
+  completed: JOB_STATUS.COMPLETED,
+  success: JOB_STATUS.COMPLETED,
+  partial_failed: JOB_STATUS.PARTIAL_FAILED,
+  errored: JOB_STATUS.FAILED,
+  error: JOB_STATUS.FAILED,
+  failed: JOB_STATUS.FAILED,
+  terminated: JOB_STATUS.FAILED,
+  expired: JOB_STATUS.EXPIRED,
+});
+
+function errorResponse(request, env, result, status) {
+  return jsonResponse(request, env, safeErrorPayload(result), status);
+}
+
+function isPlainObject(value) {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function toSafeCount(value, fallback = 0) {
+  const count = Number(value);
+  return Number.isFinite(count) && count >= 0 ? Math.floor(count) : fallback;
+}
+
+function createJobId() {
+  if (globalThis.crypto && typeof globalThis.crypto.randomUUID === "function") {
+    return `gen_${globalThis.crypto.randomUUID()}`;
+  }
+  return `gen_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+}
+
+function isValidJobId(jobId) {
+  return typeof jobId === "string" && /^gen_[a-zA-Z0-9_-]{8,80}$/.test(jobId);
+}
+
+function createBatches(intents, batchSize = ASYNC_GENERATION_BATCH_SIZE) {
+  const batches = [];
+  for (let index = 0; index < intents.length; index += batchSize) {
+    const entries = intents.slice(index, index + batchSize);
+    batches.push({
+      batchNumber: batches.length + 1,
+      status: "queued",
+      expectedItemCount: entries.length,
+      expectedItemIds: entries.map((intent, itemIndex) => String(intent?.itemId || `item-${index + itemIndex + 1}`)),
+      intents: entries,
+    });
+  }
+  return batches;
+}
+
+export function createGenerationJobPlan(data = {}) {
+  const {
+    project = {},
+    materialText = "",
+    objectives = [],
+    intents = [],
+    checkedChineseSubcategories = [],
+  } = isPlainObject(data) ? data : {};
+
+  if (!isPlainObject(project)) {
+    return { ok: false, error: "project must be an object.", errorCode: ERROR_CODES.REQUEST_INVALID };
+  }
+
+  if (!Array.isArray(objectives) || objectives.length === 0) {
+    return { ok: false, error: "objectives are required.", errorCode: ERROR_CODES.REQUEST_INVALID };
+  }
+
+  if (!Array.isArray(intents) || intents.length === 0) {
+    return { ok: false, error: "intents are required.", errorCode: ERROR_CODES.REQUEST_INVALID };
+  }
+
+  if (intents.length > ASYNC_GENERATION_MAX_ITEM_COUNT) {
+    return {
+      ok: false,
+      error: `requested item count exceeds ${ASYNC_GENERATION_MAX_ITEM_COUNT}.`,
+      errorCode: ERROR_CODES.REQUEST_INVALID,
+    };
+  }
+
+  const batches = createBatches(intents);
+  return {
+    ok: true,
+    request: {
+      project,
+      materialText: String(materialText || ""),
+      objectives,
+      intents,
+      checkedChineseSubcategories: Array.isArray(checkedChineseSubcategories) ? checkedChineseSubcategories : [],
+    },
+    progress: {
+      status: JOB_STATUS.QUEUED,
+      requestedItemCount: intents.length,
+      batchSize: ASYNC_GENERATION_BATCH_SIZE,
+      batchCount: batches.length,
+      completedBatchCount: 0,
+      completedItemCount: 0,
+      currentBatch: null,
+    },
+    batches,
+  };
+}
+
+function safeProgress(progress = {}) {
+  const requestedItemCount = toSafeCount(progress.requestedItemCount);
+  const batchCount = toSafeCount(progress.batchCount);
+  return {
+    requestedItemCount,
+    batchSize: toSafeCount(progress.batchSize, ASYNC_GENERATION_BATCH_SIZE),
+    batchCount,
+    completedBatchCount: Math.min(toSafeCount(progress.completedBatchCount), batchCount),
+    completedItemCount: Math.min(toSafeCount(progress.completedItemCount), requestedItemCount),
+    currentBatch: progress.currentBatch === null || progress.currentBatch === undefined
+      ? null
+      : Math.min(toSafeCount(progress.currentBatch), Math.max(batchCount, 1)),
+  };
+}
+
+function safeJobPayload({ jobId, status, progress }) {
+  return {
+    ok: true,
+    jobId,
+    status,
+    ...safeProgress(progress),
+  };
+}
+
+function normalizeWorkflowStatus(jobId, statusResult) {
+  if (!isPlainObject(statusResult)) {
+    return { ok: false, error: "workflow status payload is invalid.", errorCode: ERROR_CODES.ASYNC_JOB_STATUS_INVALID };
+  }
+
+  const rawStatus = String(statusResult.status || statusResult.state || "").toLowerCase();
+  const status = WORKFLOW_STATUS_MAP[rawStatus] || null;
+  if (!status) {
+    return { ok: false, error: "workflow status is unknown.", errorCode: ERROR_CODES.ASYNC_JOB_STATUS_INVALID };
+  }
+
+  const output = isPlainObject(statusResult.output) ? statusResult.output : {};
+  const progress = isPlainObject(output.progress)
+    ? output.progress
+    : {
+        requestedItemCount: output.requestedItemCount,
+        batchSize: output.batchSize,
+        batchCount: output.batchCount,
+        completedBatchCount: output.completedBatchCount,
+        completedItemCount: output.completedItemCount,
+        currentBatch: output.currentBatch,
+      };
+
+  return {
+    ok: true,
+    payload: safeJobPayload({ jobId, status, progress }),
+  };
+}
+
+function getWorkflow(env) {
+  return env && env.GENERATION_WORKFLOW;
+}
+
+export async function handleCreateGenerationJob(request, env) {
+  if (request.method === "OPTIONS") return handleOptions(request, env);
+  if (request.method !== "POST") {
+    return errorResponse(request, env, { error: "Not Found", errorCode: ERROR_CODES.NOT_FOUND }, 404);
+  }
+
+  const workflow = getWorkflow(env);
+  if (!workflow || typeof workflow.create !== "function") {
+    return errorResponse(request, env, { errorCode: ERROR_CODES.ASYNC_JOB_UNAVAILABLE }, 501);
+  }
+
+  const body = await readJson(request);
+  if (!body.ok) return errorResponse(request, env, body, 400);
+
+  const plan = createGenerationJobPlan(body.data);
+  if (!plan.ok) return errorResponse(request, env, plan, 400);
+
+  const jobId = createJobId();
+  try {
+    await workflow.create({
+      id: jobId,
+      params: {
+        jobId,
+        request: plan.request,
+        batches: plan.batches,
+        progress: plan.progress,
+      },
+    });
+  } catch {
+    return errorResponse(request, env, { errorCode: ERROR_CODES.ASYNC_JOB_UNAVAILABLE }, 502);
+  }
+
+  return jsonResponse(request, env, safeJobPayload({ jobId, status: JOB_STATUS.QUEUED, progress: plan.progress }), 202);
+}
+
+export async function handleGetGenerationJobStatus(request, env, jobId) {
+  if (request.method === "OPTIONS") return handleOptions(request, env);
+  if (request.method !== "GET") {
+    return errorResponse(request, env, { error: "Not Found", errorCode: ERROR_CODES.NOT_FOUND }, 404);
+  }
+
+  if (!isValidJobId(jobId)) {
+    return errorResponse(request, env, { error: "jobId is invalid.", errorCode: ERROR_CODES.REQUEST_INVALID }, 400);
+  }
+
+  const workflow = getWorkflow(env);
+  if (!workflow || typeof workflow.get !== "function") {
+    return errorResponse(request, env, { errorCode: ERROR_CODES.ASYNC_JOB_UNAVAILABLE }, 501);
+  }
+
+  let instance;
+  try {
+    instance = await workflow.get(jobId);
+  } catch {
+    return errorResponse(request, env, { errorCode: ERROR_CODES.ASYNC_JOB_NOT_FOUND }, 404);
+  }
+  if (!instance || typeof instance.status !== "function") {
+    return errorResponse(request, env, { errorCode: ERROR_CODES.ASYNC_JOB_NOT_FOUND }, 404);
+  }
+
+  let statusResult;
+  try {
+    statusResult = await instance.status();
+  } catch {
+    return errorResponse(request, env, { errorCode: ERROR_CODES.ASYNC_JOB_STATUS_INVALID }, 502);
+  }
+  const normalized = normalizeWorkflowStatus(jobId, statusResult);
+  if (!normalized.ok) return errorResponse(request, env, normalized, 502);
+
+  return jsonResponse(request, env, normalized.payload);
+}
+
+export function routeGenerationJobRequest(request, env, url) {
+  if (url.pathname === "/generation-jobs") {
+    return handleCreateGenerationJob(request, env);
+  }
+
+  const match = url.pathname.match(/^\/generation-jobs\/([^/]+)$/);
+  if (match) {
+    return handleGetGenerationJobStatus(request, env, decodeURIComponent(match[1]));
+  }
+
+  return null;
+}

@@ -2,6 +2,7 @@ import { buildExtractObjectivesPrompt, buildGenerateItemsPrompt, buildNormalizeO
 import { callGemini } from "./gemini.js";
 import { ERROR_CODES, assertItemsPayload, assertObjectivesPayload, extractJsonObject, readJson, safeErrorPayload } from "./json.js";
 import { handleOptions, jsonResponse } from "./cors.js";
+import { routeGenerationJobRequest } from "./generationJobs.js";
 
 function errorResponse(request, env, result, status) {
   return jsonResponse(request, env, safeErrorPayload(result), status);
@@ -124,6 +125,9 @@ export default {
     if (url.pathname === "/health" && request.method === "GET") {
       return jsonResponse(request, env, { ok: true, service: "exam-wizard-next-proxy" });
     }
+
+    const generationJobResponse = routeGenerationJobRequest(request, env, url);
+    if (generationJobResponse) return generationJobResponse;
 
     if (url.pathname === "/extract-objectives" && request.method === "POST") {
       return handleExtractObjectives(request, env);
