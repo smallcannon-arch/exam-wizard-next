@@ -48,6 +48,8 @@ function hasText(value) {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+const ITEM_TEXT_FIELDS = ["question", "stem", "prompt", "problem", "questionText", "itemText", "text"];
+
 function safeMessage(error, errorCode) {
   const fallback = ERROR_MESSAGES[errorCode] || ERROR_MESSAGES[ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID];
   const text = String(error || "").trim();
@@ -158,6 +160,27 @@ function assertQualityMeta(item, index) {
   return { ok: true };
 }
 
+function assertItemText(item, index) {
+  if (!isPlainObject(item)) {
+    return {
+      ok: false,
+      error: `AI response item ${index + 1} is not an object.`,
+      errorCode: ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID,
+    };
+  }
+
+  const hasQuestionText = ITEM_TEXT_FIELDS.some((field) => hasText(item[field]));
+  if (!hasQuestionText) {
+    return {
+      ok: false,
+      error: `AI response item ${index + 1} is missing question text.`,
+      errorCode: ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID,
+    };
+  }
+
+  return { ok: true };
+}
+
 export function assertItemsPayload(payload, expectedCount = null) {
   if (!payload || typeof payload !== "object" || !Array.isArray(payload.items)) {
     return { ok: false, error: "AI 回應缺少 items 陣列。", errorCode: ERROR_CODES.AI_ITEMS_PAYLOAD_INVALID };
@@ -172,6 +195,9 @@ export function assertItemsPayload(payload, expectedCount = null) {
   }
 
   for (let index = 0; index < payload.items.length; index += 1) {
+    const itemText = assertItemText(payload.items[index], index);
+    if (!itemText.ok) return itemText;
+
     const qualityMeta = assertQualityMeta(payload.items[index], index);
     if (!qualityMeta.ok) return qualityMeta;
   }
