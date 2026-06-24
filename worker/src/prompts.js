@@ -209,6 +209,7 @@ const DISTRACTOR_DESIGN_BASE_GUIDELINES = `
 - 每個錯誤選項都必須對應學生可能真的會犯的錯誤，不得只是荒謬、無關、語氣奇怪或明顯不合理的選項。
 - 錯誤選項與正答在語氣、長度、形式上應保持平衡，不可讓正答因最完整、最長或最正式而突出。
 - 若某個錯誤選項無法填出合理 misconceptionTag，代表該選項不合格，必須重寫該選項。
+- 同一題的錯誤選項若代表不同迷思，qualityMeta.distractorDesign 的 misconceptionTag 應盡量分化；不要三個錯誤選項都使用同一個標籤，除非它們確實是同一類錯誤。
 - 不使用「以上皆是」「以上皆非」「以上皆錯」作為選項，除非題型明確要求。
 - 正確答案位置需分散，避免整卷偏向同一個選項。
 
@@ -438,6 +439,7 @@ export function buildGenerateItemsPrompt({ project = {}, materialText = "", obje
       "- `chineseSubcategory` 必須為該題最合適的細項項目，且其值必須為以下可用項目之一：",
       ...subcategoryLines,
       listStr,
+      "- 國語題目的 `question`、`options`、`explanation` 必須使用自然中文，不得混入不必要英文單字或連接詞（例如 Because、and、or、the）；只有教材本身明確要求的英文字母、專有名詞或選項代號可保留。",
       "- 命題應密切符合該細項意旨。例如若為「正確字音」，應考查正確注音拼寫或辨識；若為「常用修辭」，應考查設問/譬喻/擬人等修辭辨識；若為「提取訊息」，應針對閱讀測驗文本直接可提取的細節進行提問。",
       ""
     );
