@@ -370,7 +370,7 @@ export async function markGenerationJobRunning(db, jobId) {
   return { ok: true };
 }
 
-async function markGenerationJobFailed(db, jobId, errorCode) {
+export async function markGenerationJobFailed(db, jobId, errorCode) {
   if (!hasD1Interface(db) || !isValidJobId(jobId)) {
     return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_UNAVAILABLE };
   }
@@ -390,6 +390,150 @@ async function markGenerationJobFailed(db, jobId, errorCode) {
   }
 
   return { ok: true };
+}
+
+export async function markGenerationBatchRunning(db, jobId, batchNumber) {
+  if (!hasD1Interface(db) || !isValidJobId(jobId)) {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_UNAVAILABLE };
+  }
+
+  try {
+    const statements = [
+      db.prepare(`
+        UPDATE generation_jobs
+        SET
+          status = ?,
+          current_batch = ?,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE job_id = ?
+      `).bind(JOB_STATUS.RUNNING, batchNumber, jobId),
+      db.prepare(`
+        UPDATE generation_job_batches
+        SET
+          status = ?,
+          started_at = COALESCE(started_at, CURRENT_TIMESTAMP),
+          updated_at = CURRENT_TIMESTAMP
+        WHERE job_id = ?
+          AND batch_number = ?
+      `).bind(JOB_STATUS.RUNNING, jobId, batchNumber),
+    ];
+
+    if (typeof db.batch === "function") {
+      await db.batch(statements);
+    } else {
+      for (const statement of statements) {
+        await statement.run();
+      }
+    }
+  } catch {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_STATUS_INVALID };
+  }
+
+  return { ok: true };
+}
+
+export async function markGenerationBatchFailed(db, jobId, batchNumber, errorCode) {
+  if (!hasD1Interface(db) || !isValidJobId(jobId)) {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_UNAVAILABLE };
+  }
+
+  try {
+    const statements = [
+      db.prepare(`
+        UPDATE generation_job_batches
+        SET
+          status = ?,
+          error_code = ?,
+          failed_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE job_id = ?
+          AND batch_number = ?
+      `).bind("failed_terminal", errorCode, jobId, batchNumber),
+      db.prepare(`
+        UPDATE generation_jobs
+        SET
+          status = ?,
+          error_code = ?,
+          failed_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE job_id = ?
+      `).bind(JOB_STATUS.FAILED, errorCode, jobId),
+    ];
+
+    if (typeof db.batch === "function") {
+      await db.batch(statements);
+    } else {
+      for (const statement of statements) {
+        await statement.run();
+      }
+    }
+  } catch {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_STATUS_INVALID };
+  }
+
+  return { ok: true };
+}
+
+export async function completeSingleBatchGenerationJob(db, jobId, batchNumber, items, latencyMs) {
+  if (!hasD1Interface(db) || !isValidJobId(jobId) || !Array.isArray(items)) {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_UNAVAILABLE };
+  }
+
+  const itemCount = items.length;
+  const safeLatencyMs = toSafeCount(latencyMs);
+  const resultJson = JSON.stringify({ items });
+
+  try {
+    const statements = [
+      db.prepare(`
+        UPDATE generation_job_batches
+        SET
+          status = ?,
+          completed_item_count = ?,
+          latency_ms = ?,
+          completed_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE job_id = ?
+          AND batch_number = ?
+      `).bind("completed", itemCount, safeLatencyMs, jobId, batchNumber),
+      db.prepare(`
+        UPDATE generation_jobs
+        SET
+          status = ?,
+          completed_batch_count = ?,
+          completed_item_count = ?,
+          current_batch = ?,
+          error_code = NULL,
+          result_item_count = ?,
+          result_json = ?,
+          completed_at = CURRENT_TIMESTAMP,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE job_id = ?
+      `).bind(JOB_STATUS.COMPLETED, 1, itemCount, null, itemCount, resultJson, jobId),
+    ];
+
+    if (typeof db.batch === "function") {
+      await db.batch(statements);
+    } else {
+      for (const statement of statements) {
+        await statement.run();
+      }
+    }
+  } catch {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_STATUS_INVALID };
+  }
+
+  return {
+    ok: true,
+    jobId,
+    status: JOB_STATUS.COMPLETED,
+    requestedItemCount: itemCount,
+    batchSize: ASYNC_GENERATION_BATCH_SIZE,
+    batchCount: 1,
+    completedBatchCount: 1,
+    completedItemCount: itemCount,
+    currentBatch: null,
+  };
 }
 
 export async function cleanupExpiredGenerationJobs(db, options = {}) {
