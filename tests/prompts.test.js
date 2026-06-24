@@ -235,6 +235,24 @@ describe("worker prompts", () => {
     expect(prompt).toContain("qualityMeta.teacherExplanation 是必填欄位，不得省略");
   });
 
+  it("明確要求無 stimulus 的題幹不得引用未提供文本", () => {
+    const prompt = buildGenerateItemsPrompt({
+      project,
+      materialText: "課文重點",
+      objectives,
+      intents,
+      checkedChineseSubcategories: ["提取訊息"],
+    });
+
+    expect(prompt).toContain("stimulus contract");
+    expect(prompt).toContain("根據這段文字");
+    expect(prompt).toContain("根據本文");
+    expect(prompt).toContain("根據上文／下文");
+    expect(prompt).toContain("若沒有 stimulus");
+    expect(prompt).toContain("本文、上文或這段文字");
+    expect(prompt).toContain("AI_STIMULUS_MISSING");
+  });
+
   it("數學 prompt 套用 qualityMeta / distractorDesign 壓縮契約且保留既有 JSON contract", () => {
     const mathPrompt = buildGenerateItemsPrompt({
       project: mathProject,
