@@ -1,5 +1,5 @@
 import { handleOptions, jsonResponse } from "./cors.js";
-import { ERROR_CODES, readJson, safeErrorPayload } from "./json.js";
+import { ERROR_CODES, assertItemsPayload, readJson, safeErrorPayload } from "./json.js";
 
 export const ASYNC_GENERATION_MAX_ITEM_COUNT = 50;
 export const ASYNC_GENERATION_BATCH_SIZE = 4;
@@ -346,6 +346,86 @@ async function readGenerationJob(db, jobId) {
         currentBatch: row.current_batch,
       },
     }),
+  };
+}
+
+async function readGenerationJobResult(db, jobId) {
+  if (!hasD1Interface(db)) {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_UNAVAILABLE, status: 501 };
+  }
+
+  let row;
+  try {
+    row = await db.prepare(`
+      SELECT
+        job_id,
+        status,
+        requested_item_count,
+        batch_size,
+        batch_count,
+        completed_batch_count,
+        completed_item_count,
+        current_batch,
+        result_item_count,
+        result_json
+      FROM generation_jobs
+      WHERE job_id = ?
+      LIMIT 1
+    `).bind(jobId).first();
+  } catch {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_STATUS_INVALID, status: 502 };
+  }
+
+  if (!row) {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_NOT_FOUND, status: 404 };
+  }
+
+  if (row.status !== JOB_STATUS.COMPLETED) {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_RESULT_UNAVAILABLE, status: 409 };
+  }
+
+  let data;
+  try {
+    data = JSON.parse(row.result_json || "");
+  } catch {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_RESULT_INVALID, status: 502 };
+  }
+
+  if (!isPlainObject(data) || data.partial === true) {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_RESULT_INVALID, status: 502 };
+  }
+
+  const expectedCount = Number.isFinite(Number(row.result_item_count))
+    ? Number(row.result_item_count)
+    : Number.isFinite(Number(row.requested_item_count))
+      ? Number(row.requested_item_count)
+      : null;
+  const payload = assertItemsPayload(data, expectedCount);
+  if (!payload.ok) {
+    return {
+      ok: false,
+      errorCode: payload.errorCode || ERROR_CODES.ASYNC_JOB_RESULT_INVALID,
+      status: 502,
+    };
+  }
+
+  return {
+    ok: true,
+    payload: {
+      ...safeJobPayload({
+        jobId: row.job_id,
+        status: row.status,
+        progress: {
+          requestedItemCount: row.requested_item_count,
+          batchSize: row.batch_size,
+          batchCount: row.batch_count,
+          completedBatchCount: row.completed_batch_count,
+          completedItemCount: row.completed_item_count,
+          currentBatch: row.current_batch,
+        },
+      }),
+      items: payload.items,
+    },
   };
 }
 
@@ -739,9 +819,30 @@ export async function handleGetGenerationJobStatus(request, env, jobId) {
   return jsonResponse(request, env, normalized.payload);
 }
 
+export async function handleGetGenerationJobResult(request, env, jobId) {
+  if (request.method === "OPTIONS") return handleOptions(request, env);
+  if (request.method !== "GET") {
+    return errorResponse(request, env, { error: "Not Found", errorCode: ERROR_CODES.NOT_FOUND }, 404);
+  }
+
+  if (!isValidJobId(jobId)) {
+    return errorResponse(request, env, { error: "jobId is invalid.", errorCode: ERROR_CODES.REQUEST_INVALID }, 400);
+  }
+
+  const result = await readGenerationJobResult(getJobsDb(env), jobId);
+  if (!result.ok) return errorResponse(request, env, result, result.status || 502);
+
+  return jsonResponse(request, env, result.payload);
+}
+
 export function routeGenerationJobRequest(request, env, url) {
   if (url.pathname === "/generation-jobs") {
     return handleCreateGenerationJob(request, env);
+  }
+
+  const resultMatch = url.pathname.match(/^\/generation-jobs\/([^/]+)\/result$/);
+  if (resultMatch) {
+    return handleGetGenerationJobResult(request, env, decodeURIComponent(resultMatch[1]));
   }
 
   const match = url.pathname.match(/^\/generation-jobs\/([^/]+)$/);

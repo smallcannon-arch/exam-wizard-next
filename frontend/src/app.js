@@ -8,7 +8,7 @@ import { generateExcelXml } from "./core/excelGenerator.js";
 import { validateExam } from "./core/validation.js";
 import { replaceItemById } from "./core/replaceItem.js";
 import { renderStudentPaper, renderTeacherPaper } from "./core/renderPaper.js";
-import { generateItemsViaApi, regenerateItemViaApi, extractObjectivesViaApi, normalizeObjectivesViaApi } from "./apiClient.js";
+import { createGenerationJobViaApi, generateItemsViaApi, getGenerationJobResultViaApi, getGenerationJobStatusViaApi, regenerateItemViaApi, extractObjectivesViaApi, normalizeObjectivesViaApi } from "./apiClient.js";
 import { parseObjectiveInput, normalizeExtractedObjectives, objectivesToInputText } from "./core/objectives.js";
 import { computeObjectiveShares, formatPercent, computeChineseDimensionScores, objectiveScoresByPeriod } from "./core/periods.js";
 import { ASSESSMENT_FRAMEWORKS, getAvailableFrameworks, resolveFrameworkId, usesChineseDimension } from "./core/frameworks.js";
@@ -20,6 +20,7 @@ import { renderAuditTable } from "./core/renderAuditTable.js";
 import { toReviewItem } from "./core/itemViews.js";
 import { buildGenerationFailureMessages, createGenerationProgress, getGenerationProgressView } from "./core/generationProgress.js";
 import { createGenerationBatches, mergeSerialBatchItems, shouldUseSerialBatching } from "./core/generationBatching.js";
+import { ASYNC_GENERATION_DEFAULTS, createAsyncInitialProgress, isAsyncGenerationFailure, isAsyncGenerationSuccess, progressFromAsyncStatus, shouldUseAsyncGeneration } from "./core/asyncGeneration.js";
 import { shouldRetryGeneration } from "./core/generationRetry.js";
 
 // 目標提取 Gem（沿用現有連結）；教材提取 Gem 建立後，把網址填到 GEM_MATERIAL_URL。
@@ -304,6 +305,87 @@ async function requestGeneratedItemsWithRetry(intents) {
   return result;
 }
 
+function waitForAsyncPoll(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function requestGeneratedItemsWithAsyncJob(intents) {
+  const apiBaseUrl = getApiBaseUrl();
+  const created = await createGenerationJobViaApi({
+    apiBaseUrl,
+    project: state.project,
+    materialText: state.materialText,
+    objectives: state.objectives,
+    intents,
+    checkedChineseSubcategories: state.checkedChineseSubcategories,
+  });
+
+  if (!created?.ok || !created.jobId) {
+    return {
+      ok: false,
+      error: created?.error || "Async generation job could not be created.",
+      errorCode: created?.errorCode,
+    };
+  }
+
+  updateGenerationProgress("submitted", progressFromAsyncStatus(created));
+
+  const startedAt = Date.now();
+  while (Date.now() - startedAt <= ASYNC_GENERATION_DEFAULTS.maxPollMs) {
+    await waitForAsyncPoll(ASYNC_GENERATION_DEFAULTS.pollIntervalMs);
+
+    const status = await getGenerationJobStatusViaApi({
+      apiBaseUrl,
+      jobId: created.jobId,
+    });
+
+    if (!status?.ok) {
+      return {
+        ok: false,
+        error: status?.error || "Async generation status could not be read.",
+        errorCode: status?.errorCode,
+      };
+    }
+
+    const progressState = progressFromAsyncStatus(status);
+    updateGenerationProgress(
+      isAsyncGenerationSuccess(status.status) ? "finalizing" : "generating",
+      progressState,
+    );
+
+    if (isAsyncGenerationSuccess(status.status)) {
+      const result = await getGenerationJobResultViaApi({
+        apiBaseUrl,
+        jobId: created.jobId,
+      });
+      if (!result?.ok || !Array.isArray(result.items)) {
+        return {
+          ok: false,
+          error: result?.error || "Async generation result could not be read.",
+          errorCode: result?.errorCode,
+        };
+      }
+      return result;
+    }
+
+    if (isAsyncGenerationFailure(status.status)) {
+      return {
+        ok: false,
+        error: status.error || "Async generation failed.",
+        errorCode: status.errorCode,
+      };
+    }
+  }
+
+  return {
+    ok: false,
+    error: "Async generation polling timed out.",
+    errorCode: "CLIENT_TIMEOUT",
+  };
+}
+
 function mapGeneratedItemsToSlots(items, slots, objectives) {
   return items.map((item) => {
     let normalizedItemId = String(item.itemId).trim();
@@ -398,14 +480,19 @@ async function generateItems() {
   busy = true;
   busyItemId = null;
   busyLabel = "AI 正在生成整卷試題，題目較多時可能要 30 秒以上，請耐心等候，不要關閉或重整……";
-  const useSerialBatching = shouldUseSerialBatching(state.intents);
+  const useAsyncJob = shouldUseAsyncGeneration(state.intents);
+  const useSerialBatching = !useAsyncJob && shouldUseSerialBatching(state.intents);
   const generationBatches = useSerialBatching ? createGenerationBatches(state.intents) : [];
-  startGenerationProgress(state.intents.length, useSerialBatching ? {
-    batchIndex: 0,
-    batchCount: generationBatches.length,
-    completedItems: 0,
-    currentBatchItems: generationBatches[0]?.requestedCount || 0,
-  } : {});
+  startGenerationProgress(state.intents.length, useAsyncJob
+    ? createAsyncInitialProgress(state.intents.length)
+    : useSerialBatching
+      ? {
+          batchIndex: 0,
+          batchCount: generationBatches.length,
+          completedItems: 0,
+          currentBatchItems: generationBatches[0]?.requestedCount || 0,
+        }
+      : {});
   setState({ errors: [], messages: [] });
   updateGenerationProgress("generating");
 
@@ -413,7 +500,27 @@ async function generateItems() {
     let importedItems = [];
     let generatedCheck = null;
 
-    if (useSerialBatching) {
+    if (useAsyncJob) {
+      const result = await requestGeneratedItemsWithAsyncJob(state.intents);
+
+      if (!result?.ok || !Array.isArray(result.items)) {
+        setState({
+          errors: buildGenerationFailureMessages(result?.error || result?.errorCode, { type: "network" }),
+          messages: [],
+        });
+        return;
+      }
+
+      updateGenerationProgress("validating", { completedItems: result.items.length });
+
+      importedItems = mapGeneratedItemsToSlots(result.items, state.intents, state.objectives);
+      generatedCheck = validateGeneratedPaper({
+        slots: state.intents,
+        objectives: state.objectives,
+        items: importedItems,
+        qualityMode: "v2",
+      });
+    } else if (useSerialBatching) {
       const batchItems = [];
       let completedItems = 0;
 

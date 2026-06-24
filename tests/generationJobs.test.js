@@ -666,6 +666,99 @@ describe("async generation job skeleton", () => {
     expect(body.errorCode).toBe(ERROR_CODES.ASYNC_JOB_NOT_FOUND);
   });
 
+  it("returns completed D1-backed job results through the safe result endpoint", async () => {
+    const db = createFakeJobsDb();
+    const jobId = "gen_result_12345678";
+    const items = Array.from({ length: 4 }, (_, index) => generatedItem(index + 1));
+    db.seedJob({
+      job_id: jobId,
+      status: "completed",
+      requested_item_count: 4,
+      batch_count: 1,
+      completed_batch_count: 1,
+      completed_item_count: 4,
+      result_item_count: 4,
+      result_json: JSON.stringify({
+        items,
+        batchCount: 1,
+        completedBatchCount: 1,
+        partial: false,
+      }),
+    });
+
+    const response = await worker.fetch(new Request(`https://worker.test/generation-jobs/${jobId}/result`), {
+      ALLOWED_ORIGIN: "*",
+      GENERATION_JOBS_DB: db,
+    });
+    const body = await readJson(response);
+    const text = JSON.stringify(body).toLowerCase();
+
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.status).toBe("completed");
+    expect(body.items).toHaveLength(4);
+    expect(text).not.toContain("raw prompt");
+    expect(text).not.toContain("raw output");
+    expect(text).not.toContain("token");
+  });
+
+  it("does not return result items while D1-backed jobs are still running", async () => {
+    const db = createFakeJobsDb();
+    const jobId = "gen_running_12345678";
+    db.seedJob({
+      job_id: jobId,
+      status: "running",
+      requested_item_count: 4,
+      batch_count: 1,
+      completed_batch_count: 0,
+      completed_item_count: 0,
+      result_json: JSON.stringify({
+        items: Array.from({ length: 4 }, (_, index) => generatedItem(index + 1)),
+      }),
+    });
+
+    const response = await worker.fetch(new Request(`https://worker.test/generation-jobs/${jobId}/result`), {
+      ALLOWED_ORIGIN: "*",
+      GENERATION_JOBS_DB: db,
+    });
+    const body = await readJson(response);
+
+    expect(response.status).toBe(409);
+    expect(body.ok).toBe(false);
+    expect(body.errorCode).toBe(ERROR_CODES.ASYNC_JOB_RESULT_UNAVAILABLE);
+    expect(body.items).toBeUndefined();
+  });
+
+  it("rejects invalid completed D1-backed result payloads", async () => {
+    const db = createFakeJobsDb();
+    const jobId = "gen_invalid_12345678";
+    db.seedJob({
+      job_id: jobId,
+      status: "completed",
+      requested_item_count: 1,
+      batch_count: 1,
+      completed_batch_count: 1,
+      completed_item_count: 1,
+      result_item_count: 1,
+      result_json: JSON.stringify({ items: [], partial: false }),
+    });
+    db.state.jobs[0].result_json = JSON.stringify({
+      items: [{ ...generatedItem(1), qualityMeta: undefined }],
+      partial: false,
+    });
+
+    const response = await worker.fetch(new Request(`https://worker.test/generation-jobs/${jobId}/result`), {
+      ALLOWED_ORIGIN: "*",
+      GENERATION_JOBS_DB: db,
+    });
+    const body = await readJson(response);
+
+    expect(response.status).toBe(502);
+    expect(body.ok).toBe(false);
+    expect(body.errorCode).toBe(ERROR_CODES.AI_QUALITY_META_MISSING);
+    expect(body.items).toBeUndefined();
+  });
+
   it("cleans only expired D1-backed jobs and their batch metadata", async () => {
     const db = createFakeJobsDb();
     db.seedJob({
