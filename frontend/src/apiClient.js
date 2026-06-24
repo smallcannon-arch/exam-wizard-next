@@ -1,6 +1,28 @@
 import { getApiBaseUrl } from "./config.js";
 import { normalizeGeneratedItems } from "./core/normalizeItem.js";
 
+function timeoutError(timeout) {
+  return {
+    ok: false,
+    error: `Request timed out after ${Math.round(timeout / 1000)} seconds.`,
+    errorCode: "CLIENT_TIMEOUT",
+  };
+}
+
+async function readJsonResponse(response) {
+  return response.json().catch(() => null);
+}
+
+function normalizeItemsIfPresent(data) {
+  if (Array.isArray(data?.items)) {
+    return {
+      ...data,
+      items: normalizeGeneratedItems(data.items),
+    };
+  }
+  return data;
+}
+
 async function postJson({ apiBaseUrl = getApiBaseUrl(), path, body, timeoutMs = 180000 }) {
   const controller = new AbortController();
   const timeout = Math.max(1000, Number(timeoutMs) || 180000);
@@ -18,7 +40,7 @@ async function postJson({ apiBaseUrl = getApiBaseUrl(), path, body, timeoutMs = 
 
     clearTimeout(timeoutId);
 
-    const data = await response.json().catch(() => null);
+    const data = await readJsonResponse(response);
 
     if (!response.ok) {
       return {
@@ -28,22 +50,44 @@ async function postJson({ apiBaseUrl = getApiBaseUrl(), path, body, timeoutMs = 
       };
     }
 
-    if (Array.isArray(data?.items)) {
-      return {
-        ...data,
-        items: normalizeGeneratedItems(data.items),
-      };
-    }
-    return data;
+    return normalizeItemsIfPresent(data);
   } catch (error) {
     clearTimeout(timeoutId);
-    if (error.name === "AbortError") {
+    if (error.name === "AbortError") return timeoutError(timeout);
+    return {
+      ok: false,
+      error: error.message || String(error),
+    };
+  }
+}
+
+async function getJson({ apiBaseUrl = getApiBaseUrl(), path, timeoutMs = 60000 }) {
+  const controller = new AbortController();
+  const timeout = Math.max(1000, Number(timeoutMs) || 60000);
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+  try {
+    const response = await fetch(`${apiBaseUrl}${path}`, {
+      method: "GET",
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    const data = await readJsonResponse(response);
+
+    if (!response.ok) {
       return {
         ok: false,
-        error: `連線超時：AI 伺服器超過 ${Math.round(timeout / 1000)} 秒仍未回應，請稍後再試。`,
-        errorCode: "CLIENT_TIMEOUT",
+        error: data?.error || `HTTP ${response.status}`,
+        errorCode: data?.errorCode,
       };
     }
+
+    return normalizeItemsIfPresent(data);
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error.name === "AbortError") return timeoutError(timeout);
     return {
       ok: false,
       error: error.message || String(error),
@@ -70,6 +114,50 @@ export function generateItemsViaApi({
       checkedChineseSubcategories,
     },
     timeoutMs: 300000,
+  });
+}
+
+export function createGenerationJobViaApi({
+  apiBaseUrl,
+  project,
+  materialText,
+  objectives,
+  intents,
+  checkedChineseSubcategories,
+}) {
+  return postJson({
+    apiBaseUrl,
+    path: "/generation-jobs",
+    body: {
+      project,
+      materialText,
+      objectives,
+      intents,
+      checkedChineseSubcategories,
+    },
+    timeoutMs: 30000,
+  });
+}
+
+export function getGenerationJobStatusViaApi({
+  apiBaseUrl,
+  jobId,
+}) {
+  return getJson({
+    apiBaseUrl,
+    path: `/generation-jobs/${encodeURIComponent(jobId)}`,
+    timeoutMs: 30000,
+  });
+}
+
+export function getGenerationJobResultViaApi({
+  apiBaseUrl,
+  jobId,
+}) {
+  return getJson({
+    apiBaseUrl,
+    path: `/generation-jobs/${encodeURIComponent(jobId)}/result`,
+    timeoutMs: 60000,
   });
 }
 
