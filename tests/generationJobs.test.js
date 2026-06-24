@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import worker from "../worker/src/index.js";
+import worker, { GenerationWorkflow } from "../worker/src/index.js";
 import { cleanupExpiredGenerationJobs, createGenerationJobPlan } from "../worker/src/generationJobs.js";
 import { ERROR_CODES } from "../worker/src/json.js";
 
@@ -107,6 +107,21 @@ function createFakeJobsDb() {
                 const before = state.jobs.length;
                 state.jobs = state.jobs.filter((job) => job.job_id !== values[0]);
                 return { success: true, meta: { changes: before - state.jobs.length } };
+              }
+
+              if (/UPDATE\s+generation_jobs/i.test(sql)) {
+                const jobId = values[values.length - 1];
+                const job = state.jobs.find((entry) => entry.job_id === jobId);
+                if (!job) return { success: true, meta: { changes: 0 } };
+
+                job.status = values[0];
+                if (/current_batch/i.test(sql)) {
+                  job.current_batch = values[1];
+                }
+                if (/error_code/i.test(sql)) {
+                  job.error_code = values[1];
+                }
+                return { success: true, meta: { changes: 1 } };
               }
 
               throw new Error("unexpected SQL");
@@ -250,6 +265,105 @@ describe("async generation job skeleton", () => {
       completedItemCount: 0,
       currentBatch: null,
     });
+  });
+
+  it("starts a Workflow instance after creating D1-backed job metadata", async () => {
+    const db = createFakeJobsDb();
+    const createCalls = [];
+    const env = {
+      ALLOWED_ORIGIN: "*",
+      GENERATION_JOBS_DB: db,
+      GENERATION_WORKFLOW: {
+        async create(options) {
+          createCalls.push(options);
+          return { id: options.id };
+        },
+      },
+    };
+
+    const response = await worker.fetch(jsonRequest("/generation-jobs", payload(8)), env);
+    const body = await readJson(response);
+    const storedText = JSON.stringify(db.state);
+    const responseText = JSON.stringify(body);
+
+    expect(response.status).toBe(202);
+    expect(body.ok).toBe(true);
+    expect(createCalls).toHaveLength(1);
+    expect(createCalls[0].id).toBe(body.jobId);
+    expect(createCalls[0].params.jobId).toBe(body.jobId);
+    expect(createCalls[0].params.batches).toHaveLength(2);
+    expect(createCalls[0].params.request.materialText).toBe(payload(8).materialText);
+    expect(storedText).not.toContain("sensitive classroom source text");
+    expect(storedText).not.toContain("objective");
+    expect(responseText).not.toContain("sensitive classroom source text");
+    expect(responseText).not.toContain("objective");
+  });
+
+  it("returns a safe error and marks the job failed when Workflow start fails", async () => {
+    const db = createFakeJobsDb();
+    const env = {
+      ALLOWED_ORIGIN: "*",
+      GENERATION_JOBS_DB: db,
+      GENERATION_WORKFLOW: {
+        async create() {
+          throw new Error("provider stack with raw prompt and token should not leak");
+        },
+      },
+    };
+
+    const response = await worker.fetch(jsonRequest("/generation-jobs", payload(4)), env);
+    const body = await readJson(response);
+    const text = JSON.stringify(body).toLowerCase();
+
+    expect(response.status).toBe(502);
+    expect(body.ok).toBe(false);
+    expect(body.errorCode).toBe(ERROR_CODES.ASYNC_JOB_UNAVAILABLE);
+    expect(db.state.jobs).toHaveLength(1);
+    expect(db.state.jobs[0].status).toBe("failed");
+    expect(db.state.jobs[0].error_code).toBe(ERROR_CODES.ASYNC_JOB_UNAVAILABLE);
+    expect(text).not.toContain("raw prompt");
+    expect(text).not.toContain("token");
+    expect(text).not.toContain("stack");
+    expect(text).not.toContain("sensitive classroom source text");
+  });
+
+  it("runs the no-Gemini Workflow skeleton and marks a job running", async () => {
+    const db = createFakeJobsDb();
+    const jobId = "gen_workflow_12345678";
+    db.seedJob({ job_id: jobId, expires_at: "2026-06-25T00:00:00.000Z" });
+
+    const workflow = new GenerationWorkflow();
+    workflow.env = { GENERATION_JOBS_DB: db };
+    const step = {
+      async do(_name, callback) {
+        return callback();
+      },
+    };
+
+    const result = await workflow.run({
+      payload: {
+        jobId,
+        progress: {
+          requestedItemCount: 4,
+          batchSize: 4,
+          batchCount: 1,
+        },
+      },
+    }, step);
+
+    expect(result).toMatchObject({
+      ok: true,
+      jobId,
+      status: "running",
+      requestedItemCount: 4,
+      batchSize: 4,
+      batchCount: 1,
+      completedBatchCount: 0,
+      completedItemCount: 0,
+      currentBatch: 1,
+    });
+    expect(db.state.jobs[0].status).toBe("running");
+    expect(db.state.jobs[0].current_batch).toBe(1);
   });
 
   it("returns a safe not-found error for missing D1-backed jobs", async () => {
