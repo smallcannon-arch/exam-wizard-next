@@ -474,14 +474,17 @@ export async function markGenerationBatchFailed(db, jobId, batchNumber, errorCod
   return { ok: true };
 }
 
-export async function completeSingleBatchGenerationJob(db, jobId, batchNumber, items, latencyMs) {
-  if (!hasD1Interface(db) || !isValidJobId(jobId) || !Array.isArray(items)) {
+export async function markGenerationBatchCompleted(db, jobId, batchNumber, itemCount, latencyMs, progress = {}) {
+  if (!hasD1Interface(db) || !isValidJobId(jobId)) {
     return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_UNAVAILABLE };
   }
 
-  const itemCount = items.length;
+  const safeItemCount = toSafeCount(itemCount);
   const safeLatencyMs = toSafeCount(latencyMs);
-  const resultJson = JSON.stringify({ items });
+  const batchCount = toSafeCount(progress.batchCount);
+  const completedBatchCount = Math.min(toSafeCount(progress.completedBatchCount), batchCount || toSafeCount(batchNumber));
+  const completedItemCount = Math.min(toSafeCount(progress.completedItemCount), toSafeCount(progress.requestedItemCount, safeItemCount));
+  const nextBatch = completedBatchCount >= batchCount ? null : completedBatchCount + 1;
 
   try {
     const statements = [
@@ -495,7 +498,7 @@ export async function completeSingleBatchGenerationJob(db, jobId, batchNumber, i
           updated_at = CURRENT_TIMESTAMP
         WHERE job_id = ?
           AND batch_number = ?
-      `).bind("completed", itemCount, safeLatencyMs, jobId, batchNumber),
+      `).bind("completed", safeItemCount, safeLatencyMs, jobId, batchNumber),
       db.prepare(`
         UPDATE generation_jobs
         SET
@@ -503,13 +506,9 @@ export async function completeSingleBatchGenerationJob(db, jobId, batchNumber, i
           completed_batch_count = ?,
           completed_item_count = ?,
           current_batch = ?,
-          error_code = NULL,
-          result_item_count = ?,
-          result_json = ?,
-          completed_at = CURRENT_TIMESTAMP,
           updated_at = CURRENT_TIMESTAMP
         WHERE job_id = ?
-      `).bind(JOB_STATUS.COMPLETED, 1, itemCount, null, itemCount, resultJson, jobId),
+      `).bind(JOB_STATUS.RUNNING, completedBatchCount, completedItemCount, nextBatch, jobId),
     ];
 
     if (typeof db.batch === "function") {
@@ -523,17 +522,72 @@ export async function completeSingleBatchGenerationJob(db, jobId, batchNumber, i
     return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_STATUS_INVALID };
   }
 
+  return { ok: true };
+}
+
+export async function completeGenerationJob(db, jobId, items, progress = {}) {
+  if (!hasD1Interface(db) || !isValidJobId(jobId) || !Array.isArray(items)) {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_UNAVAILABLE };
+  }
+
+  const itemCount = items.length;
+  const batchCount = toSafeCount(progress.batchCount, 1);
+  const resultJson = JSON.stringify({
+    items,
+    batchCount,
+    completedBatchCount: batchCount,
+    partial: false,
+  });
+
+  try {
+    await db.prepare(`
+      UPDATE generation_jobs
+      SET
+        status = ?,
+        completed_batch_count = ?,
+        completed_item_count = ?,
+        current_batch = ?,
+        error_code = NULL,
+        result_item_count = ?,
+        result_json = ?,
+        completed_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE job_id = ?
+    `).bind(JOB_STATUS.COMPLETED, batchCount, itemCount, null, itemCount, resultJson, jobId).run();
+  } catch {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_STATUS_INVALID };
+  }
+
   return {
     ok: true,
     jobId,
     status: JOB_STATUS.COMPLETED,
+    requestedItemCount: toSafeCount(progress.requestedItemCount, itemCount),
+    batchSize: toSafeCount(progress.batchSize, ASYNC_GENERATION_BATCH_SIZE),
+    batchCount,
+    completedBatchCount: batchCount,
+    completedItemCount: itemCount,
+    currentBatch: null,
+  };
+}
+
+export async function completeSingleBatchGenerationJob(db, jobId, batchNumber, items, latencyMs) {
+  if (!hasD1Interface(db) || !isValidJobId(jobId) || !Array.isArray(items)) {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_UNAVAILABLE };
+  }
+
+  const itemCount = items.length;
+  const progress = {
     requestedItemCount: itemCount,
     batchSize: ASYNC_GENERATION_BATCH_SIZE,
     batchCount: 1,
     completedBatchCount: 1,
     completedItemCount: itemCount,
-    currentBatch: null,
   };
+  const batchCompleted = await markGenerationBatchCompleted(db, jobId, batchNumber, itemCount, latencyMs, progress);
+  if (!batchCompleted.ok) return batchCompleted;
+
+  return completeGenerationJob(db, jobId, items, progress);
 }
 
 export async function cleanupExpiredGenerationJobs(db, options = {}) {

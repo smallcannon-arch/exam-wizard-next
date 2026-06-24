@@ -44,18 +44,26 @@ function generatedItem(index = 1) {
 }
 
 function mockGeminiItems(items) {
-  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
-    candidates: [
-      {
-        content: {
-          parts: [{ text: JSON.stringify({ items }) }],
+  mockGeminiItemBatches([items]);
+}
+
+function mockGeminiItemBatches(itemBatches) {
+  const batches = [...itemBatches];
+  vi.stubGlobal("fetch", vi.fn(async () => {
+    const items = batches.shift() || [];
+    return new Response(JSON.stringify({
+      candidates: [
+        {
+          content: {
+            parts: [{ text: JSON.stringify({ items }) }],
+          },
         },
-      },
-    ],
-  }), {
-    status: 200,
-    headers: { "Content-Type": "application/json" },
-  })));
+      ],
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }));
 }
 
 function jsonRequest(path, body, init = {}) {
@@ -159,6 +167,14 @@ function createFakeJobsDb() {
                   job.error_code = null;
                   job.result_item_count = values[4];
                   job.result_json = values[5];
+                  return { success: true, meta: { changes: 1 } };
+                }
+
+                if (/completed_batch_count/i.test(sql) && /completed_item_count/i.test(sql)) {
+                  job.status = values[0];
+                  job.completed_batch_count = values[1];
+                  job.completed_item_count = values[2];
+                  job.current_batch = values[3];
                   return { success: true, meta: { changes: 1 } };
                 }
 
@@ -452,6 +468,11 @@ describe("async generation job skeleton", () => {
     expect(db.state.jobs[0].status).toBe("completed");
     expect(db.state.jobs[0].current_batch).toBe(null);
     expect(db.state.jobs[0].result_item_count).toBe(4);
+    expect(JSON.parse(db.state.jobs[0].result_json)).toMatchObject({
+      batchCount: 1,
+      completedBatchCount: 1,
+      partial: false,
+    });
     expect(JSON.parse(db.state.jobs[0].result_json).items).toHaveLength(4);
     expect(db.state.batches[0].status).toBe("completed");
     expect(db.state.batches[0].completed_item_count).toBe(4);
@@ -463,20 +484,23 @@ describe("async generation job skeleton", () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
-  it("fails multi-batch Workflow jobs without invoking Gemini", async () => {
+  it("runs multi-batch Workflow jobs sequentially and stores final items only after all batches pass", async () => {
     const db = createFakeJobsDb();
     const jobId = "gen_workflow_multi_12345678";
-    const data = payload(8);
+    const data = payload(6);
     const plan = createGenerationJobPlan(data);
-    vi.stubGlobal("fetch", vi.fn());
+    mockGeminiItemBatches([
+      Array.from({ length: 4 }, (_, index) => generatedItem(index + 1)),
+      Array.from({ length: 2 }, (_, index) => generatedItem(index + 5)),
+    ]);
     db.seedJob({
       job_id: jobId,
-      requested_item_count: 8,
+      requested_item_count: 6,
       batch_count: 2,
       expires_at: "2026-06-25T00:00:00.000Z",
     });
     db.seedBatch({ job_id: jobId, batch_number: 1, expected_item_count: 4 });
-    db.seedBatch({ job_id: jobId, batch_number: 2, expected_item_count: 4 });
+    db.seedBatch({ job_id: jobId, batch_number: 2, expected_item_count: 2 });
 
     const workflow = new GenerationWorkflow();
     workflow.env = {
@@ -498,10 +522,93 @@ describe("async generation job skeleton", () => {
       },
     }, step);
 
-    expect(result).toEqual({ ok: false, errorCode: ERROR_CODES.ASYNC_BATCH_UNSUPPORTED });
+    expect(result).toMatchObject({
+      ok: true,
+      jobId,
+      status: "completed",
+      requestedItemCount: 6,
+      batchSize: 4,
+      batchCount: 2,
+      completedBatchCount: 2,
+      completedItemCount: 6,
+      currentBatch: null,
+    });
+    expect(db.state.jobs[0].status).toBe("completed");
+    expect(db.state.jobs[0].completed_batch_count).toBe(2);
+    expect(db.state.jobs[0].completed_item_count).toBe(6);
+    expect(db.state.jobs[0].current_batch).toBe(null);
+    expect(db.state.jobs[0].result_item_count).toBe(6);
+    expect(JSON.parse(db.state.jobs[0].result_json)).toMatchObject({
+      batchCount: 2,
+      completedBatchCount: 2,
+      partial: false,
+    });
+    expect(JSON.parse(db.state.jobs[0].result_json).items.map((item) => item.id)).toEqual([
+      "G-1",
+      "G-2",
+      "G-3",
+      "G-4",
+      "G-5",
+      "G-6",
+    ]);
+    expect(db.state.batches.map((batch) => batch.status)).toEqual(["completed", "completed"]);
+    expect(db.state.batches.map((batch) => batch.completed_item_count)).toEqual([4, 2]);
+    expect(JSON.stringify(db.state).toLowerCase()).not.toContain("sensitive classroom source text");
+    expect(JSON.stringify(db.state).toLowerCase()).not.toContain("raw prompt");
+    expect(JSON.stringify(db.state).toLowerCase()).not.toContain("raw output");
+    expect(JSON.stringify(db.state).toLowerCase()).not.toContain("token");
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("marks the failed batch and does not store final result when a later multi-batch output fails contract", async () => {
+    const db = createFakeJobsDb();
+    const jobId = "gen_workflow_multi_fail_12345678";
+    const data = payload(5);
+    const plan = createGenerationJobPlan(data);
+    mockGeminiItemBatches([
+      Array.from({ length: 4 }, (_, index) => generatedItem(index + 1)),
+      [{ id: "G-5", question: "Question without qualityMeta" }],
+    ]);
+    db.seedJob({
+      job_id: jobId,
+      requested_item_count: 5,
+      batch_count: 2,
+      expires_at: "2026-06-25T00:00:00.000Z",
+    });
+    db.seedBatch({ job_id: jobId, batch_number: 1, expected_item_count: 4 });
+    db.seedBatch({ job_id: jobId, batch_number: 2, expected_item_count: 1 });
+
+    const workflow = new GenerationWorkflow();
+    workflow.env = {
+      GENERATION_JOBS_DB: db,
+      GEMINI_API_KEY: "test-key",
+    };
+    const step = {
+      async do(_name, callback) {
+        return callback();
+      },
+    };
+
+    const result = await workflow.run({
+      payload: {
+        jobId,
+        request: plan.request,
+        batches: plan.batches,
+        progress: plan.progress,
+      },
+    }, step);
+
+    expect(result).toMatchObject({ ok: false, errorCode: ERROR_CODES.AI_QUALITY_META_MISSING });
     expect(db.state.jobs[0].status).toBe("failed");
-    expect(db.state.jobs[0].error_code).toBe(ERROR_CODES.ASYNC_BATCH_UNSUPPORTED);
-    expect(fetch).not.toHaveBeenCalled();
+    expect(db.state.jobs[0].error_code).toBe(ERROR_CODES.AI_QUALITY_META_MISSING);
+    expect(db.state.jobs[0].completed_batch_count).toBe(1);
+    expect(db.state.jobs[0].completed_item_count).toBe(4);
+    expect(db.state.jobs[0].result_json).toBeUndefined();
+    expect(db.state.batches.map((batch) => batch.status)).toEqual(["completed", "failed_terminal"]);
+    expect(db.state.batches[1].error_code).toBe(ERROR_CODES.AI_QUALITY_META_MISSING);
+    expect(JSON.stringify(db.state).toLowerCase()).not.toContain("raw output");
+    expect(JSON.stringify(db.state).toLowerCase()).not.toContain("token");
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it("marks the single batch failed when AI output misses qualityMeta", async () => {
