@@ -32,6 +32,8 @@ const WORKFLOW_STATUS_MAP = Object.freeze({
   expired: JOB_STATUS.EXPIRED,
 });
 
+const JOB_EXPIRES_AFTER_HOURS = 24;
+
 function errorResponse(request, env, result, status) {
   return jsonResponse(request, env, safeErrorPayload(result), status);
 }
@@ -180,15 +182,142 @@ function getWorkflow(env) {
   return env && env.GENERATION_WORKFLOW;
 }
 
+function getJobsDb(env) {
+  return env && env.GENERATION_JOBS_DB;
+}
+
+function hasD1Interface(db) {
+  return !!db && typeof db.prepare === "function";
+}
+
+function createExpiresAt(now = Date.now()) {
+  return new Date(now + JOB_EXPIRES_AFTER_HOURS * 60 * 60 * 1000).toISOString();
+}
+
+function createJobInsertStatements(db, jobId, plan) {
+  const { progress, batches } = plan;
+  const statements = [
+    db.prepare(`
+      INSERT INTO generation_jobs (
+        job_id,
+        status,
+        requested_item_count,
+        batch_size,
+        batch_count,
+        completed_batch_count,
+        completed_item_count,
+        current_batch,
+        expires_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      jobId,
+      JOB_STATUS.QUEUED,
+      progress.requestedItemCount,
+      progress.batchSize,
+      progress.batchCount,
+      0,
+      0,
+      null,
+      createExpiresAt(),
+    ),
+  ];
+
+  for (const batch of batches) {
+    statements.push(
+      db.prepare(`
+        INSERT INTO generation_job_batches (
+          job_id,
+          batch_number,
+          status,
+          expected_item_count,
+          completed_item_count,
+          retry_count
+        ) VALUES (?, ?, ?, ?, ?, ?)
+      `).bind(
+        jobId,
+        batch.batchNumber,
+        "queued",
+        batch.expectedItemCount,
+        0,
+        0,
+      ),
+    );
+  }
+
+  return statements;
+}
+
+async function persistGenerationJob(db, jobId, plan) {
+  if (!hasD1Interface(db)) {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_UNAVAILABLE };
+  }
+
+  const statements = createJobInsertStatements(db, jobId, plan);
+  try {
+    if (typeof db.batch === "function") {
+      await db.batch(statements);
+    } else {
+      for (const statement of statements) {
+        await statement.run();
+      }
+    }
+  } catch {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_UNAVAILABLE };
+  }
+
+  return { ok: true };
+}
+
+async function readGenerationJob(db, jobId) {
+  if (!hasD1Interface(db)) {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_UNAVAILABLE, status: 501 };
+  }
+
+  let row;
+  try {
+    row = await db.prepare(`
+      SELECT
+        job_id,
+        status,
+        requested_item_count,
+        batch_size,
+        batch_count,
+        completed_batch_count,
+        completed_item_count,
+        current_batch
+      FROM generation_jobs
+      WHERE job_id = ?
+      LIMIT 1
+    `).bind(jobId).first();
+  } catch {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_STATUS_INVALID, status: 502 };
+  }
+
+  if (!row) {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_NOT_FOUND, status: 404 };
+  }
+
+  return {
+    ok: true,
+    payload: safeJobPayload({
+      jobId: row.job_id,
+      status: row.status,
+      progress: {
+        requestedItemCount: row.requested_item_count,
+        batchSize: row.batch_size,
+        batchCount: row.batch_count,
+        completedBatchCount: row.completed_batch_count,
+        completedItemCount: row.completed_item_count,
+        currentBatch: row.current_batch,
+      },
+    }),
+  };
+}
+
 export async function handleCreateGenerationJob(request, env) {
   if (request.method === "OPTIONS") return handleOptions(request, env);
   if (request.method !== "POST") {
     return errorResponse(request, env, { error: "Not Found", errorCode: ERROR_CODES.NOT_FOUND }, 404);
-  }
-
-  const workflow = getWorkflow(env);
-  if (!workflow || typeof workflow.create !== "function") {
-    return errorResponse(request, env, { errorCode: ERROR_CODES.ASYNC_JOB_UNAVAILABLE }, 501);
   }
 
   const body = await readJson(request);
@@ -198,6 +327,19 @@ export async function handleCreateGenerationJob(request, env) {
   if (!plan.ok) return errorResponse(request, env, plan, 400);
 
   const jobId = createJobId();
+  const db = getJobsDb(env);
+  if (hasD1Interface(db)) {
+    const saved = await persistGenerationJob(db, jobId, plan);
+    if (!saved.ok) return errorResponse(request, env, saved, 502);
+
+    return jsonResponse(request, env, safeJobPayload({ jobId, status: JOB_STATUS.QUEUED, progress: plan.progress }), 202);
+  }
+
+  const workflow = getWorkflow(env);
+  if (!workflow || typeof workflow.create !== "function") {
+    return errorResponse(request, env, { errorCode: ERROR_CODES.ASYNC_JOB_UNAVAILABLE }, 501);
+  }
+
   try {
     await workflow.create({
       id: jobId,
@@ -223,6 +365,14 @@ export async function handleGetGenerationJobStatus(request, env, jobId) {
 
   if (!isValidJobId(jobId)) {
     return errorResponse(request, env, { error: "jobId is invalid.", errorCode: ERROR_CODES.REQUEST_INVALID }, 400);
+  }
+
+  const db = getJobsDb(env);
+  if (hasD1Interface(db)) {
+    const job = await readGenerationJob(db, jobId);
+    if (!job.ok) return errorResponse(request, env, job, job.status || 502);
+
+    return jsonResponse(request, env, job.payload);
   }
 
   const workflow = getWorkflow(env);
