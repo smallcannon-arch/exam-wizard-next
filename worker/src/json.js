@@ -7,6 +7,8 @@ export const ERROR_CODES = Object.freeze({
   AI_JSON_PARSE_FAILED: "AI_JSON_PARSE_FAILED",
   AI_ITEMS_PAYLOAD_INVALID: "AI_ITEMS_PAYLOAD_INVALID",
   AI_QUALITY_META_MISSING: "AI_QUALITY_META_MISSING",
+  AI_ITEM_TEXT_MISSING: "AI_ITEM_TEXT_MISSING",
+  AI_STIMULUS_MISSING: "AI_STIMULUS_MISSING",
   AI_OUTPUT_CONTRACT_INVALID: "AI_OUTPUT_CONTRACT_INVALID",
   ASYNC_JOB_UNAVAILABLE: "ASYNC_JOB_UNAVAILABLE",
   ASYNC_JOB_NOT_FOUND: "ASYNC_JOB_NOT_FOUND",
@@ -25,6 +27,8 @@ const ERROR_MESSAGES = Object.freeze({
   [ERROR_CODES.AI_JSON_PARSE_FAILED]: "AI 回應不是可解析的題目 JSON。",
   [ERROR_CODES.AI_ITEMS_PAYLOAD_INVALID]: "AI 回應缺少有效的題目陣列。",
   [ERROR_CODES.AI_QUALITY_META_MISSING]: "AI 回應缺少必要的 qualityMeta 欄位。",
+  [ERROR_CODES.AI_ITEM_TEXT_MISSING]: "AI response item is missing question text.",
+  [ERROR_CODES.AI_STIMULUS_MISSING]: "AI response item references reading text but is missing stimulus.",
   [ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID]: "AI 回應不符合必要輸出契約。",
   [ERROR_CODES.ASYNC_JOB_UNAVAILABLE]: "Async generation job service is not available.",
   [ERROR_CODES.ASYNC_JOB_NOT_FOUND]: "Async generation job was not found.",
@@ -187,7 +191,7 @@ function assertItemText(item, index) {
     return {
       ok: false,
       error: `AI response item ${index + 1} is missing question text.`,
-      errorCode: ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID,
+      errorCode: ERROR_CODES.AI_ITEM_TEXT_MISSING,
     };
   }
 
@@ -216,7 +220,7 @@ function assertStimulusContract(item, index) {
     return {
       ok: false,
       error: `AI response item ${index + 1} references reading text but is missing stimulus.`,
-      errorCode: ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID,
+      errorCode: ERROR_CODES.AI_STIMULUS_MISSING,
     };
   }
 

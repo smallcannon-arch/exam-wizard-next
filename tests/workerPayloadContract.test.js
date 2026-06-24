@@ -88,7 +88,7 @@ describe("Worker items payload contract", () => {
     const result = assertItemsPayload({ items: [item({ question: undefined })] });
 
     expect(result.ok).toBe(false);
-    expect(result.errorCode).toBe(ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID);
+    expect(result.errorCode).toBe(ERROR_CODES.AI_ITEM_TEXT_MISSING);
     expect(result.error).toContain("missing question text");
   });
 
@@ -106,7 +106,7 @@ describe("Worker items payload contract", () => {
     });
 
     expect(result.ok).toBe(false);
-    expect(result.errorCode).toBe(ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID);
+    expect(result.errorCode).toBe(ERROR_CODES.AI_STIMULUS_MISSING);
     expect(result.error).toContain("missing stimulus");
   });
 
@@ -116,7 +116,7 @@ describe("Worker items payload contract", () => {
     });
 
     expect(result.ok).toBe(false);
-    expect(result.errorCode).toBe(ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID);
+    expect(result.errorCode).toBe(ERROR_CODES.AI_STIMULUS_MISSING);
   });
 
   it("passes items that reference reading text with stimulus", () => {
@@ -152,5 +152,19 @@ describe("Worker items payload contract", () => {
     expect(text).not.toContain("token");
     expect(text).not.toContain("headers");
     expect(text).not.toContain("stack trace");
+  });
+
+  it("keeps specific output contract error codes in safe error payloads", () => {
+    const itemTextPayload = safeErrorPayload({
+      error: "AI response item 1 is missing question text.",
+      errorCode: ERROR_CODES.AI_ITEM_TEXT_MISSING,
+    });
+    const stimulusPayload = safeErrorPayload({
+      error: "AI response item 1 references reading text but is missing stimulus.",
+      errorCode: ERROR_CODES.AI_STIMULUS_MISSING,
+    });
+
+    expect(itemTextPayload.errorCode).toBe(ERROR_CODES.AI_ITEM_TEXT_MISSING);
+    expect(stimulusPayload.errorCode).toBe(ERROR_CODES.AI_STIMULUS_MISSING);
   });
 });
