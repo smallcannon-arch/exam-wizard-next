@@ -11,6 +11,7 @@ export const ERROR_CODES = Object.freeze({
   ASYNC_JOB_UNAVAILABLE: "ASYNC_JOB_UNAVAILABLE",
   ASYNC_JOB_NOT_FOUND: "ASYNC_JOB_NOT_FOUND",
   ASYNC_JOB_STATUS_INVALID: "ASYNC_JOB_STATUS_INVALID",
+  ASYNC_BATCH_UNSUPPORTED: "ASYNC_BATCH_UNSUPPORTED",
 });
 
 const ERROR_MESSAGES = Object.freeze({
@@ -26,6 +27,7 @@ const ERROR_MESSAGES = Object.freeze({
   [ERROR_CODES.ASYNC_JOB_UNAVAILABLE]: "Async generation job service is not available.",
   [ERROR_CODES.ASYNC_JOB_NOT_FOUND]: "Async generation job was not found.",
   [ERROR_CODES.ASYNC_JOB_STATUS_INVALID]: "Async generation job status is invalid.",
+  [ERROR_CODES.ASYNC_BATCH_UNSUPPORTED]: "Async generation currently supports one batch only.",
 });
 
 const SENSITIVE_ERROR_PATTERN = /raw\s*(prompt|output)|api[_\s-]*key|x-goog-api-key|token|headers?|authorization|bearer|cookie|stack\s*trace|traceback/i;

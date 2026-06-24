@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import worker, { GenerationWorkflow } from "../worker/src/index.js";
 import { cleanupExpiredGenerationJobs, createGenerationJobPlan } from "../worker/src/generationJobs.js";
 import { ERROR_CODES } from "../worker/src/json.js";
@@ -19,6 +19,43 @@ function payload(count = 8) {
     intents: Array.from({ length: count }, (_, index) => intent(index + 1)),
     checkedChineseSubcategories: [],
   };
+}
+
+function generatedItem(index = 1) {
+  return {
+    id: `G-${index}`,
+    questionType: "choice",
+    question: `Question ${index}`,
+    options: ["A", "B", "C", "D"],
+    answer: "A",
+    qualityMeta: {
+      teacherExplanation: "Teacher explanation",
+      correctReason: "Correct reason",
+      distractorDesign: {
+        B: "Distractor B",
+        C: "Distractor C",
+        D: "Distractor D",
+      },
+      selfCheck: {
+        passed: true,
+      },
+    },
+  };
+}
+
+function mockGeminiItems(items) {
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+    candidates: [
+      {
+        content: {
+          parts: [{ text: JSON.stringify({ items }) }],
+        },
+      },
+    ],
+  }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  })));
 }
 
 function jsonRequest(path, body, init = {}) {
@@ -114,13 +151,52 @@ function createFakeJobsDb() {
                 const job = state.jobs.find((entry) => entry.job_id === jobId);
                 if (!job) return { success: true, meta: { changes: 0 } };
 
+                if (/result_json/i.test(sql)) {
+                  job.status = values[0];
+                  job.completed_batch_count = values[1];
+                  job.completed_item_count = values[2];
+                  job.current_batch = values[3];
+                  job.error_code = null;
+                  job.result_item_count = values[4];
+                  job.result_json = values[5];
+                  return { success: true, meta: { changes: 1 } };
+                }
+
+                if (/error_code/i.test(sql)) {
+                  job.status = values[0];
+                  job.error_code = values[1];
+                  return { success: true, meta: { changes: 1 } };
+                }
+
                 job.status = values[0];
                 if (/current_batch/i.test(sql)) {
                   job.current_batch = values[1];
                 }
-                if (/error_code/i.test(sql)) {
-                  job.error_code = values[1];
+                return { success: true, meta: { changes: 1 } };
+              }
+
+              if (/UPDATE\s+generation_job_batches/i.test(sql)) {
+                const jobId = values[values.length - 2];
+                const batchNumber = values[values.length - 1];
+                const batch = state.batches.find((entry) => (
+                  entry.job_id === jobId && entry.batch_number === batchNumber
+                ));
+                if (!batch) return { success: true, meta: { changes: 0 } };
+
+                if (/latency_ms/i.test(sql)) {
+                  batch.status = values[0];
+                  batch.completed_item_count = values[1];
+                  batch.latency_ms = values[2];
+                  return { success: true, meta: { changes: 1 } };
                 }
+
+                if (/error_code/i.test(sql)) {
+                  batch.status = values[0];
+                  batch.error_code = values[1];
+                  return { success: true, meta: { changes: 1 } };
+                }
+
+                batch.status = values[0];
                 return { success: true, meta: { changes: 1 } };
               }
 
@@ -167,6 +243,10 @@ function createFakeJobsDb() {
 }
 
 describe("async generation job skeleton", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("splits job plans into safe 4-item batches", () => {
     const plan = createGenerationJobPlan(payload(10));
 
@@ -327,13 +407,22 @@ describe("async generation job skeleton", () => {
     expect(text).not.toContain("sensitive classroom source text");
   });
 
-  it("runs the no-Gemini Workflow skeleton and marks a job running", async () => {
+  it("runs the single-batch Workflow executor and stores normalized items", async () => {
     const db = createFakeJobsDb();
     const jobId = "gen_workflow_12345678";
+    const data = payload(4);
+    const plan = createGenerationJobPlan(data);
+    const items = Array.from({ length: 4 }, (_, index) => generatedItem(index + 1));
+    mockGeminiItems(items);
     db.seedJob({ job_id: jobId, expires_at: "2026-06-25T00:00:00.000Z" });
+    db.seedBatch({ job_id: jobId, batch_number: 1, expected_item_count: 4 });
 
     const workflow = new GenerationWorkflow();
-    workflow.env = { GENERATION_JOBS_DB: db };
+    workflow.env = {
+      GENERATION_JOBS_DB: db,
+      GEMINI_API_KEY: "test-key",
+      GEMINI_MODEL: "gemini-test-model",
+    };
     const step = {
       async do(_name, callback) {
         return callback();
@@ -343,27 +432,119 @@ describe("async generation job skeleton", () => {
     const result = await workflow.run({
       payload: {
         jobId,
-        progress: {
-          requestedItemCount: 4,
-          batchSize: 4,
-          batchCount: 1,
-        },
+        request: plan.request,
+        batches: plan.batches,
+        progress: plan.progress,
       },
     }, step);
 
     expect(result).toMatchObject({
       ok: true,
       jobId,
-      status: "running",
+      status: "completed",
       requestedItemCount: 4,
       batchSize: 4,
       batchCount: 1,
-      completedBatchCount: 0,
-      completedItemCount: 0,
-      currentBatch: 1,
+      completedBatchCount: 1,
+      completedItemCount: 4,
+      currentBatch: null,
     });
-    expect(db.state.jobs[0].status).toBe("running");
-    expect(db.state.jobs[0].current_batch).toBe(1);
+    expect(db.state.jobs[0].status).toBe("completed");
+    expect(db.state.jobs[0].current_batch).toBe(null);
+    expect(db.state.jobs[0].result_item_count).toBe(4);
+    expect(JSON.parse(db.state.jobs[0].result_json).items).toHaveLength(4);
+    expect(db.state.batches[0].status).toBe("completed");
+    expect(db.state.batches[0].completed_item_count).toBe(4);
+    expect(db.state.batches[0].latency_ms).toBeGreaterThanOrEqual(0);
+    expect(JSON.stringify(db.state).toLowerCase()).not.toContain("sensitive classroom source text");
+    expect(JSON.stringify(db.state).toLowerCase()).not.toContain("raw prompt");
+    expect(JSON.stringify(db.state).toLowerCase()).not.toContain("raw output");
+    expect(JSON.stringify(db.state).toLowerCase()).not.toContain("token");
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails multi-batch Workflow jobs without invoking Gemini", async () => {
+    const db = createFakeJobsDb();
+    const jobId = "gen_workflow_multi_12345678";
+    const data = payload(8);
+    const plan = createGenerationJobPlan(data);
+    vi.stubGlobal("fetch", vi.fn());
+    db.seedJob({
+      job_id: jobId,
+      requested_item_count: 8,
+      batch_count: 2,
+      expires_at: "2026-06-25T00:00:00.000Z",
+    });
+    db.seedBatch({ job_id: jobId, batch_number: 1, expected_item_count: 4 });
+    db.seedBatch({ job_id: jobId, batch_number: 2, expected_item_count: 4 });
+
+    const workflow = new GenerationWorkflow();
+    workflow.env = {
+      GENERATION_JOBS_DB: db,
+      GEMINI_API_KEY: "test-key",
+    };
+    const step = {
+      async do(_name, callback) {
+        return callback();
+      },
+    };
+
+    const result = await workflow.run({
+      payload: {
+        jobId,
+        request: plan.request,
+        batches: plan.batches,
+        progress: plan.progress,
+      },
+    }, step);
+
+    expect(result).toEqual({ ok: false, errorCode: ERROR_CODES.ASYNC_BATCH_UNSUPPORTED });
+    expect(db.state.jobs[0].status).toBe("failed");
+    expect(db.state.jobs[0].error_code).toBe(ERROR_CODES.ASYNC_BATCH_UNSUPPORTED);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("marks the single batch failed when AI output misses qualityMeta", async () => {
+    const db = createFakeJobsDb();
+    const jobId = "gen_workflow_fail_12345678";
+    const data = payload(1);
+    const plan = createGenerationJobPlan(data);
+    mockGeminiItems([{ id: "G-1", question: "Question without qualityMeta" }]);
+    db.seedJob({
+      job_id: jobId,
+      requested_item_count: 1,
+      batch_count: 1,
+      expires_at: "2026-06-25T00:00:00.000Z",
+    });
+    db.seedBatch({ job_id: jobId, batch_number: 1, expected_item_count: 1 });
+
+    const workflow = new GenerationWorkflow();
+    workflow.env = {
+      GENERATION_JOBS_DB: db,
+      GEMINI_API_KEY: "test-key",
+    };
+    const step = {
+      async do(_name, callback) {
+        return callback();
+      },
+    };
+
+    const result = await workflow.run({
+      payload: {
+        jobId,
+        request: plan.request,
+        batches: plan.batches,
+        progress: plan.progress,
+      },
+    }, step);
+
+    expect(result).toMatchObject({ ok: false, errorCode: ERROR_CODES.AI_QUALITY_META_MISSING });
+    expect(db.state.jobs[0].status).toBe("failed");
+    expect(db.state.jobs[0].error_code).toBe(ERROR_CODES.AI_QUALITY_META_MISSING);
+    expect(db.state.batches[0].status).toBe("failed_terminal");
+    expect(db.state.batches[0].error_code).toBe(ERROR_CODES.AI_QUALITY_META_MISSING);
+    expect(JSON.stringify(db.state).toLowerCase()).not.toContain("raw output");
+    expect(JSON.stringify(db.state).toLowerCase()).not.toContain("token");
   });
 
   it("returns a safe not-found error for missing D1-backed jobs", async () => {
