@@ -49,6 +49,19 @@ function hasText(value) {
 }
 
 const ITEM_TEXT_FIELDS = ["question", "stem", "prompt", "problem", "questionText", "itemText", "text"];
+const STIMULUS_REFERENCE_TERMS = [
+  "根據這段文字",
+  "根據本文",
+  "根據上文",
+  "依據本文",
+  "依據上文",
+  "閱讀本文",
+  "讀完本文",
+  "這段文字",
+  "上文中",
+  "本文",
+  "上文",
+];
 
 function safeMessage(error, errorCode) {
   const fallback = ERROR_MESSAGES[errorCode] || ERROR_MESSAGES[ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID];
@@ -181,6 +194,35 @@ function assertItemText(item, index) {
   return { ok: true };
 }
 
+function referencesStimulusText(value) {
+  const text = String(value || "");
+  return STIMULUS_REFERENCE_TERMS.some((term) => text.includes(term));
+}
+
+function assertStimulusContract(item, index) {
+  if (!isPlainObject(item)) {
+    return {
+      ok: false,
+      error: `AI response item ${index + 1} is not an object.`,
+      errorCode: ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID,
+    };
+  }
+
+  const questionType = String(item.questionType || "").trim();
+  const needsStimulus = questionType === "閱讀測驗"
+    || ITEM_TEXT_FIELDS.some((field) => referencesStimulusText(item[field]));
+
+  if (needsStimulus && !hasText(item.stimulus)) {
+    return {
+      ok: false,
+      error: `AI response item ${index + 1} references reading text but is missing stimulus.`,
+      errorCode: ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID,
+    };
+  }
+
+  return { ok: true };
+}
+
 export function assertItemsPayload(payload, expectedCount = null) {
   if (!payload || typeof payload !== "object" || !Array.isArray(payload.items)) {
     return { ok: false, error: "AI 回應缺少 items 陣列。", errorCode: ERROR_CODES.AI_ITEMS_PAYLOAD_INVALID };
@@ -197,6 +239,9 @@ export function assertItemsPayload(payload, expectedCount = null) {
   for (let index = 0; index < payload.items.length; index += 1) {
     const itemText = assertItemText(payload.items[index], index);
     if (!itemText.ok) return itemText;
+
+    const stimulus = assertStimulusContract(payload.items[index], index);
+    if (!stimulus.ok) return stimulus;
 
     const qualityMeta = assertQualityMeta(payload.items[index], index);
     if (!qualityMeta.ok) return qualityMeta;
