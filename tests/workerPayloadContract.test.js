@@ -84,6 +84,22 @@ describe("Worker items payload contract", () => {
     expect(result.errorCode).toBe(ERROR_CODES.AI_QUALITY_META_MISSING);
   });
 
+  it("rejects items missing question text", () => {
+    const result = assertItemsPayload({ items: [item({ question: undefined })] });
+
+    expect(result.ok).toBe(false);
+    expect(result.errorCode).toBe(ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID);
+    expect(result.error).toContain("missing question text");
+  });
+
+  it("passes items with compatible fallback question text fields", () => {
+    const result = assertItemsPayload({
+      items: [item({ question: undefined, stem: "下列哪一項說明正確？" })],
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
   it("passes normal payloads with minimum qualityMeta", () => {
     const payload = { items: [item()] };
     const result = assertItemsPayload(payload);
