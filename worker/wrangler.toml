@@ -1,4 +1,4 @@
-name = "exam-wizard-next-proxy"
+﻿name = "exam-wizard-next-proxy"
 main = "src/index.js"
 compatibility_date = "2026-06-15"
 
@@ -14,5 +14,10 @@ database_name = "exam-wizard-generation-jobs"
 database_id = "6a96cdf9-2a8a-45ad-a6ee-9db303db5a9b"
 migrations_dir = "migrations"
 
-# 部署前請執行：
+[[workflows]]
+name = "exam-wizard-generation-workflow"
+binding = "GENERATION_WORKFLOW"
+class_name = "GenerationWorkflow"
+
+# Set the Gemini API key before deploying:
 # npx wrangler secret put GEMINI_API_KEY

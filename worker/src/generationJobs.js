@@ -281,6 +281,28 @@ async function persistGenerationJob(db, jobId, plan) {
   return { ok: true };
 }
 
+async function startGenerationWorkflow(workflow, jobId, plan) {
+  if (!workflow || typeof workflow.create !== "function") {
+    return { ok: true, skipped: true };
+  }
+
+  try {
+    await workflow.create({
+      id: jobId,
+      params: {
+        jobId,
+        request: plan.request,
+        batches: plan.batches,
+        progress: plan.progress,
+      },
+    });
+  } catch {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_UNAVAILABLE };
+  }
+
+  return { ok: true };
+}
+
 async function readGenerationJob(db, jobId) {
   if (!hasD1Interface(db)) {
     return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_UNAVAILABLE, status: 501 };
@@ -325,6 +347,49 @@ async function readGenerationJob(db, jobId) {
       },
     }),
   };
+}
+
+export async function markGenerationJobRunning(db, jobId) {
+  if (!hasD1Interface(db) || !isValidJobId(jobId)) {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_UNAVAILABLE };
+  }
+
+  try {
+    await db.prepare(`
+      UPDATE generation_jobs
+      SET
+        status = ?,
+        current_batch = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE job_id = ?
+    `).bind(JOB_STATUS.RUNNING, 1, jobId).run();
+  } catch {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_STATUS_INVALID };
+  }
+
+  return { ok: true };
+}
+
+async function markGenerationJobFailed(db, jobId, errorCode) {
+  if (!hasD1Interface(db) || !isValidJobId(jobId)) {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_UNAVAILABLE };
+  }
+
+  try {
+    await db.prepare(`
+      UPDATE generation_jobs
+      SET
+        status = ?,
+        error_code = ?,
+        failed_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE job_id = ?
+    `).bind(JOB_STATUS.FAILED, errorCode, jobId).run();
+  } catch {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_STATUS_INVALID };
+  }
+
+  return { ok: true };
 }
 
 export async function cleanupExpiredGenerationJobs(db, options = {}) {
@@ -399,6 +464,12 @@ export async function handleCreateGenerationJob(request, env) {
   if (hasD1Interface(db)) {
     const saved = await persistGenerationJob(db, jobId, plan);
     if (!saved.ok) return errorResponse(request, env, saved, 502);
+
+    const workflowStarted = await startGenerationWorkflow(getWorkflow(env), jobId, plan);
+    if (!workflowStarted.ok) {
+      await markGenerationJobFailed(db, jobId, workflowStarted.errorCode);
+      return errorResponse(request, env, workflowStarted, 502);
+    }
 
     return jsonResponse(request, env, safeJobPayload({ jobId, status: JOB_STATUS.QUEUED, progress: plan.progress }), 202);
   }

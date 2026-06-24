@@ -2,10 +2,45 @@ import { buildExtractObjectivesPrompt, buildGenerateItemsPrompt, buildNormalizeO
 import { callGemini } from "./gemini.js";
 import { ERROR_CODES, assertItemsPayload, assertObjectivesPayload, extractJsonObject, readJson, safeErrorPayload } from "./json.js";
 import { handleOptions, jsonResponse } from "./cors.js";
-import { routeGenerationJobRequest } from "./generationJobs.js";
+import { markGenerationJobRunning, routeGenerationJobRequest } from "./generationJobs.js";
+
+let WorkflowEntrypointBase = class {};
+try {
+  const workersRuntime = await import("cloudflare:workers");
+  if (typeof workersRuntime.WorkflowEntrypoint === "function") {
+    WorkflowEntrypointBase = workersRuntime.WorkflowEntrypoint;
+  }
+} catch {
+  // Node-based unit tests do not provide the Cloudflare runtime module.
+}
 
 function errorResponse(request, env, result, status) {
   return jsonResponse(request, env, safeErrorPayload(result), status);
+}
+
+export class GenerationWorkflow extends WorkflowEntrypointBase {
+  async run(event, step) {
+    const jobId = event?.payload?.jobId;
+    const progress = event?.payload?.progress || {};
+
+    const result = await step.do("mark job running", async () => {
+      const marked = await markGenerationJobRunning(this.env?.GENERATION_JOBS_DB, jobId);
+      if (!marked.ok) return marked;
+      return {
+        ok: true,
+        jobId,
+        status: "running",
+        requestedItemCount: progress.requestedItemCount,
+        batchSize: progress.batchSize,
+        batchCount: progress.batchCount,
+        completedBatchCount: 0,
+        completedItemCount: 0,
+        currentBatch: 1,
+      };
+    });
+
+    return result;
+  }
 }
 
 async function handleExtractObjectives(request, env) {

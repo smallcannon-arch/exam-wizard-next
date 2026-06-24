@@ -13,10 +13,18 @@ describe("async generation D1 resource prep", () => {
     expect(wranglerConfig).toContain('migrations_dir = "migrations"');
   });
 
+  it("binds the generation Workflow in wrangler config", () => {
+    expect(wranglerConfig).toContain('name = "exam-wizard-generation-workflow"');
+    expect(wranglerConfig).toContain('binding = "GENERATION_WORKFLOW"');
+    expect(wranglerConfig).toContain('class_name = "GenerationWorkflow"');
+  });
+
   it("keeps the example config free of the real D1 database id", () => {
     expect(wranglerExample).toContain('binding = "GENERATION_JOBS_DB"');
     expect(wranglerExample).toContain('database_name = "exam-wizard-generation-jobs"');
     expect(wranglerExample).toContain('database_id = "<D1_DATABASE_ID>"');
+    expect(wranglerExample).toContain('binding = "GENERATION_WORKFLOW"');
+    expect(wranglerExample).toContain('class_name = "GenerationWorkflow"');
     expect(wranglerExample).not.toContain("6a96cdf9-2a8a-45ad-a6ee-9db303db5a9b");
   });
 
