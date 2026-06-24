@@ -666,6 +666,36 @@ describe("async generation job skeleton", () => {
     expect(body.errorCode).toBe(ERROR_CODES.ASYNC_JOB_NOT_FOUND);
   });
 
+  it("returns a safe errorCode for failed D1-backed job status", async () => {
+    const db = createFakeJobsDb();
+    const jobId = "gen_failed_status_12345678";
+    db.seedJob({
+      job_id: jobId,
+      status: "failed",
+      requested_item_count: 25,
+      batch_size: 4,
+      batch_count: 7,
+      completed_batch_count: 0,
+      completed_item_count: 0,
+      current_batch: 1,
+      error_code: ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID,
+    });
+
+    const response = await worker.fetch(new Request(`https://worker.test/generation-jobs/${jobId}`), {
+      ALLOWED_ORIGIN: "*",
+      GENERATION_JOBS_DB: db,
+    });
+    const body = await readJson(response);
+    const text = JSON.stringify(body).toLowerCase();
+
+    expect(response.status).toBe(200);
+    expect(body.status).toBe("failed");
+    expect(body.errorCode).toBe(ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID);
+    expect(text).not.toContain("raw prompt");
+    expect(text).not.toContain("raw output");
+    expect(text).not.toContain("token");
+  });
+
   it("returns completed D1-backed job results through the safe result endpoint", async () => {
     const db = createFakeJobsDb();
     const jobId = "gen_result_12345678";
