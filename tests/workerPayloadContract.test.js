@@ -100,6 +100,36 @@ describe("Worker items payload contract", () => {
     expect(result.ok).toBe(true);
   });
 
+  it("rejects items that reference reading text without stimulus", () => {
+    const result = assertItemsPayload({
+      items: [item({ question: "根據本文，下列哪一項說明正確？", stimulus: "" })],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errorCode).toBe(ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID);
+    expect(result.error).toContain("missing stimulus");
+  });
+
+  it("rejects reading-comprehension items without stimulus", () => {
+    const result = assertItemsPayload({
+      items: [item({ questionType: "閱讀測驗", stimulus: undefined })],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errorCode).toBe(ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID);
+  });
+
+  it("passes items that reference reading text with stimulus", () => {
+    const result = assertItemsPayload({
+      items: [item({
+        question: "根據本文，下列哪一項說明正確？",
+        stimulus: "小明閱讀一篇關於校園植物的短文，並整理出主要內容。",
+      })],
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
   it("passes normal payloads with minimum qualityMeta", () => {
     const payload = { items: [item()] };
     const result = assertItemsPayload(payload);
