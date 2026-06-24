@@ -25,7 +25,8 @@ describe("renderAuditTable", () => {
       items,
       sections,
     });
-    expect(html).toContain("新竹市香山區內湖國小");
+    expect(html).toContain("學校名稱");
+    expect(html).not.toContain("新竹市香山區內湖國小");
     expect(html).toContain("114學年度");
     expect(html).toContain("五年級／自然科學");
     // Should contain cell mapping like "第 1(1)、1(2) 題"

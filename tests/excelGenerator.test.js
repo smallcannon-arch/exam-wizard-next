@@ -34,7 +34,8 @@ describe("excelGenerator", () => {
     expect(xml).toContain('ss:Name="第一單元"');
     expect(xml).toContain('ss:Name="第二單元"');
     expect(xml).toContain("江志宏");
-    expect(xml).toContain("新竹市香山區內湖國小");
+    expect(xml).toContain("學校名稱");
+    expect(xml).not.toContain("新竹市香山區內湖國小");
   });
 
   it("國語科生成單一評量向度分析表工作表", () => {

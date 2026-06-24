@@ -1090,7 +1090,7 @@ function renderStep1() {
 
   return `<section class="panel">
     <div class="grid">
-      <label class="field-lg">學校名稱<input data-project="schoolName" value="${escapeHtml(state.project.schoolName)}"></label>
+      <label class="field-lg">學校名稱<input data-project="schoolName" placeholder="請輸入學校名稱" value="${escapeHtml(state.project.schoolName)}"></label>
       <label class="field-lg">學年度<input data-project="schoolYear" placeholder="請輸入學年度" value="${escapeHtml(state.project.schoolYear)}"></label>
       <label class="field-lg">學期
         <select data-project="semester">
@@ -2130,6 +2130,7 @@ app.addEventListener("click", (event) => {
     if (targetStep === 2) {
       const errors = [];
       const p = state.project || {};
+      if (!String(p.schoolName || "").trim()) errors.push("「學校名稱」未填寫。");
       if (!String(p.schoolYear || "").trim()) errors.push("「學年度」未填寫。");
       if (!String(p.semester || "").trim()) errors.push("「學期」未選擇。");
       if (!String(p.examType || "").trim()) errors.push("「評量次數」未選擇。");

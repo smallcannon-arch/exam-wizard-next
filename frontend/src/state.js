@@ -6,7 +6,7 @@ export function createInitialState() {
       subject: "",
       frameworkId: "",
       grade: "",
-      schoolName: "新竹市香山區內湖國小",
+      schoolName: "",
       schoolYear: "",
       semester: "",
       examType: "",

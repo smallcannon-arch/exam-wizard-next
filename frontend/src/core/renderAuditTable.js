@@ -152,7 +152,7 @@ export function renderAuditTable({ project = {}, objectives = [], items = [], pl
 
   const headerHtml = `
     <div class="audit-header" style="text-align:center; margin-bottom:16px;">
-      <h2 style="margin:0 0 6px 0; font-size:20px;">${escapeHtml(project.schoolName || "新竹市香山區內湖國小")}</h2>
+      <h2 style="margin:0 0 6px 0; font-size:20px;">${escapeHtml(project.schoolName || "學校名稱")}</h2>
       <h3 style="margin:0 0 12px 0; font-size:16px;">${escapeHtml(project.schoolYear || "114")}學年度 ${escapeHtml(project.semester || "第2學期")} ${escapeHtml(project.examType || "定期評量")} 試題審核表</h3>
       <table style="width:100%; border-collapse:collapse; margin-bottom:12px;">
         <tr>
