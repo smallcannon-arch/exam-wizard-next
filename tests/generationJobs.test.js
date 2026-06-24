@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import worker from "../worker/src/index.js";
-import { createGenerationJobPlan } from "../worker/src/generationJobs.js";
+import { cleanupExpiredGenerationJobs, createGenerationJobPlan } from "../worker/src/generationJobs.js";
 import { ERROR_CODES } from "../worker/src/json.js";
 
 function intent(index) {
@@ -42,6 +42,29 @@ function createFakeJobsDb() {
 
   const db = {
     state,
+    seedJob(job) {
+      state.jobs.push({
+        status: "queued",
+        requested_item_count: 4,
+        batch_size: 4,
+        batch_count: 1,
+        completed_batch_count: 0,
+        completed_item_count: 0,
+        current_batch: null,
+        created_at: "2026-06-24T00:00:00.000Z",
+        ...job,
+      });
+    },
+    seedBatch(batch) {
+      state.batches.push({
+        batch_number: 1,
+        status: "queued",
+        expected_item_count: 4,
+        completed_item_count: 0,
+        retry_count: 0,
+        ...batch,
+      });
+    },
     prepare(sql) {
       return {
         bind(...values) {
@@ -74,11 +97,41 @@ function createFakeJobsDb() {
                 return { success: true };
               }
 
+              if (/DELETE\s+FROM\s+generation_job_batches/i.test(sql)) {
+                const before = state.batches.length;
+                state.batches = state.batches.filter((batch) => batch.job_id !== values[0]);
+                return { success: true, meta: { changes: before - state.batches.length } };
+              }
+
+              if (/DELETE\s+FROM\s+generation_jobs/i.test(sql)) {
+                const before = state.jobs.length;
+                state.jobs = state.jobs.filter((job) => job.job_id !== values[0]);
+                return { success: true, meta: { changes: before - state.jobs.length } };
+              }
+
               throw new Error("unexpected SQL");
             },
             async first() {
               if (/FROM\s+generation_jobs/i.test(sql)) {
                 return state.jobs.find((job) => job.job_id === values[0]) || null;
+              }
+
+              throw new Error("unexpected SQL");
+            },
+            async all() {
+              if (/SELECT\s+job_id\s+FROM\s+generation_jobs/i.test(sql)) {
+                const [nowIso, limit] = values;
+                const results = state.jobs
+                  .filter((job) => job.expires_at && job.expires_at <= nowIso)
+                  .sort((left, right) => {
+                    const expiresCompare = String(left.expires_at).localeCompare(String(right.expires_at));
+                    if (expiresCompare !== 0) return expiresCompare;
+                    return String(left.created_at || "").localeCompare(String(right.created_at || ""));
+                  })
+                  .slice(0, limit)
+                  .map((job) => ({ job_id: job.job_id }));
+
+                return { results, success: true };
               }
 
               throw new Error("unexpected SQL");
@@ -209,6 +262,71 @@ describe("async generation job skeleton", () => {
     expect(response.status).toBe(404);
     expect(body.ok).toBe(false);
     expect(body.errorCode).toBe(ERROR_CODES.ASYNC_JOB_NOT_FOUND);
+  });
+
+  it("cleans only expired D1-backed jobs and their batch metadata", async () => {
+    const db = createFakeJobsDb();
+    db.seedJob({
+      job_id: "gen_expired_12345678",
+      expires_at: "2026-06-24T00:00:00.000Z",
+      created_at: "2026-06-23T00:00:00.000Z",
+    });
+    db.seedBatch({ job_id: "gen_expired_12345678" });
+    db.seedJob({
+      job_id: "gen_future_12345678",
+      expires_at: "2026-06-25T00:00:00.000Z",
+      created_at: "2026-06-23T00:01:00.000Z",
+    });
+    db.seedBatch({ job_id: "gen_future_12345678" });
+    db.seedJob({
+      job_id: "gen_no_expiry_12345678",
+      expires_at: null,
+      created_at: "2026-06-23T00:02:00.000Z",
+    });
+    db.seedBatch({ job_id: "gen_no_expiry_12345678" });
+
+    const result = await cleanupExpiredGenerationJobs(db, {
+      now: "2026-06-24T00:00:01.000Z",
+    });
+
+    expect(result).toEqual({ ok: true, deletedJobCount: 1 });
+    expect(db.state.jobs.map((job) => job.job_id)).toEqual([
+      "gen_future_12345678",
+      "gen_no_expiry_12345678",
+    ]);
+    expect(db.state.batches.map((batch) => batch.job_id)).toEqual([
+      "gen_future_12345678",
+      "gen_no_expiry_12345678",
+    ]);
+  });
+
+  it("limits expired D1 job cleanup batches", async () => {
+    const db = createFakeJobsDb();
+    for (let index = 1; index <= 3; index += 1) {
+      const jobId = `gen_expired_${index}2345678`;
+      db.seedJob({
+        job_id: jobId,
+        expires_at: `2026-06-24T00:00:0${index}.000Z`,
+        created_at: `2026-06-23T00:00:0${index}.000Z`,
+      });
+      db.seedBatch({ job_id: jobId });
+    }
+
+    const result = await cleanupExpiredGenerationJobs(db, {
+      now: "2026-06-24T00:00:10.000Z",
+      limit: 2,
+    });
+
+    expect(result).toEqual({ ok: true, deletedJobCount: 2 });
+    expect(db.state.jobs.map((job) => job.job_id)).toEqual(["gen_expired_32345678"]);
+    expect(db.state.batches.map((batch) => batch.job_id)).toEqual(["gen_expired_32345678"]);
+  });
+
+  it("returns a safe cleanup unavailable error when D1 is absent", async () => {
+    const result = await cleanupExpiredGenerationJobs(null);
+
+    expect(result.ok).toBe(false);
+    expect(result.errorCode).toBe(ERROR_CODES.ASYNC_JOB_UNAVAILABLE);
   });
 
   it("creates a Workflow-backed async generation job without returning raw request data", async () => {

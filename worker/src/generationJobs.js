@@ -33,6 +33,8 @@ const WORKFLOW_STATUS_MAP = Object.freeze({
 });
 
 const JOB_EXPIRES_AFTER_HOURS = 24;
+const DEFAULT_CLEANUP_LIMIT = 100;
+const MAX_CLEANUP_LIMIT = 500;
 
 function errorResponse(request, env, result, status) {
   return jsonResponse(request, env, safeErrorPayload(result), status);
@@ -194,6 +196,17 @@ function createExpiresAt(now = Date.now()) {
   return new Date(now + JOB_EXPIRES_AFTER_HOURS * 60 * 60 * 1000).toISOString();
 }
 
+function toIsoTimestamp(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function normalizeCleanupLimit(value = DEFAULT_CLEANUP_LIMIT) {
+  const limit = Number(value);
+  if (!Number.isFinite(limit)) return DEFAULT_CLEANUP_LIMIT;
+  return Math.min(Math.max(Math.floor(limit), 1), MAX_CLEANUP_LIMIT);
+}
+
 function createJobInsertStatements(db, jobId, plan) {
   const { progress, batches } = plan;
   const statements = [
@@ -312,6 +325,61 @@ async function readGenerationJob(db, jobId) {
       },
     }),
   };
+}
+
+export async function cleanupExpiredGenerationJobs(db, options = {}) {
+  if (!hasD1Interface(db)) {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_UNAVAILABLE };
+  }
+
+  const nowIso = toIsoTimestamp(options.now || Date.now());
+  if (!nowIso) {
+    return { ok: false, error: "cleanup timestamp is invalid.", errorCode: ERROR_CODES.REQUEST_INVALID };
+  }
+
+  const limit = normalizeCleanupLimit(options.limit);
+  let rows;
+  try {
+    const result = await db.prepare(`
+      SELECT job_id
+      FROM generation_jobs
+      WHERE expires_at IS NOT NULL
+        AND expires_at <= ?
+      ORDER BY expires_at, created_at
+      LIMIT ?
+    `).bind(nowIso, limit).all();
+    rows = Array.isArray(result?.results) ? result.results : [];
+  } catch {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_STATUS_INVALID };
+  }
+
+  const jobIds = rows
+    .map((row) => row?.job_id)
+    .filter((jobId) => isValidJobId(jobId));
+
+  if (jobIds.length === 0) {
+    return { ok: true, deletedJobCount: 0 };
+  }
+
+  const statements = [];
+  for (const jobId of jobIds) {
+    statements.push(db.prepare("DELETE FROM generation_job_batches WHERE job_id = ?").bind(jobId));
+    statements.push(db.prepare("DELETE FROM generation_jobs WHERE job_id = ?").bind(jobId));
+  }
+
+  try {
+    if (typeof db.batch === "function") {
+      await db.batch(statements);
+    } else {
+      for (const statement of statements) {
+        await statement.run();
+      }
+    }
+  } catch {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_STATUS_INVALID };
+  }
+
+  return { ok: true, deletedJobCount: jobIds.length };
 }
 
 export async function handleCreateGenerationJob(request, env) {
