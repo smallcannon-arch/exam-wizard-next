@@ -35,6 +35,7 @@ const WORKFLOW_STATUS_MAP = Object.freeze({
 const JOB_EXPIRES_AFTER_HOURS = 24;
 const DEFAULT_CLEANUP_LIMIT = 100;
 const MAX_CLEANUP_LIMIT = 500;
+const SAFE_ERROR_CODES = new Set(Object.values(ERROR_CODES));
 
 function errorResponse(request, env, result, status) {
   return jsonResponse(request, env, safeErrorPayload(result), status);
@@ -130,7 +131,7 @@ export function createGenerationJobPlan(data = {}) {
 function safeProgress(progress = {}) {
   const requestedItemCount = toSafeCount(progress.requestedItemCount);
   const batchCount = toSafeCount(progress.batchCount);
-  return {
+  const safe = {
     requestedItemCount,
     batchSize: toSafeCount(progress.batchSize, ASYNC_GENERATION_BATCH_SIZE),
     batchCount,
@@ -140,6 +141,10 @@ function safeProgress(progress = {}) {
       ? null
       : Math.min(toSafeCount(progress.currentBatch), Math.max(batchCount, 1)),
   };
+  if (SAFE_ERROR_CODES.has(progress.errorCode)) {
+    safe.errorCode = progress.errorCode;
+  }
+  return safe;
 }
 
 function safeJobPayload({ jobId, status, progress }) {
@@ -319,7 +324,8 @@ async function readGenerationJob(db, jobId) {
         batch_count,
         completed_batch_count,
         completed_item_count,
-        current_batch
+        current_batch,
+        error_code
       FROM generation_jobs
       WHERE job_id = ?
       LIMIT 1
@@ -344,6 +350,7 @@ async function readGenerationJob(db, jobId) {
         completedBatchCount: row.completed_batch_count,
         completedItemCount: row.completed_item_count,
         currentBatch: row.current_batch,
+        errorCode: row.error_code,
       },
     }),
   };
