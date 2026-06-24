@@ -1,0 +1,41 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+
+const wranglerConfig = readFileSync("worker/wrangler.toml", "utf8");
+const wranglerExample = readFileSync("worker/wrangler.toml.example", "utf8");
+const migration = readFileSync("worker/migrations/0001_generation_jobs.sql", "utf8");
+
+describe("async generation D1 resource prep", () => {
+  it("binds the generation jobs D1 database in wrangler config", () => {
+    expect(wranglerConfig).toContain('binding = "GENERATION_JOBS_DB"');
+    expect(wranglerConfig).toContain('database_name = "exam-wizard-generation-jobs"');
+    expect(wranglerConfig).toContain('database_id = "6a96cdf9-2a8a-45ad-a6ee-9db303db5a9b"');
+    expect(wranglerConfig).toContain('migrations_dir = "migrations"');
+  });
+
+  it("keeps the example config free of the real D1 database id", () => {
+    expect(wranglerExample).toContain('binding = "GENERATION_JOBS_DB"');
+    expect(wranglerExample).toContain('database_name = "exam-wizard-generation-jobs"');
+    expect(wranglerExample).toContain('database_id = "<D1_DATABASE_ID>"');
+    expect(wranglerExample).not.toContain("6a96cdf9-2a8a-45ad-a6ee-9db303db5a9b");
+  });
+
+  it("defines job and batch metadata tables for async generation", () => {
+    expect(migration).toContain("CREATE TABLE IF NOT EXISTS generation_jobs");
+    expect(migration).toContain("CREATE TABLE IF NOT EXISTS generation_job_batches");
+    expect(migration).toContain("requested_item_count INTEGER NOT NULL CHECK (requested_item_count BETWEEN 1 AND 50)");
+    expect(migration).toContain("result_json TEXT");
+    expect(migration).toContain("FOREIGN KEY (job_id) REFERENCES generation_jobs(job_id) ON DELETE CASCADE");
+  });
+
+  it("does not define raw prompt, raw output, secret, header, or stack trace storage columns", () => {
+    const normalized = migration.toLowerCase();
+
+    expect(normalized).not.toMatch(/\braw_prompt\b/);
+    expect(normalized).not.toMatch(/\braw_output\b/);
+    expect(normalized).not.toMatch(/\bapi_key\b/);
+    expect(normalized).not.toMatch(/\btoken\b\s+(text|varchar|blob)/);
+    expect(normalized).not.toMatch(/\bheaders?\b\s+(text|varchar|blob)/);
+    expect(normalized).not.toMatch(/\bstack_trace\b/);
+  });
+});
