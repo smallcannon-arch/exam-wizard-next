@@ -253,6 +253,23 @@ describe("worker prompts", () => {
     expect(prompt).toContain("AI_STIMULUS_MISSING");
   });
 
+  it("國語 prompt 要求可見文字避免不必要英文並鼓勵迷思標籤分化", () => {
+    const prompt = buildGenerateItemsPrompt({
+      project,
+      materialText: "課文重點",
+      objectives,
+      intents,
+      checkedChineseSubcategories: ["提取訊息"],
+    });
+
+    expect(prompt).toContain("國語題目的 `question`、`options`、`explanation` 必須使用自然中文");
+    expect(prompt).toContain("不得混入不必要英文單字或連接詞");
+    expect(prompt).toContain("Because、and、or、the");
+    expect(prompt).toContain("只有教材本身明確要求的英文字母、專有名詞或選項代號可保留");
+    expect(prompt).toContain("misconceptionTag 應盡量分化");
+    expect(prompt).toContain("不要三個錯誤選項都使用同一個標籤");
+  });
+
   it("數學 prompt 套用 qualityMeta / distractorDesign 壓縮契約且保留既有 JSON contract", () => {
     const mathPrompt = buildGenerateItemsPrompt({
       project: mathProject,
