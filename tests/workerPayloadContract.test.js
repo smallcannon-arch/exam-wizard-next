@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ERROR_CODES, assertItemsPayload, safeErrorPayload } from "../worker/src/json.js";
+import { CONTRACT_VIOLATION_TYPES, ERROR_CODES, assertItemsPayload, safeErrorPayload } from "../worker/src/json.js";
 
 function qualityMeta(overrides = {}) {
   return {
@@ -159,6 +159,42 @@ describe("Worker items payload contract", () => {
 
     expect(result.ok).toBe(false);
     expect(result.errorCode).toBe(ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID);
+    expect(result.contractViolation).toEqual({
+      type: CONTRACT_VIOLATION_TYPES.OPTIONS_COUNT_INVALID,
+      types: [CONTRACT_VIOLATION_TYPES.OPTIONS_COUNT_INVALID],
+      itemIndex: 1,
+      field: "options",
+      optionCode: "E",
+    });
+  });
+
+  it("rejects choice items with empty option text and returns safe metadata", () => {
+    const result = assertItemsPayload({
+      items: [item({ options: ["A", "B", "", "D"] })],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errorCode).toBe(ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID);
+    expect(result.contractViolation).toMatchObject({
+      type: CONTRACT_VIOLATION_TYPES.OPTIONS_TEXT_INVALID,
+      itemIndex: 1,
+      field: "options",
+    });
+  });
+
+  it("rejects choice items with invalid answer codes and returns safe metadata", () => {
+    const result = assertItemsPayload({
+      items: [item({ answer: "E" })],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errorCode).toBe(ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID);
+    expect(result.contractViolation).toMatchObject({
+      type: CONTRACT_VIOLATION_TYPES.ANSWER_CODE_INVALID,
+      itemIndex: 1,
+      field: "answer",
+      optionCode: "E",
+    });
   });
 
   it("rejects distractorDesign keys outside A/B/C/D", () => {
@@ -177,6 +213,12 @@ describe("Worker items payload contract", () => {
 
     expect(result.ok).toBe(false);
     expect(result.errorCode).toBe(ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID);
+    expect(result.contractViolation).toMatchObject({
+      type: CONTRACT_VIOLATION_TYPES.DISTRACTOR_KEY_INVALID,
+      itemIndex: 1,
+      field: "qualityMeta.distractorDesign",
+      optionCode: "E",
+    });
   });
 
   it("rejects choice items missing a wrong-option distractorDesign entry", () => {
@@ -193,6 +235,12 @@ describe("Worker items payload contract", () => {
 
     expect(result.ok).toBe(false);
     expect(result.errorCode).toBe(ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID);
+    expect(result.contractViolation).toMatchObject({
+      type: CONTRACT_VIOLATION_TYPES.DISTRACTOR_MISSING_WRONG_OPTION,
+      itemIndex: 1,
+      field: "qualityMeta.distractorDesign",
+      optionCode: "D",
+    });
   });
 
   it("rejects distractorDesign entries for the correct answer", () => {
@@ -211,6 +259,12 @@ describe("Worker items payload contract", () => {
 
     expect(result.ok).toBe(false);
     expect(result.errorCode).toBe(ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID);
+    expect(result.contractViolation).toMatchObject({
+      type: CONTRACT_VIOLATION_TYPES.DISTRACTOR_CORRECT_ANSWER_INCLUDED,
+      itemIndex: 1,
+      field: "qualityMeta.distractorDesign",
+      optionCode: "A",
+    });
   });
 
   it("rejects distractorDesign entries missing required fields", () => {
@@ -231,6 +285,12 @@ describe("Worker items payload contract", () => {
 
     expect(result.ok).toBe(false);
     expect(result.errorCode).toBe(ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID);
+    expect(result.contractViolation).toMatchObject({
+      type: CONTRACT_VIOLATION_TYPES.DISTRACTOR_REQUIRED_FIELD_MISSING,
+      itemIndex: 1,
+      field: "misconceptionTag",
+      optionCode: "B",
+    });
   });
 
   it("accepts lowercase wrong-option distractorDesign keys after normalization", () => {

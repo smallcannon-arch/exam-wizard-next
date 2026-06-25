@@ -6,6 +6,7 @@ const wranglerExample = readFileSync("worker/wrangler.toml.example", "utf8");
 const migration = readFileSync("worker/migrations/0001_generation_jobs.sql", "utf8");
 const diagnosticsMigration = readFileSync("worker/migrations/0002_batch_safe_diagnostics.sql", "utf8");
 const upstreamDiagnosticsMigration = readFileSync("worker/migrations/0003_batch_upstream_status.sql", "utf8");
+const contractViolationDiagnosticsMigration = readFileSync("worker/migrations/0004_contract_violation_diagnostics.sql", "utf8");
 
 describe("async generation D1 resource prep", () => {
   it("binds the generation jobs D1 database in wrangler config", () => {
@@ -39,7 +40,7 @@ describe("async generation D1 resource prep", () => {
   });
 
   it("does not define raw prompt, raw output, secret, header, or stack trace storage columns", () => {
-    const normalized = `${migration}\n${diagnosticsMigration}\n${upstreamDiagnosticsMigration}`.toLowerCase();
+    const normalized = `${migration}\n${diagnosticsMigration}\n${upstreamDiagnosticsMigration}\n${contractViolationDiagnosticsMigration}`.toLowerCase();
 
     expect(normalized).not.toMatch(/\braw_prompt\b/);
     expect(normalized).not.toMatch(/\braw_output\b/);
@@ -62,5 +63,16 @@ describe("async generation D1 resource prep", () => {
     expect(upstreamDiagnosticsMigration).toContain("ALTER TABLE generation_job_batches");
     expect(upstreamDiagnosticsMigration).toContain("ADD COLUMN upstream_status INTEGER");
     expect(upstreamDiagnosticsMigration).toContain("BETWEEN 100 AND 599");
+  });
+
+  it("adds nullable safe contract violation metadata in a follow-up migration", () => {
+    expect(contractViolationDiagnosticsMigration).toContain("ALTER TABLE generation_job_batches");
+    expect(contractViolationDiagnosticsMigration).toContain("ADD COLUMN contract_violation_type TEXT");
+    expect(contractViolationDiagnosticsMigration).toContain("ADD COLUMN contract_violation_types TEXT");
+    expect(contractViolationDiagnosticsMigration).toContain("ADD COLUMN contract_violation_item_index INTEGER");
+    expect(contractViolationDiagnosticsMigration).toContain("ADD COLUMN contract_violation_field TEXT");
+    expect(contractViolationDiagnosticsMigration).toContain("ADD COLUMN contract_violation_option_code TEXT");
+    expect(contractViolationDiagnosticsMigration).toContain("OPTIONS_COUNT_INVALID");
+    expect(contractViolationDiagnosticsMigration).toContain("DISTRACTOR_REQUIRED_FIELD_MISSING");
   });
 });

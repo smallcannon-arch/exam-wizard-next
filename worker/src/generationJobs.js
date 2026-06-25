@@ -1,5 +1,5 @@
 import { handleOptions, jsonResponse } from "./cors.js";
-import { ERROR_CODES, assertItemsPayload, readJson, safeErrorPayload } from "./json.js";
+import { CONTRACT_VIOLATION_TYPES, ERROR_CODES, assertItemsPayload, readJson, safeErrorPayload } from "./json.js";
 
 export const ASYNC_GENERATION_MAX_ITEM_COUNT = 50;
 export const ASYNC_GENERATION_BATCH_SIZE = 4;
@@ -40,6 +40,17 @@ const MAX_CLEANUP_LIMIT = 500;
 const SAFE_ERROR_CODES = new Set(Object.values(ERROR_CODES));
 const SAFE_BATCH_STATUSES = new Set(["queued", "running", "validating", "completed", "failed_retryable", "failed_terminal"]);
 const SAFE_JSON_CLASSIFICATION_SOURCES = new Set(["none", "parser", "finish_reason"]);
+const SAFE_CONTRACT_VIOLATION_TYPES = new Set(Object.values(CONTRACT_VIOLATION_TYPES));
+const SAFE_CONTRACT_VIOLATION_FIELDS = new Set([
+  "options",
+  "answer",
+  "qualityMeta.distractorDesign",
+  "misconceptionTag",
+  "misconceptionDescription",
+  "whyStudentsMayChooseIt",
+  "whyItIsWrong",
+  "revisionNote",
+]);
 
 function errorResponse(request, env, result, status) {
   return jsonResponse(request, env, safeErrorPayload(result), status);
@@ -74,6 +85,64 @@ function normalizeFinishReason(value) {
 function normalizeJsonClassificationSource(value) {
   const text = String(value || "").trim();
   return SAFE_JSON_CLASSIFICATION_SOURCES.has(text) ? text : null;
+}
+
+function normalizeContractViolationType(value) {
+  const text = String(value || "").trim().toUpperCase();
+  return SAFE_CONTRACT_VIOLATION_TYPES.has(text) ? text : null;
+}
+
+function normalizeContractViolationTypes(value) {
+  if (Array.isArray(value)) {
+    return Array.from(new Set(value.map(normalizeContractViolationType).filter(Boolean)));
+  }
+  if (typeof value !== "string" || !value.trim()) return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) return normalizeContractViolationTypes(parsed);
+  } catch {
+    // Fall back to pipe/comma separated text below.
+  }
+
+  return Array.from(new Set(value.split(/[|,]/).map(normalizeContractViolationType).filter(Boolean)));
+}
+
+function normalizeContractViolationField(value) {
+  const text = String(value || "").trim();
+  return SAFE_CONTRACT_VIOLATION_FIELDS.has(text) ? text : null;
+}
+
+function normalizeContractViolationOptionCode(value) {
+  const text = String(value || "").trim().toUpperCase();
+  if (/^[A-Z]$/.test(text)) return text;
+  return text === "OTHER" ? "OTHER" : null;
+}
+
+function normalizeContractViolationItemIndex(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const count = Number(value);
+  return Number.isInteger(count) && count > 0 ? count : null;
+}
+
+function safeContractViolation(value = {}) {
+  const detail = isPlainObject(value) ? value : {};
+  const types = normalizeContractViolationTypes(detail.types);
+  const primaryType = normalizeContractViolationType(detail.type) || types[0] || null;
+  const safeTypes = primaryType && !types.includes(primaryType) ? [primaryType, ...types] : types;
+
+  return {
+    type: primaryType,
+    types: safeTypes,
+    itemIndex: normalizeContractViolationItemIndex(detail.itemIndex),
+    field: normalizeContractViolationField(detail.field),
+    optionCode: normalizeContractViolationOptionCode(detail.optionCode),
+  };
+}
+
+function serializeContractViolationTypes(types = []) {
+  const safeTypes = normalizeContractViolationTypes(types);
+  return safeTypes.length > 0 ? JSON.stringify(safeTypes) : null;
 }
 
 function safeBatchDiagnostics(value = {}) {
@@ -119,6 +188,23 @@ function safeBatchPayload(row = {}) {
     upstreamStatus: row.upstream_status,
   });
   if (Object.keys(diagnostics).length > 0) batch.diagnostics = diagnostics;
+
+  const contractViolation = safeContractViolation({
+    type: row.contract_violation_type,
+    types: row.contract_violation_types,
+    itemIndex: row.contract_violation_item_index,
+    field: row.contract_violation_field,
+    optionCode: row.contract_violation_option_code,
+  });
+  if (contractViolation.type || contractViolation.types.length > 0) {
+    batch.contractViolation = {
+      ...(contractViolation.type ? { type: contractViolation.type } : {}),
+      ...(contractViolation.types.length > 0 ? { types: contractViolation.types } : {}),
+      ...(contractViolation.itemIndex !== null ? { itemIndex: contractViolation.itemIndex } : {}),
+      ...(contractViolation.field ? { field: contractViolation.field } : {}),
+      ...(contractViolation.optionCode ? { optionCode: contractViolation.optionCode } : {}),
+    };
+  }
   return batch;
 }
 
@@ -458,7 +544,12 @@ async function readGenerationJobBatches(db, jobId) {
         output_length,
         json_candidate_length,
         json_classification_source,
-        upstream_status
+        upstream_status,
+        contract_violation_type,
+        contract_violation_types,
+        contract_violation_item_index,
+        contract_violation_field,
+        contract_violation_option_code
       FROM generation_job_batches
       WHERE job_id = ?
       ORDER BY batch_number ASC
@@ -657,6 +748,7 @@ export async function markGenerationBatchFailed(db, jobId, batchNumber, errorCod
   const safeLatencyMs = toSafeCount(options.latencyMs);
   const safeRetryCount = toSafeCount(options.retryCount);
   const safeDiagnostics = safeBatchDiagnostics(options.diagnostics);
+  const safeViolation = safeContractViolation(options.contractViolation);
 
   try {
     const statements = [
@@ -672,6 +764,11 @@ export async function markGenerationBatchFailed(db, jobId, batchNumber, errorCod
           json_candidate_length = ?,
           json_classification_source = ?,
           upstream_status = ?,
+          contract_violation_type = ?,
+          contract_violation_types = ?,
+          contract_violation_item_index = ?,
+          contract_violation_field = ?,
+          contract_violation_option_code = ?,
           failed_at = CURRENT_TIMESTAMP,
           updated_at = CURRENT_TIMESTAMP
         WHERE job_id = ?
@@ -686,6 +783,11 @@ export async function markGenerationBatchFailed(db, jobId, batchNumber, errorCod
         safeDiagnostics.jsonCandidateLength,
         safeDiagnostics.jsonClassificationSource,
         safeDiagnostics.upstreamStatus,
+        safeViolation.type,
+        serializeContractViolationTypes(safeViolation.types),
+        safeViolation.itemIndex,
+        safeViolation.field,
+        safeViolation.optionCode,
         jobId,
         batchNumber
       ),

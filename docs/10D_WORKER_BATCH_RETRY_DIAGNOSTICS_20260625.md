@@ -150,3 +150,28 @@ After upstream classification and transient retry are deployed, run fresh Chines
 - dependency on Gemini single-call behavior per batch
 
 If the next observations converge without new failure classes, continue the baseline collection.
+
+## Contract Violation Diagnostics Follow-up
+
+After upstream classification was deployed, fresh 50-item observations showed `AI_OUTPUT_CONTRACT_INVALID` across more than one subject. The current error code is safe but too coarse: it cannot distinguish option count drift, answer code drift, distractorDesign key drift, missing wrong-option design, or missing required distractorDesign fields.
+
+Decision for the next small follow-up:
+
+- Do not add contract-invalid retry yet.
+- Do not change prompt, schema, frontend, or partial result contract in this step.
+- Store safe contract violation metadata only:
+  - controlled violation type enum
+  - controlled violation type set
+  - 1-based item index
+  - controlled field name
+  - sanitized option code when relevant
+- Do not store raw prompt, raw model output, full item text, full option text, full distractorDesign text, API keys, tokens, headers, or stack traces.
+- Use a new additive nullable D1 migration so old batch rows remain readable.
+
+Use the next observed contract-invalid samples to decide between:
+
+- prompt constraint hardening, if violations concentrate in one repeated type;
+- bounded contract retry, if violations are scattered and appear random;
+- partial result support, if all-or-nothing reliability remains below the accepted threshold.
+
+Collect 3-5 contract-invalid samples with safe violation types before choosing the next fix path.

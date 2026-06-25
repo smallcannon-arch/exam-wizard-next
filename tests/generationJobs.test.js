@@ -5,7 +5,7 @@ import {
   createGenerationJobPlan,
   resolveAsyncGenerationMaxConcurrentBatches,
 } from "../worker/src/generationJobs.js";
-import { ERROR_CODES } from "../worker/src/json.js";
+import { CONTRACT_VIOLATION_TYPES, ERROR_CODES } from "../worker/src/json.js";
 
 function intent(index) {
   return {
@@ -232,6 +232,11 @@ function createFakeJobsDb() {
         json_candidate_length: null,
         json_classification_source: null,
         upstream_status: null,
+        contract_violation_type: null,
+        contract_violation_types: null,
+        contract_violation_item_index: null,
+        contract_violation_field: null,
+        contract_violation_option_code: null,
         ...batch,
       });
     },
@@ -268,6 +273,11 @@ function createFakeJobsDb() {
                   json_candidate_length: null,
                   json_classification_source: null,
                   upstream_status: null,
+                  contract_violation_type: null,
+                  contract_violation_types: null,
+                  contract_violation_item_index: null,
+                  contract_violation_field: null,
+                  contract_violation_option_code: null,
                 });
                 return { success: true };
               }
@@ -339,6 +349,11 @@ function createFakeJobsDb() {
                   batch.json_candidate_length = values[6];
                   batch.json_classification_source = values[7];
                   batch.upstream_status = values[8];
+                  batch.contract_violation_type = values[9];
+                  batch.contract_violation_types = values[10];
+                  batch.contract_violation_item_index = values[11];
+                  batch.contract_violation_field = values[12];
+                  batch.contract_violation_option_code = values[13];
                   return { success: true, meta: { changes: 1 } };
                 }
 
@@ -925,12 +940,14 @@ describe("async generation job skeleton", () => {
   it("marks the batch failed when AI output adds an option outside A/B/C/D", async () => {
     const db = createFakeJobsDb();
     const jobId = "gen_workflow_fail_option_contract_12345678";
+    const leakedOptionText = "E. LEAK_SENTINEL_EXTRA_OPTION_TEXT 越界選項內容不應外洩";
     const data = payload(1);
     const plan = createGenerationJobPlan(data);
     mockGeminiItems([
       {
         ...generatedItem(1),
-        options: ["A", "B", "C", "D", "E"],
+        question: "LEAK_SENTINEL_QUESTION_TEXT should not leak through status",
+        options: ["A", "B", "C", "D", leakedOptionText],
       },
     ]);
     db.seedJob({
@@ -972,6 +989,33 @@ describe("async generation job skeleton", () => {
     expect(db.state.batches[0].output_length).toBeGreaterThan(0);
     expect(db.state.batches[0].json_candidate_length).toBeGreaterThan(0);
     expect(db.state.batches[0].json_classification_source).toBe("none");
+    expect(db.state.batches[0].contract_violation_type).toBe(CONTRACT_VIOLATION_TYPES.OPTIONS_COUNT_INVALID);
+    expect(JSON.parse(db.state.batches[0].contract_violation_types)).toEqual([
+      CONTRACT_VIOLATION_TYPES.OPTIONS_COUNT_INVALID,
+    ]);
+    expect(db.state.batches[0].contract_violation_item_index).toBe(1);
+    expect(db.state.batches[0].contract_violation_field).toBe("options");
+    expect(db.state.batches[0].contract_violation_option_code).toBe("E");
+
+    const statusResponse = await worker.fetch(new Request(`https://worker.test/generation-jobs/${jobId}`), {
+      ALLOWED_ORIGIN: "*",
+      GENERATION_JOBS_DB: db,
+    });
+    const statusBody = await readJson(statusResponse);
+    const statusText = JSON.stringify(statusBody).toLowerCase();
+
+    expect(statusBody.batches[0].contractViolation).toEqual({
+      type: CONTRACT_VIOLATION_TYPES.OPTIONS_COUNT_INVALID,
+      types: [CONTRACT_VIOLATION_TYPES.OPTIONS_COUNT_INVALID],
+      itemIndex: 1,
+      field: "options",
+      optionCode: "E",
+    });
+    expect(statusText).not.toContain("leak_sentinel");
+    expect(statusText).not.toContain("越界選項內容不應外洩");
+    expect(statusText).not.toContain("raw output");
+    expect(statusText).not.toContain("token");
+    expect(statusText).not.toContain("headers");
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
@@ -1377,6 +1421,11 @@ describe("async generation job skeleton", () => {
       output_length: 256,
       json_candidate_length: 256,
       json_classification_source: "parser",
+      contract_violation_type: CONTRACT_VIOLATION_TYPES.DISTRACTOR_REQUIRED_FIELD_MISSING,
+      contract_violation_types: JSON.stringify([CONTRACT_VIOLATION_TYPES.DISTRACTOR_REQUIRED_FIELD_MISSING]),
+      contract_violation_item_index: 3,
+      contract_violation_field: "misconceptionTag",
+      contract_violation_option_code: "B",
     });
 
     const response = await worker.fetch(new Request(`https://worker.test/generation-jobs/${jobId}`), {
@@ -1403,10 +1452,19 @@ describe("async generation job skeleton", () => {
         jsonCandidateLength: 256,
         jsonClassificationSource: "parser",
       },
+      contractViolation: {
+        type: CONTRACT_VIOLATION_TYPES.DISTRACTOR_REQUIRED_FIELD_MISSING,
+        types: [CONTRACT_VIOLATION_TYPES.DISTRACTOR_REQUIRED_FIELD_MISSING],
+        itemIndex: 3,
+        field: "misconceptionTag",
+        optionCode: "B",
+      },
     }]);
     expect(text).not.toContain("raw prompt");
     expect(text).not.toContain("raw output");
     expect(text).not.toContain("token");
+    expect(text).not.toContain("headers");
+    expect(text).not.toContain("question");
   });
 
   it("returns completed D1-backed job results through the safe result endpoint", async () => {
