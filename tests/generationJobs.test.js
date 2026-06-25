@@ -1653,7 +1653,11 @@ describe("async generation job skeleton", () => {
   it("returns partial D1-backed job results with safe missing-slot metadata", async () => {
     const db = createFakeJobsDb();
     const jobId = "gen_partial_result_12345678";
-    const items = Array.from({ length: 16 }, (_, index) => generatedItem(index + 1));
+    const itemIndexes = [1, 2, 3, 4, 5, 6, 7, 8, 13, 14, 15, 16, 17, 18, 19, 20];
+    const items = itemIndexes.map((itemIndex) => ({
+      ...generatedItem(itemIndex),
+      itemIndex,
+    }));
     db.seedJob({
       job_id: jobId,
       status: "partial",
@@ -1670,8 +1674,8 @@ describe("async generation job skeleton", () => {
         requestedItemCount: 20,
         partial: true,
         missingItems: [
-          {
-            itemIndex: 9,
+          ...[9, 10, 11, 12].map((itemIndex) => ({
+            itemIndex,
             batchNumber: 3,
             errorCode: ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID,
             failureItemIndex: 9,
@@ -1679,7 +1683,7 @@ describe("async generation job skeleton", () => {
             contractViolationField: "options",
             contractViolationOptionCode: "E",
             unsafeText: "LEAK_SENTINEL_MISSING_ITEM_TEXT should not leak",
-          },
+          })),
         ],
       }),
     });
@@ -1696,15 +1700,16 @@ describe("async generation job skeleton", () => {
     expect(body.status).toBe("partial");
     expect(body.partial).toBe(true);
     expect(body.items).toHaveLength(16);
-    expect(body.missingItems).toEqual([{
-      itemIndex: 9,
+    expect(body.items.map((item) => item.itemIndex)).toEqual(itemIndexes);
+    expect(body.missingItems).toEqual([9, 10, 11, 12].map((itemIndex) => ({
+      itemIndex,
       batchNumber: 3,
       errorCode: ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID,
       failureItemIndex: 9,
       contractViolationTypes: [CONTRACT_VIOLATION_TYPES.OPTIONS_COUNT_INVALID],
       contractViolationField: "options",
       contractViolationOptionCode: "E",
-    }]);
+    })));
     expect(text).not.toContain("leak_sentinel");
     expect(text).not.toContain("raw prompt");
     expect(text).not.toContain("raw output");
@@ -1718,16 +1723,20 @@ describe("async generation job skeleton", () => {
       job_id: jobId,
       status: "partial",
       requested_item_count: 4,
-      batch_count: 1,
-      completed_batch_count: 0,
-      completed_item_count: 0,
-      result_item_count: 0,
+      batch_count: 2,
+      completed_batch_count: 1,
+      completed_item_count: 2,
+      result_item_count: 2,
       result_json: JSON.stringify({
-        items: [],
+        items: [
+          { ...generatedItem(1), itemIndex: 1 },
+          { ...generatedItem(2), itemIndex: 2 },
+        ],
         partial: true,
         missingItems: [
           {
-            batchNumber: 1,
+            itemIndex: 4,
+            batchNumber: 2,
             errorCode: ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID,
           },
         ],

@@ -301,6 +301,26 @@ function normalizeMissingItemsPayload(value = []) {
   return { ok: true, missingItems };
 }
 
+function validatePartialItemSlots(items = [], missingItems = [], requestedItemCount = 0) {
+  const requested = toSafeCount(requestedItemCount);
+  if (requested <= 0) return false;
+  const seen = new Set();
+
+  for (const item of items) {
+    const itemIndex = normalizeContractViolationItemIndex(item?.itemIndex);
+    if (itemIndex === null || itemIndex > requested || seen.has(itemIndex)) return false;
+    seen.add(itemIndex);
+  }
+
+  for (const missing of missingItems) {
+    const itemIndex = normalizeContractViolationItemIndex(missing?.itemIndex);
+    if (itemIndex === null || itemIndex > requested || seen.has(itemIndex)) return false;
+    seen.add(itemIndex);
+  }
+
+  return seen.size === requested;
+}
+
 function partialResultMinimumItemCount(requestedItemCount) {
   return Math.ceil(toSafeCount(requestedItemCount) * PARTIAL_RESULT_MIN_COMPLETION_RATIO);
 }
@@ -723,6 +743,9 @@ async function readGenerationJobResult(db, jobId) {
     ? normalizeMissingItemsPayload(data.missingItems)
     : { ok: true, missingItems: [] };
   if (!missingResult.ok || (isPartial && missingResult.missingItems.length === 0)) {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_RESULT_INVALID, status: 502 };
+  }
+  if (isPartial && !validatePartialItemSlots(payload.items, missingResult.missingItems, row.requested_item_count)) {
     return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_RESULT_INVALID, status: 502 };
   }
 
