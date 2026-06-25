@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 const wranglerConfig = readFileSync("worker/wrangler.toml", "utf8");
 const wranglerExample = readFileSync("worker/wrangler.toml.example", "utf8");
 const migration = readFileSync("worker/migrations/0001_generation_jobs.sql", "utf8");
+const diagnosticsMigration = readFileSync("worker/migrations/0002_batch_safe_diagnostics.sql", "utf8");
 
 describe("async generation D1 resource prep", () => {
   it("binds the generation jobs D1 database in wrangler config", () => {
@@ -37,7 +38,7 @@ describe("async generation D1 resource prep", () => {
   });
 
   it("does not define raw prompt, raw output, secret, header, or stack trace storage columns", () => {
-    const normalized = migration.toLowerCase();
+    const normalized = `${migration}\n${diagnosticsMigration}`.toLowerCase();
 
     expect(normalized).not.toMatch(/\braw_prompt\b/);
     expect(normalized).not.toMatch(/\braw_output\b/);
@@ -45,5 +46,14 @@ describe("async generation D1 resource prep", () => {
     expect(normalized).not.toMatch(/\btoken\b\s+(text|varchar|blob)/);
     expect(normalized).not.toMatch(/\bheaders?\b\s+(text|varchar|blob)/);
     expect(normalized).not.toMatch(/\bstack_trace\b/);
+  });
+
+  it("adds nullable safe batch diagnostics in a follow-up migration", () => {
+    expect(diagnosticsMigration).toContain("ALTER TABLE generation_job_batches");
+    expect(diagnosticsMigration).toContain("ADD COLUMN finish_reason TEXT");
+    expect(diagnosticsMigration).toContain("ADD COLUMN output_length INTEGER");
+    expect(diagnosticsMigration).toContain("ADD COLUMN json_candidate_length INTEGER");
+    expect(diagnosticsMigration).toContain("ADD COLUMN json_classification_source TEXT");
+    expect(diagnosticsMigration).toContain("IN ('none', 'parser', 'finish_reason')");
   });
 });
