@@ -80,6 +80,7 @@ async function generateAndValidateBatch({ env, request, batch, batchNumber }) {
             errorCode: payload.errorCode,
             latencyMs,
             retryCount: attempt,
+            diagnostics: parsed.diagnostics,
           };
         } else {
           return {

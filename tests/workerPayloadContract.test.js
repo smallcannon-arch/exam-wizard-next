@@ -5,11 +5,25 @@ function qualityMeta(overrides = {}) {
   return {
     teacherExplanation: "本題檢核學生是否能理解題意並辨識正確解法。",
     correctReason: "A 是唯一符合題意的答案。",
-    distractorDesign: {},
+    distractorDesign: {
+      B: distractor("B"),
+      C: distractor("C"),
+      D: distractor("D"),
+    },
     selfCheck: {
       singleCorrectAnswer: true,
     },
     ...overrides,
+  };
+}
+
+function distractor(option) {
+  return {
+    misconceptionTag: `misconception_${option}`,
+    misconceptionDescription: `Why ${option} may look plausible.`,
+    whyStudentsMayChooseIt: `Students may choose ${option}.`,
+    whyItIsWrong: `${option} is wrong.`,
+    revisionNote: `Keep ${option} distinct.`,
   };
 }
 
@@ -136,6 +150,104 @@ describe("Worker items payload contract", () => {
 
     expect(result.ok).toBe(true);
     expect(result.items).toBe(payload.items);
+  });
+
+  it("rejects choice items with more than A/B/C/D options", () => {
+    const result = assertItemsPayload({
+      items: [item({ options: ["A", "B", "C", "D", "E"] })],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errorCode).toBe(ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID);
+  });
+
+  it("rejects distractorDesign keys outside A/B/C/D", () => {
+    const result = assertItemsPayload({
+      items: [item({
+        qualityMeta: qualityMeta({
+          distractorDesign: {
+            B: distractor("B"),
+            C: distractor("C"),
+            D: distractor("D"),
+            E: distractor("E"),
+          },
+        }),
+      })],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errorCode).toBe(ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID);
+  });
+
+  it("rejects choice items missing a wrong-option distractorDesign entry", () => {
+    const result = assertItemsPayload({
+      items: [item({
+        qualityMeta: qualityMeta({
+          distractorDesign: {
+            B: distractor("B"),
+            C: distractor("C"),
+          },
+        }),
+      })],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errorCode).toBe(ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID);
+  });
+
+  it("rejects distractorDesign entries for the correct answer", () => {
+    const result = assertItemsPayload({
+      items: [item({
+        qualityMeta: qualityMeta({
+          distractorDesign: {
+            A: distractor("A"),
+            B: distractor("B"),
+            C: distractor("C"),
+            D: distractor("D"),
+          },
+        }),
+      })],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errorCode).toBe(ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID);
+  });
+
+  it("rejects distractorDesign entries missing required fields", () => {
+    const missing = distractor("B");
+    delete missing.misconceptionTag;
+
+    const result = assertItemsPayload({
+      items: [item({
+        qualityMeta: qualityMeta({
+          distractorDesign: {
+            B: missing,
+            C: distractor("C"),
+            D: distractor("D"),
+          },
+        }),
+      })],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errorCode).toBe(ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID);
+  });
+
+  it("accepts lowercase wrong-option distractorDesign keys after normalization", () => {
+    const payload = {
+      items: [item({
+        qualityMeta: qualityMeta({
+          distractorDesign: {
+            b: distractor("B"),
+            c: distractor("C"),
+            d: distractor("D"),
+          },
+        }),
+      })],
+    };
+    const result = assertItemsPayload(payload);
+
+    expect(result.ok).toBe(true);
   });
 
   it("does not expose raw prompt, raw output, tokens, headers, or stack traces in error payloads", () => {

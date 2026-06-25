@@ -71,3 +71,25 @@ After deployment, run a fresh 50-item after-retry baseline and compare:
 - retry count
 - failure error code distribution
 - leakage findings
+
+## Completed-but-invalid Contract Gate Follow-up
+
+The first UTF-8-safe Chinese 50-item observation after diagnostics persistence completed at the Worker layer but failed v2 validation because one item produced an option outside the A/B/C/D contract.
+
+Decision for the small follow-up:
+
+- Add a Worker minimum gate for choice items:
+  - options must contain exactly A/B/C/D.
+  - answer must be A/B/C/D.
+  - `qualityMeta.distractorDesign` keys must be wrong option codes only.
+  - each wrong option must have the required distractorDesign fields.
+- Do not retry this output contract failure in the batch retry path.
+- Mark the batch/job as failed instead of completed when this contract is violated.
+
+Out of scope for this small follow-up:
+
+- Full parity between the Worker gate and frontend v2 validation.
+- Partial result support.
+- Prompt changes.
+
+Reconsider a fuller Worker/frontend validation alignment if another distinct completed-but-invalid contract class appears after this minimum gate is deployed.

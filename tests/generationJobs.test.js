@@ -36,14 +36,24 @@ function generatedItem(index = 1) {
       teacherExplanation: "Teacher explanation",
       correctReason: "Correct reason",
       distractorDesign: {
-        B: "Distractor B",
-        C: "Distractor C",
-        D: "Distractor D",
+        B: generatedDistractor("B"),
+        C: generatedDistractor("C"),
+        D: generatedDistractor("D"),
       },
       selfCheck: {
         passed: true,
       },
     },
+  };
+}
+
+function generatedDistractor(option) {
+  return {
+    misconceptionTag: `misconception_${option}`,
+    misconceptionDescription: `Why ${option} may look plausible.`,
+    whyStudentsMayChooseIt: `Students may choose ${option}.`,
+    whyItIsWrong: `${option} is wrong.`,
+    revisionNote: `Keep ${option} distinct.`,
   };
 }
 
@@ -58,6 +68,7 @@ function mockGeminiItemBatches(itemBatches) {
     return new Response(JSON.stringify({
       candidates: [
         {
+          finishReason: "STOP",
           content: {
             parts: [{ text: JSON.stringify({ items }) }],
           },
@@ -843,6 +854,59 @@ describe("async generation job skeleton", () => {
     expect(db.state.batches[0].error_code).toBe(ERROR_CODES.AI_QUALITY_META_MISSING);
     expect(JSON.stringify(db.state).toLowerCase()).not.toContain("raw output");
     expect(JSON.stringify(db.state).toLowerCase()).not.toContain("token");
+  });
+
+  it("marks the batch failed when AI output adds an option outside A/B/C/D", async () => {
+    const db = createFakeJobsDb();
+    const jobId = "gen_workflow_fail_option_contract_12345678";
+    const data = payload(1);
+    const plan = createGenerationJobPlan(data);
+    mockGeminiItems([
+      {
+        ...generatedItem(1),
+        options: ["A", "B", "C", "D", "E"],
+      },
+    ]);
+    db.seedJob({
+      job_id: jobId,
+      requested_item_count: 1,
+      batch_count: 1,
+      expires_at: "2026-06-25T00:00:00.000Z",
+    });
+    db.seedBatch({ job_id: jobId, batch_number: 1, expected_item_count: 1 });
+
+    const workflow = new GenerationWorkflow();
+    workflow.env = {
+      GENERATION_JOBS_DB: db,
+      GEMINI_API_KEY: "test-key",
+    };
+    const step = {
+      async do(_name, callback) {
+        return callback();
+      },
+    };
+
+    const result = await workflow.run({
+      payload: {
+        jobId,
+        request: plan.request,
+        batches: plan.batches,
+        progress: plan.progress,
+      },
+    }, step);
+
+    expect(result).toMatchObject({ ok: false, errorCode: ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID });
+    expect(db.state.jobs[0].status).toBe("failed");
+    expect(db.state.jobs[0].error_code).toBe(ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID);
+    expect(db.state.jobs[0].result_json).toBeUndefined();
+    expect(db.state.batches[0].status).toBe("failed_terminal");
+    expect(db.state.batches[0].error_code).toBe(ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID);
+    expect(db.state.batches[0].retry_count).toBe(0);
+    expect(db.state.batches[0].finish_reason).toBe("STOP");
+    expect(db.state.batches[0].output_length).toBeGreaterThan(0);
+    expect(db.state.batches[0].json_candidate_length).toBeGreaterThan(0);
+    expect(db.state.batches[0].json_classification_source).toBe("none");
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it("retries a malformed JSON batch once and stores only one completed batch result", async () => {
