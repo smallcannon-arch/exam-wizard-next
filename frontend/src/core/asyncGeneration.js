@@ -6,7 +6,7 @@ export const ASYNC_GENERATION_DEFAULTS = {
   maxPollMs: 20 * 60 * 1000,
 };
 
-const SUCCESS_STATUSES = new Set(["completed"]);
+const SUCCESS_STATUSES = new Set(["completed", "partial"]);
 const FAILURE_STATUSES = new Set(["failed", "partial_failed", "expired"]);
 
 function safeCount(value, fallback = 0) {

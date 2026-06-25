@@ -312,6 +312,30 @@ tfoot td { border-top: 2px solid var(--line); }
   background: #fff;
 }
 
+.partial-result-notice {
+  border-left: 4px solid var(--success);
+}
+
+.partial-result-notice p {
+  margin: 4px 0 0;
+}
+
+.partial-missing-card {
+  border: 1px dashed #b7c4db;
+  background: #f8fbff;
+  color: var(--blue);
+}
+
+.partial-missing-card strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.partial-missing-card p {
+  margin: 0;
+  color: var(--muted);
+}
+
 .item-meta {
   color: var(--muted);
   font-size: 13px;
