@@ -3,7 +3,7 @@ import { validateGeneratedPaper } from "../frontend/src/core/validateGeneratedPa
 import { normalizeGeneratedItems } from "../frontend/src/core/normalizeItem.js";
 
 const DEFAULT_API_BASE_URL = "https://exam-wizard-next-proxy.smallcannon.workers.dev";
-const MAX_ITEM_COUNT = 25;
+const MAX_ITEM_COUNT = 50;
 
 const TEXT = {
   subjectChinese: "\u570b\u8a9e",
@@ -85,6 +85,25 @@ function hasPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+function assertObservationInputSafe() {
+  const checks = [
+    { field: "subject", expected: "\u570b\u8a9e", actual: TEXT.subjectChinese },
+    { field: "grade", expected: "\u56db\u5e74\u7d1a", actual: TEXT.grade4 },
+    { field: "questionType", expected: "\u9078\u64c7\u984c", actual: TEXT.choiceQuestion },
+  ];
+  const failures = checks.filter((check) => (
+    check.actual !== check.expected || String(check.actual).includes("??")
+  ));
+  return failures.length
+    ? { ok: false, failures }
+    : {
+        ok: true,
+        subject: TEXT.subjectChinese,
+        grade: TEXT.grade4,
+        questionType: TEXT.choiceQuestion,
+      };
+}
+
 function estimateQualityMetaStats(items) {
   const outputLength = JSON.stringify({ items }).length;
   const qualityMetaLength = items.reduce((sum, item) => (
@@ -103,6 +122,47 @@ function detectLeakage(items) {
   return tokens.filter((token) => text.includes(token));
 }
 
+function summarizeBatches(batches = []) {
+  const statusCounts = {};
+  const finishReasonCounts = {};
+  let diagnosticsPresentCount = 0;
+  let retryBatchCount = 0;
+  let outputLengthTotal = 0;
+  let jsonCandidateLengthTotal = 0;
+  let maxOutputLength = 0;
+  let maxJsonCandidateLength = 0;
+
+  for (const batch of batches) {
+    const status = batch?.status || "unknown";
+    statusCounts[status] = (statusCounts[status] || 0) + 1;
+    if (Number(batch?.retryCount || 0) > 0) retryBatchCount += 1;
+
+    const diagnostics = hasPlainObject(batch?.diagnostics) ? batch.diagnostics : {};
+    if (Object.keys(diagnostics).length > 0) diagnosticsPresentCount += 1;
+    if (diagnostics.finishReason) {
+      finishReasonCounts[diagnostics.finishReason] = (finishReasonCounts[diagnostics.finishReason] || 0) + 1;
+    }
+
+    const outputLength = Number(diagnostics.outputLength || 0);
+    const jsonCandidateLength = Number(diagnostics.jsonCandidateLength || 0);
+    outputLengthTotal += outputLength;
+    jsonCandidateLengthTotal += jsonCandidateLength;
+    maxOutputLength = Math.max(maxOutputLength, outputLength);
+    maxJsonCandidateLength = Math.max(maxJsonCandidateLength, jsonCandidateLength);
+  }
+
+  return {
+    batchStatusCounts: statusCounts,
+    diagnosticsPresentCount,
+    retryBatchCount,
+    finishReasonCounts,
+    outputLengthTotal,
+    jsonCandidateLengthTotal,
+    maxOutputLength,
+    maxJsonCandidateLength,
+  };
+}
+
 function summarizeProgress(data) {
   return {
     status: data?.status || "unknown",
@@ -112,6 +172,7 @@ function summarizeProgress(data) {
     requestedItemCount: data?.requestedItemCount ?? null,
     currentBatch: data?.currentBatch ?? null,
     errorCode: data?.errorCode || null,
+    batchSummary: summarizeBatches(data?.batches || []),
   };
 }
 
@@ -125,6 +186,17 @@ async function main() {
   const pollIntervalMs = Math.max(1000, safeNumber(getArgValue("--poll-ms", "5000"), 5000));
   const timeoutMs = Math.max(60000, safeNumber(getArgValue("--timeout-ms", "900000"), 900000));
   const apiBaseUrl = getArgValue("--api-base-url", DEFAULT_API_BASE_URL);
+  const inputCheck = assertObservationInputSafe();
+  if (!inputCheck.ok) {
+    console.log(JSON.stringify({
+      ok: false,
+      stage: "input_check",
+      error: "Observation input text failed UTF-8 safety check.",
+      failures: inputCheck.failures,
+    }, null, 2));
+    process.exit(2);
+  }
+
   const payload = buildPayload(itemCount);
   const started = Date.now();
 
@@ -148,6 +220,7 @@ async function main() {
   console.log(JSON.stringify({
     event: "created",
     jobId,
+    inputCheck,
     requestedItemCount: itemCount,
     batchSize: create.data.batchSize,
     batchCount: create.data.batchCount,
@@ -222,6 +295,8 @@ async function main() {
     qualityMetaMissingCount,
     leakageFinding: leakage.length ? leakage.join(",") : "none",
     ...estimateQualityMetaStats(items),
+    inputCheck,
+    finalBatchSummary: summarizeBatches(statusData.batches || []),
     snapshots,
   }, null, 2));
 }
