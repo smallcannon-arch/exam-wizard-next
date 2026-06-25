@@ -23,7 +23,7 @@ This document defines the first frontend presentation for `partial`. It is a UI 
 - Show missing slots as safe placeholders.
 - Keep generated items and missing-slot metadata separate in frontend state.
 - Avoid exposing raw internal diagnostics to teachers or student-facing output.
-- Reuse the existing whole-generation retry path as the MVP escape route.
+- Present missing slots without result-page regeneration controls in the MVP.
 - Keep targeted missing-item regeneration out of the MVP.
 
 ## 3. Non-goals
@@ -154,17 +154,23 @@ Do not render the raw `errorCode`, contract violation enum, upstream status, san
 
 If a future debug view is needed, it must remain separate from student-facing output and should still use only safe metadata.
 
-## 8. Actions
+## 8. Gap Handling in the MVP
 
-The MVP should not add a "regenerate this item" or "fill this slot" button.
+The first version should not place any regeneration button on the result page.
 
-The only follow-up action in the MVP is the existing whole-generation path:
+The partial result page is responsible only for truthful presentation:
 
-- Button label: `重新產生整份`
-- Behavior: start a new generation using the current blueprint.
-- Clarification: this reruns the whole request, not only the missing slots.
+- Display successfully generated items while preserving original item positions.
+- Mark missing slots with success framing such as `已完成 X / Y 題，N 題待補`.
+- Give each missing slot one human-readable sentence, such as `此題未能生成，可於後續補齊`.
+- Do not classify missing slots in teacher-facing copy.
+- Do not show raw `errorCode`, contract violation enum, upstream status, sanitized option code, or batch diagnostics.
 
-Do not create a fake cancel button or fake targeted regeneration control.
+Whole-generation rerun is not a result-page feature. If a teacher wants to start over, they can launch a new generation through the existing generation workflow. The result page should not duplicate that entry point.
+
+Targeted regeneration for missing items and teacher-selected unsatisfactory items belongs to `10G`. The MVP marks gaps only and provides no in-result regeneration action.
+
+Change note: the original 10F draft treated `重新產生整份` as the missing-slot escape route. After product-flow review, whole-generation rerun is considered equivalent to starting a new generation and does not need a duplicate result-page control. The API-saving follow-up is targeted regeneration, so it moves to `10G`.
 
 ## 9. Audit and Export Behavior
 
@@ -197,7 +203,7 @@ Expected app-level changes:
 5. Store valid items separately from partial missing metadata.
 6. Render missing placeholders in the item review screen.
 7. Show a partial-result notice in later audit/export steps.
-8. Keep whole-generation retry available.
+8. Avoid regeneration controls on the partial-result page in the MVP.
 
 ## 11. Tests Required
 
@@ -209,8 +215,8 @@ Frontend MVP tests:
 4. Missing slots render as placeholders instead of generated item cards.
 5. Teacher UI uses success framing such as `已完成 X / Y 題，N 題待補`.
 6. Teacher UI does not expose raw `errorCode`, contract violation enum, upstream status, raw prompt, raw output, API key, token, headers, item text from failed batches, or option text from failed batches.
-7. Whole-generation rerun remains available.
-8. No targeted missing-item regeneration button appears in the MVP.
+7. No result-page regeneration button appears in the MVP.
+8. Existing generation start flow remains unchanged outside the result page.
 9. Existing completed-result behavior remains unchanged.
 10. Existing failed-result behavior remains unchanged.
 
@@ -250,10 +256,12 @@ It should not start until the MVP proves that teachers can understand and use pa
 `10G` should define:
 
 - targeted regeneration request shape
-- missing-slot idempotency
+- support for both missing slots and teacher-selected unsatisfactory items
+- arbitrary `itemIndex` subset input
+- missing-slot and overwrite idempotency
 - merge semantics
 - handling repeated failure for the same slot
-- frontend controls
+- unified checkbox UI
 - observation and rollback criteria
 
 ## 14. Recommendation
