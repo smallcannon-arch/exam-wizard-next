@@ -132,7 +132,14 @@ export function extractJsonObject(text, metadata = {}) {
   const isHardTruncated = diagnostics.finishReason === "MAX_TOKENS";
 
   try {
-    return { ok: true, data: JSON.parse(withoutFence) };
+    return {
+      ok: true,
+      data: JSON.parse(withoutFence),
+      diagnostics: {
+        ...diagnostics,
+        classificationSource: "none",
+      },
+    };
   } catch {
     const start = withoutFence.indexOf("{");
     const end = withoutFence.lastIndexOf("}");
@@ -142,7 +149,7 @@ export function extractJsonObject(text, metadata = {}) {
           error: "AI response ended before JSON was complete.",
           errorCode: ERROR_CODES.AI_JSON_TRUNCATED,
           diagnostics,
-          classificationSource: "finishReason",
+          classificationSource: "finish_reason",
         });
       }
 
@@ -154,14 +161,21 @@ export function extractJsonObject(text, metadata = {}) {
     }
 
     try {
-      return { ok: true, data: JSON.parse(withoutFence.slice(start, end + 1)) };
+      return {
+        ok: true,
+        data: JSON.parse(withoutFence.slice(start, end + 1)),
+        diagnostics: {
+          ...diagnostics,
+          classificationSource: "none",
+        },
+      };
     } catch {
       if (isHardTruncated) {
         return jsonError({
           error: "AI response ended before JSON was complete.",
           errorCode: ERROR_CODES.AI_JSON_TRUNCATED,
           diagnostics,
-          classificationSource: "finishReason",
+          classificationSource: "finish_reason",
         });
       }
 

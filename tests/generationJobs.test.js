@@ -163,6 +163,10 @@ function createFakeJobsDb() {
         expected_item_count: 4,
         completed_item_count: 0,
         retry_count: 0,
+        finish_reason: null,
+        output_length: null,
+        json_candidate_length: null,
+        json_classification_source: null,
         ...batch,
       });
     },
@@ -194,6 +198,10 @@ function createFakeJobsDb() {
                   expected_item_count: values[3],
                   completed_item_count: values[4],
                   retry_count: values[5],
+                  finish_reason: null,
+                  output_length: null,
+                  json_candidate_length: null,
+                  json_classification_source: null,
                 });
                 return { success: true };
               }
@@ -260,6 +268,10 @@ function createFakeJobsDb() {
                   batch.error_code = values[1];
                   batch.latency_ms = values[2];
                   batch.retry_count = values[3];
+                  batch.finish_reason = values[4];
+                  batch.output_length = values[5];
+                  batch.json_candidate_length = values[6];
+                  batch.json_classification_source = values[7];
                   return { success: true, meta: { changes: 1 } };
                 }
 
@@ -269,6 +281,12 @@ function createFakeJobsDb() {
                   batch.latency_ms = values[2];
                   if (/retry_count/i.test(sql)) {
                     batch.retry_count = values[3];
+                  }
+                  if (/finish_reason/i.test(sql)) {
+                    batch.finish_reason = values[4];
+                    batch.output_length = values[5];
+                    batch.json_candidate_length = values[6];
+                    batch.json_classification_source = values[7];
                   }
                   if (/error_code\s*=\s*NULL/i.test(sql)) {
                     batch.error_code = null;
@@ -296,6 +314,13 @@ function createFakeJobsDb() {
               throw new Error("unexpected SQL");
             },
             async all() {
+              if (/FROM\s+generation_job_batches/i.test(sql)) {
+                const results = state.batches
+                  .filter((batch) => batch.job_id === values[0])
+                  .sort((left, right) => Number(left.batch_number) - Number(right.batch_number));
+                return { results, success: true };
+              }
+
               if (/SELECT\s+job_id\s+FROM\s+generation_jobs/i.test(sql)) {
                 const [nowIso, limit] = values;
                 const results = state.jobs
@@ -438,6 +463,22 @@ describe("async generation job skeleton", () => {
       completedBatchCount: 0,
       completedItemCount: 0,
       currentBatch: null,
+      batches: [
+        {
+          batchNumber: 1,
+          status: "queued",
+          expectedItemCount: 4,
+          completedItemCount: 0,
+          retryCount: 0,
+        },
+        {
+          batchNumber: 2,
+          status: "queued",
+          expectedItemCount: 1,
+          completedItemCount: 0,
+          retryCount: 0,
+        },
+      ],
     });
   });
 
@@ -846,7 +887,31 @@ describe("async generation job skeleton", () => {
     expect(db.state.batches[0].status).toBe("completed");
     expect(db.state.batches[0].retry_count).toBe(1);
     expect(db.state.batches[0].error_code).toBeNull();
+    expect(db.state.batches[0].output_length).toBeGreaterThan(0);
+    expect(db.state.batches[0].json_candidate_length).toBeGreaterThan(0);
+    expect(db.state.batches[0].json_classification_source).toBe("none");
     expect(JSON.parse(db.state.jobs[0].result_json).items).toHaveLength(4);
+
+    const statusResponse = await worker.fetch(new Request(`https://worker.test/generation-jobs/${jobId}`), {
+      ALLOWED_ORIGIN: "*",
+      GENERATION_JOBS_DB: db,
+    });
+    const statusBody = await readJson(statusResponse);
+    const statusText = JSON.stringify(statusBody).toLowerCase();
+
+    expect(statusBody.batches).toHaveLength(1);
+    expect(statusBody.batches[0]).toMatchObject({
+      batchNumber: 1,
+      status: "completed",
+      retryCount: 1,
+      diagnostics: {
+        jsonClassificationSource: "none",
+      },
+    });
+    expect(statusBody.batches[0].diagnostics.outputLength).toBeGreaterThan(0);
+    expect(statusText).not.toContain("raw prompt");
+    expect(statusText).not.toContain("raw output");
+    expect(statusText).not.toContain("token");
   });
 
   it("does not retry hard JSON truncation reported by Gemini finishReason", async () => {
@@ -888,6 +953,8 @@ describe("async generation job skeleton", () => {
     expect(db.state.jobs[0].status).toBe("failed");
     expect(db.state.batches[0].status).toBe("failed_terminal");
     expect(db.state.batches[0].retry_count).toBe(0);
+    expect(db.state.batches[0].finish_reason).toBe("MAX_TOKENS");
+    expect(db.state.batches[0].json_classification_source).toBe("finish_reason");
   });
 
   it("fails safely after one malformed JSON retry is exhausted", async () => {
@@ -962,6 +1029,20 @@ describe("async generation job skeleton", () => {
       current_batch: 1,
       error_code: ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID,
     });
+    db.seedBatch({
+      job_id: jobId,
+      batch_number: 1,
+      status: "failed_terminal",
+      expected_item_count: 4,
+      completed_item_count: 0,
+      retry_count: 1,
+      error_code: ERROR_CODES.AI_JSON_PARSE_FAILED,
+      latency_ms: 1234,
+      finish_reason: "STOP",
+      output_length: 256,
+      json_candidate_length: 256,
+      json_classification_source: "parser",
+    });
 
     const response = await worker.fetch(new Request(`https://worker.test/generation-jobs/${jobId}`), {
       ALLOWED_ORIGIN: "*",
@@ -973,6 +1054,21 @@ describe("async generation job skeleton", () => {
     expect(response.status).toBe(200);
     expect(body.status).toBe("failed");
     expect(body.errorCode).toBe(ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID);
+    expect(body.batches).toEqual([{
+      batchNumber: 1,
+      status: "failed_terminal",
+      expectedItemCount: 4,
+      completedItemCount: 0,
+      retryCount: 1,
+      latencyMs: 1234,
+      errorCode: ERROR_CODES.AI_JSON_PARSE_FAILED,
+      diagnostics: {
+        finishReason: "STOP",
+        outputLength: 256,
+        jsonCandidateLength: 256,
+        jsonClassificationSource: "parser",
+      },
+    }]);
     expect(text).not.toContain("raw prompt");
     expect(text).not.toContain("raw output");
     expect(text).not.toContain("token");

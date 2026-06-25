@@ -89,6 +89,7 @@ async function generateAndValidateBatch({ env, request, batch, batchNumber }) {
             itemCount: payload.items.length,
             latencyMs,
             retryCount: attempt,
+            diagnostics: parsed.diagnostics,
           };
         }
       }
@@ -177,6 +178,7 @@ export class GenerationWorkflow extends WorkflowEntrypointBase {
             completedBatchCount: completedBatches.length,
             completedItemCount,
             retryCount: generated.retryCount,
+            diagnostics: generated.diagnostics,
           })
         ));
         if (!batchCompleted.ok) return batchCompleted;
@@ -191,6 +193,7 @@ export class GenerationWorkflow extends WorkflowEntrypointBase {
             markGenerationBatchFailed(this.env?.GENERATION_JOBS_DB, jobId, generated.batchNumber, generated.errorCode, {
               latencyMs: generated.latencyMs,
               retryCount: generated.retryCount,
+              diagnostics: generated.diagnostics,
             })
           ));
         }

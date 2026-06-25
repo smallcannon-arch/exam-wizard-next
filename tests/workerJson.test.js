@@ -7,6 +7,8 @@ describe("Worker JSON extraction diagnostics", () => {
 
     expect(result.ok).toBe(true);
     expect(result.data.items).toHaveLength(1);
+    expect(result.diagnostics.outputLength).toBeGreaterThan(0);
+    expect(result.diagnostics.classificationSource).toBe("none");
   });
 
   it("keeps the existing tolerant parse behavior for fenced JSON", () => {
@@ -40,7 +42,7 @@ describe("Worker JSON extraction diagnostics", () => {
     expect(result.errorCode).toBe(ERROR_CODES.AI_JSON_TRUNCATED);
     expect(result.diagnostics).toMatchObject({
       finishReason: "MAX_TOKENS",
-      classificationSource: "finishReason",
+      classificationSource: "finish_reason",
     });
   });
 

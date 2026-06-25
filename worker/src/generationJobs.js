@@ -38,6 +38,8 @@ const JOB_EXPIRES_AFTER_HOURS = 24;
 const DEFAULT_CLEANUP_LIMIT = 100;
 const MAX_CLEANUP_LIMIT = 500;
 const SAFE_ERROR_CODES = new Set(Object.values(ERROR_CODES));
+const SAFE_BATCH_STATUSES = new Set(["queued", "running", "validating", "completed", "failed_retryable", "failed_terminal"]);
+const SAFE_JSON_CLASSIFICATION_SOURCES = new Set(["none", "parser", "finish_reason"]);
 
 function errorResponse(request, env, result, status) {
   return jsonResponse(request, env, safeErrorPayload(result), status);
@@ -50,6 +52,65 @@ function isPlainObject(value) {
 function toSafeCount(value, fallback = 0) {
   const count = Number(value);
   return Number.isFinite(count) && count >= 0 ? Math.floor(count) : fallback;
+}
+
+function toNullableSafeCount(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const count = Number(value);
+  return Number.isFinite(count) && count >= 0 ? Math.floor(count) : null;
+}
+
+function normalizeFinishReason(value) {
+  const text = String(value || "").trim().toUpperCase();
+  return /^[A-Z0-9_-]{1,64}$/.test(text) ? text : null;
+}
+
+function normalizeJsonClassificationSource(value) {
+  const text = String(value || "").trim();
+  return SAFE_JSON_CLASSIFICATION_SOURCES.has(text) ? text : null;
+}
+
+function safeBatchDiagnostics(value = {}) {
+  const diagnostics = isPlainObject(value) ? value : {};
+  return {
+    finishReason: normalizeFinishReason(diagnostics.finishReason),
+    outputLength: toNullableSafeCount(diagnostics.outputLength),
+    jsonCandidateLength: toNullableSafeCount(diagnostics.jsonCandidateLength),
+    jsonClassificationSource: normalizeJsonClassificationSource(diagnostics.classificationSource),
+  };
+}
+
+function compactBatchDiagnostics(value = {}) {
+  const diagnostics = safeBatchDiagnostics(value);
+  const compact = {};
+  if (diagnostics.finishReason) compact.finishReason = diagnostics.finishReason;
+  if (diagnostics.outputLength !== null) compact.outputLength = diagnostics.outputLength;
+  if (diagnostics.jsonCandidateLength !== null) compact.jsonCandidateLength = diagnostics.jsonCandidateLength;
+  if (diagnostics.jsonClassificationSource) compact.jsonClassificationSource = diagnostics.jsonClassificationSource;
+  return compact;
+}
+
+function safeBatchPayload(row = {}) {
+  const status = SAFE_BATCH_STATUSES.has(row.status) ? row.status : "queued";
+  const batch = {
+    batchNumber: toSafeCount(row.batch_number),
+    status,
+    expectedItemCount: toSafeCount(row.expected_item_count),
+    completedItemCount: toSafeCount(row.completed_item_count),
+    retryCount: toSafeCount(row.retry_count),
+  };
+  const latencyMs = toNullableSafeCount(row.latency_ms);
+  if (latencyMs !== null) batch.latencyMs = latencyMs;
+  if (SAFE_ERROR_CODES.has(row.error_code)) batch.errorCode = row.error_code;
+
+  const diagnostics = compactBatchDiagnostics({
+    finishReason: row.finish_reason,
+    outputLength: row.output_length,
+    jsonCandidateLength: row.json_candidate_length,
+    classificationSource: row.json_classification_source,
+  });
+  if (Object.keys(diagnostics).length > 0) batch.diagnostics = diagnostics;
+  return batch;
 }
 
 export function resolveAsyncGenerationMaxConcurrentBatches(env = {}) {
@@ -348,22 +409,56 @@ async function readGenerationJob(db, jobId) {
     return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_NOT_FOUND, status: 404 };
   }
 
+  const batches = await readGenerationJobBatches(db, jobId);
+  if (!batches.ok) return batches;
+
   return {
     ok: true,
-    payload: safeJobPayload({
-      jobId: row.job_id,
-      status: row.status,
-      progress: {
-        requestedItemCount: row.requested_item_count,
-        batchSize: row.batch_size,
-        batchCount: row.batch_count,
-        completedBatchCount: row.completed_batch_count,
-        completedItemCount: row.completed_item_count,
-        currentBatch: row.current_batch,
-        errorCode: row.error_code,
-      },
-    }),
+    payload: {
+      ...safeJobPayload({
+        jobId: row.job_id,
+        status: row.status,
+        progress: {
+          requestedItemCount: row.requested_item_count,
+          batchSize: row.batch_size,
+          batchCount: row.batch_count,
+          completedBatchCount: row.completed_batch_count,
+          completedItemCount: row.completed_item_count,
+          currentBatch: row.current_batch,
+          errorCode: row.error_code,
+        },
+      }),
+      batches: batches.batches,
+    },
   };
+}
+
+async function readGenerationJobBatches(db, jobId) {
+  let rows;
+  try {
+    const result = await db.prepare(`
+      SELECT
+        batch_number,
+        status,
+        expected_item_count,
+        completed_item_count,
+        retry_count,
+        error_code,
+        latency_ms,
+        finish_reason,
+        output_length,
+        json_candidate_length,
+        json_classification_source
+      FROM generation_job_batches
+      WHERE job_id = ?
+      ORDER BY batch_number ASC
+    `).bind(jobId).all();
+    rows = Array.isArray(result?.results) ? result.results : [];
+  } catch {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_STATUS_INVALID, status: 502 };
+  }
+
+  return { ok: true, batches: rows.map((row) => safeBatchPayload(row)) };
 }
 
 async function readGenerationJobResult(db, jobId) {
@@ -551,6 +646,7 @@ export async function markGenerationBatchFailed(db, jobId, batchNumber, errorCod
 
   const safeLatencyMs = toSafeCount(options.latencyMs);
   const safeRetryCount = toSafeCount(options.retryCount);
+  const safeDiagnostics = safeBatchDiagnostics(options.diagnostics);
 
   try {
     const statements = [
@@ -561,11 +657,26 @@ export async function markGenerationBatchFailed(db, jobId, batchNumber, errorCod
           error_code = ?,
           latency_ms = ?,
           retry_count = ?,
+          finish_reason = ?,
+          output_length = ?,
+          json_candidate_length = ?,
+          json_classification_source = ?,
           failed_at = CURRENT_TIMESTAMP,
           updated_at = CURRENT_TIMESTAMP
         WHERE job_id = ?
           AND batch_number = ?
-      `).bind("failed_terminal", errorCode, safeLatencyMs, safeRetryCount, jobId, batchNumber),
+      `).bind(
+        "failed_terminal",
+        errorCode,
+        safeLatencyMs,
+        safeRetryCount,
+        safeDiagnostics.finishReason,
+        safeDiagnostics.outputLength,
+        safeDiagnostics.jsonCandidateLength,
+        safeDiagnostics.jsonClassificationSource,
+        jobId,
+        batchNumber
+      ),
       db.prepare(`
         UPDATE generation_jobs
         SET
@@ -599,6 +710,7 @@ export async function markGenerationBatchCompleted(db, jobId, batchNumber, itemC
   const safeItemCount = toSafeCount(itemCount);
   const safeLatencyMs = toSafeCount(latencyMs);
   const safeRetryCount = toSafeCount(progress.retryCount);
+  const safeDiagnostics = safeBatchDiagnostics(progress.diagnostics);
   const batchCount = toSafeCount(progress.batchCount);
   const completedBatchCount = Math.min(toSafeCount(progress.completedBatchCount), batchCount || toSafeCount(batchNumber));
   const completedItemCount = Math.min(toSafeCount(progress.completedItemCount), toSafeCount(progress.requestedItemCount, safeItemCount));
@@ -613,12 +725,27 @@ export async function markGenerationBatchCompleted(db, jobId, batchNumber, itemC
           completed_item_count = ?,
           latency_ms = ?,
           retry_count = ?,
+          finish_reason = ?,
+          output_length = ?,
+          json_candidate_length = ?,
+          json_classification_source = ?,
           error_code = NULL,
           completed_at = CURRENT_TIMESTAMP,
           updated_at = CURRENT_TIMESTAMP
         WHERE job_id = ?
           AND batch_number = ?
-      `).bind("completed", safeItemCount, safeLatencyMs, safeRetryCount, jobId, batchNumber),
+      `).bind(
+        "completed",
+        safeItemCount,
+        safeLatencyMs,
+        safeRetryCount,
+        safeDiagnostics.finishReason,
+        safeDiagnostics.outputLength,
+        safeDiagnostics.jsonCandidateLength,
+        safeDiagnostics.jsonClassificationSource,
+        jobId,
+        batchNumber
+      ),
       db.prepare(`
         UPDATE generation_jobs
         SET
