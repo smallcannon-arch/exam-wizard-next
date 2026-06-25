@@ -57,6 +57,14 @@ function hasText(value) {
 }
 
 const ITEM_TEXT_FIELDS = ["question", "stem", "prompt", "problem", "questionText", "itemText", "text"];
+const OPTION_CODES = ["A", "B", "C", "D"];
+const QUALITY_META_DISTRACTOR_REQUIRED_FIELDS = [
+  "misconceptionTag",
+  "misconceptionDescription",
+  "whyStudentsMayChooseIt",
+  "whyItIsWrong",
+  "revisionNote",
+];
 const STIMULUS_REFERENCE_TERMS = [
   "根據這段文字",
   "根據本文",
@@ -70,6 +78,11 @@ const STIMULUS_REFERENCE_TERMS = [
   "本文",
   "上文",
 ];
+
+function normalizeAnswerKey(value) {
+  const text = String(value || "").trim().toUpperCase().replace(/[()\s.]/g, "");
+  return OPTION_CODES.includes(text) ? text : "";
+}
 
 function safeMessage(error, errorCode) {
   const fallback = ERROR_MESSAGES[errorCode] || ERROR_MESSAGES[ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID];
@@ -253,6 +266,63 @@ function assertQualityMeta(item, index) {
   return { ok: true };
 }
 
+function outputContractError(index, reason) {
+  return {
+    ok: false,
+    error: `AI response item ${index + 1} has invalid option contract: ${reason}.`,
+    errorCode: ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID,
+  };
+}
+
+function assertChoiceOptionContract(item, index) {
+  if (!Array.isArray(item?.options)) return { ok: true };
+
+  if (item.options.length !== OPTION_CODES.length) {
+    return outputContractError(index, "options must contain exactly A/B/C/D");
+  }
+
+  if (item.options.some((option) => !hasText(option))) {
+    return outputContractError(index, "options must be non-empty text");
+  }
+
+  const answerKey = normalizeAnswerKey(item.answer);
+  if (!answerKey) {
+    return outputContractError(index, "answer must be A/B/C/D");
+  }
+
+  const qualityMeta = item.qualityMeta;
+  const distractorDesign = isPlainObject(qualityMeta?.distractorDesign)
+    ? qualityMeta.distractorDesign
+    : {};
+  const normalizedDistractorDesign = new Map();
+
+  for (const key of Object.keys(distractorDesign)) {
+    const normalizedKey = normalizeAnswerKey(key);
+    if (!normalizedKey) {
+      return outputContractError(index, "distractorDesign keys must be A/B/C/D option codes");
+    }
+    if (normalizedKey === answerKey) {
+      return outputContractError(index, "distractorDesign must not include the correct answer");
+    }
+    normalizedDistractorDesign.set(normalizedKey, distractorDesign[key]);
+  }
+
+  for (const key of OPTION_CODES) {
+    if (key === answerKey) continue;
+    const design = normalizedDistractorDesign.get(key);
+    if (!isPlainObject(design)) {
+      return outputContractError(index, `distractorDesign is missing wrong option ${key}`);
+    }
+    for (const field of QUALITY_META_DISTRACTOR_REQUIRED_FIELDS) {
+      if (!hasText(design[field])) {
+        return outputContractError(index, `distractorDesign ${key} is missing ${field}`);
+      }
+    }
+  }
+
+  return { ok: true };
+}
+
 function assertItemText(item, index) {
   if (!isPlainObject(item)) {
     return {
@@ -325,6 +395,9 @@ export function assertItemsPayload(payload, expectedCount = null) {
 
     const qualityMeta = assertQualityMeta(payload.items[index], index);
     if (!qualityMeta.ok) return qualityMeta;
+
+    const choiceOptionContract = assertChoiceOptionContract(payload.items[index], index);
+    if (!choiceOptionContract.ok) return choiceOptionContract;
   }
 
   return { ok: true, items: payload.items };
