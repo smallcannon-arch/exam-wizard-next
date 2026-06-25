@@ -27,6 +27,87 @@ function errorResponse(request, env, result, status) {
   return jsonResponse(request, env, safeErrorPayload(result), status);
 }
 
+const ASYNC_BATCH_MAX_RETRY_COUNT = 1;
+const RETRYABLE_BATCH_ERROR_CODES = new Set([
+  ERROR_CODES.AI_JSON_NO_OBJECT,
+  ERROR_CODES.AI_JSON_PARSE_FAILED,
+]);
+
+function isRetryableBatchGenerationResult(result) {
+  return !!result && !result.ok && RETRYABLE_BATCH_ERROR_CODES.has(result.errorCode);
+}
+
+async function generateAndValidateBatch({ env, request, batch, batchNumber }) {
+  const startedAt = Date.now();
+  let lastResult = null;
+
+  for (let attempt = 0; attempt <= ASYNC_BATCH_MAX_RETRY_COUNT; attempt += 1) {
+    const prompt = buildGenerateItemsPrompt({
+      project: request.project,
+      materialText: request.materialText,
+      objectives: request.objectives,
+      intents: batch.intents,
+      checkedChineseSubcategories: request.checkedChineseSubcategories,
+    });
+
+    const ai = await callGemini({ env, prompt });
+    const latencyMs = Date.now() - startedAt;
+    if (!ai.ok) {
+      lastResult = {
+        ok: false,
+        batchNumber,
+        errorCode: ai.errorCode || ERROR_CODES.GEMINI_UPSTREAM_ERROR,
+        latencyMs,
+        retryCount: attempt,
+      };
+    } else {
+      const parsed = extractJsonObject(ai.text, { finishReason: ai.finishReason });
+      if (!parsed.ok) {
+        lastResult = {
+          ok: false,
+          batchNumber,
+          errorCode: parsed.errorCode,
+          latencyMs,
+          retryCount: attempt,
+          diagnostics: parsed.diagnostics,
+        };
+      } else {
+        const payload = assertItemsPayload(parsed.data, batch.expectedItemCount);
+        if (!payload.ok) {
+          lastResult = {
+            ok: false,
+            batchNumber,
+            errorCode: payload.errorCode,
+            latencyMs,
+            retryCount: attempt,
+          };
+        } else {
+          return {
+            ok: true,
+            batchNumber,
+            items: payload.items,
+            itemCount: payload.items.length,
+            latencyMs,
+            retryCount: attempt,
+          };
+        }
+      }
+    }
+
+    if (!isRetryableBatchGenerationResult(lastResult) || attempt >= ASYNC_BATCH_MAX_RETRY_COUNT) {
+      return lastResult;
+    }
+  }
+
+  return lastResult || {
+    ok: false,
+    batchNumber,
+    errorCode: ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID,
+    latencyMs: Date.now() - startedAt,
+    retryCount: ASYNC_BATCH_MAX_RETRY_COUNT,
+  };
+}
+
 export class GenerationWorkflow extends WorkflowEntrypointBase {
   async run(event, step) {
     const jobId = event?.payload?.jobId;
@@ -74,38 +155,12 @@ export class GenerationWorkflow extends WorkflowEntrypointBase {
 
       const generatedResults = await Promise.all(batchWindow.map(({ batch, batchNumber }) => (
         step.do(`generate and validate batch ${batchNumber}`, async () => {
-          const start = Date.now();
-          const prompt = buildGenerateItemsPrompt({
-            project: request.project,
-            materialText: request.materialText,
-            objectives: request.objectives,
-            intents: batch.intents,
-            checkedChineseSubcategories: request.checkedChineseSubcategories,
-          });
-
-          const ai = await callGemini({ env: this.env, prompt });
-          const latencyMs = Date.now() - start;
-          if (!ai.ok) {
-            return { ok: false, batchNumber, errorCode: ai.errorCode || ERROR_CODES.GEMINI_UPSTREAM_ERROR, latencyMs };
-          }
-
-          const parsed = extractJsonObject(ai.text);
-          if (!parsed.ok) {
-            return { ok: false, batchNumber, errorCode: parsed.errorCode, latencyMs };
-          }
-
-          const payload = assertItemsPayload(parsed.data, batch.expectedItemCount);
-          if (!payload.ok) {
-            return { ok: false, batchNumber, errorCode: payload.errorCode, latencyMs };
-          }
-
-          return {
-            ok: true,
+          return generateAndValidateBatch({
+            env: this.env,
+            request,
+            batch,
             batchNumber,
-            items: payload.items,
-            itemCount: payload.items.length,
-            latencyMs,
-          };
+          });
         })
       )));
 
@@ -121,6 +176,7 @@ export class GenerationWorkflow extends WorkflowEntrypointBase {
             batchCount: progress.batchCount || batches.length,
             completedBatchCount: completedBatches.length,
             completedItemCount,
+            retryCount: generated.retryCount,
           })
         ));
         if (!batchCompleted.ok) return batchCompleted;
@@ -132,7 +188,10 @@ export class GenerationWorkflow extends WorkflowEntrypointBase {
       if (failedBatches.length) {
         for (const generated of failedBatches) {
           await step.do(`mark batch ${generated.batchNumber} failed`, async () => (
-            markGenerationBatchFailed(this.env?.GENERATION_JOBS_DB, jobId, generated.batchNumber, generated.errorCode)
+            markGenerationBatchFailed(this.env?.GENERATION_JOBS_DB, jobId, generated.batchNumber, generated.errorCode, {
+              latencyMs: generated.latencyMs,
+              retryCount: generated.retryCount,
+            })
           ));
         }
         return failedBatches[0];

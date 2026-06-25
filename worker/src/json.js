@@ -4,7 +4,9 @@ export const ERROR_CODES = Object.freeze({
   GEMINI_UPSTREAM_ERROR: "GEMINI_UPSTREAM_ERROR",
   GEMINI_TIMEOUT: "GEMINI_TIMEOUT",
   AI_EMPTY_RESPONSE: "AI_EMPTY_RESPONSE",
+  AI_JSON_NO_OBJECT: "AI_JSON_NO_OBJECT",
   AI_JSON_PARSE_FAILED: "AI_JSON_PARSE_FAILED",
+  AI_JSON_TRUNCATED: "AI_JSON_TRUNCATED",
   AI_ITEMS_PAYLOAD_INVALID: "AI_ITEMS_PAYLOAD_INVALID",
   AI_QUALITY_META_MISSING: "AI_QUALITY_META_MISSING",
   AI_ITEM_TEXT_MISSING: "AI_ITEM_TEXT_MISSING",
@@ -30,6 +32,8 @@ const ERROR_MESSAGES = Object.freeze({
   [ERROR_CODES.AI_ITEM_TEXT_MISSING]: "AI response item is missing question text.",
   [ERROR_CODES.AI_STIMULUS_MISSING]: "AI response item references reading text but is missing stimulus.",
   [ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID]: "AI 回應不符合必要輸出契約。",
+  [ERROR_CODES.AI_JSON_NO_OBJECT]: "AI response did not contain a JSON object.",
+  [ERROR_CODES.AI_JSON_TRUNCATED]: "AI response appears to be truncated before valid JSON was completed.",
   [ERROR_CODES.ASYNC_JOB_UNAVAILABLE]: "Async generation job service is not available.",
   [ERROR_CODES.ASYNC_JOB_NOT_FOUND]: "Async generation job was not found.",
   [ERROR_CODES.ASYNC_JOB_STATUS_INVALID]: "Async generation job status is invalid.",
@@ -87,13 +91,45 @@ export async function readJson(request) {
   }
 }
 
-export function extractJsonObject(text) {
+function normalizeFinishReason(value) {
+  const text = String(value || "").trim().toUpperCase();
+  return /^[A-Z0-9_-]{1,64}$/.test(text) ? text : "";
+}
+
+function buildJsonDiagnostics(raw, candidate, metadata = {}) {
+  const finishReason = normalizeFinishReason(metadata.finishReason);
+  return {
+    finishReason: finishReason || null,
+    outputLength: raw.length,
+    jsonCandidateLength: candidate.length,
+    startsWithBrace: candidate.startsWith("{"),
+    endsWithBrace: candidate.endsWith("}"),
+    hasOpeningBrace: candidate.includes("{"),
+    hasClosingBrace: candidate.includes("}"),
+  };
+}
+
+function jsonError({ error, errorCode, diagnostics, classificationSource = "parser" }) {
+  return {
+    ok: false,
+    error,
+    errorCode,
+    diagnostics: {
+      ...diagnostics,
+      classificationSource,
+    },
+  };
+}
+
+export function extractJsonObject(text, metadata = {}) {
   const raw = String(text || "").trim();
   const withoutFence = raw
     .replace(/^```json\s*/i, "")
     .replace(/^```\s*/i, "")
     .replace(/```$/i, "")
     .trim();
+  const diagnostics = buildJsonDiagnostics(raw, withoutFence, metadata);
+  const isHardTruncated = diagnostics.finishReason === "MAX_TOKENS";
 
   try {
     return { ok: true, data: JSON.parse(withoutFence) };
@@ -101,13 +137,39 @@ export function extractJsonObject(text) {
     const start = withoutFence.indexOf("{");
     const end = withoutFence.lastIndexOf("}");
     if (start < 0 || end <= start) {
-      return { ok: false, error: "AI 回應中找不到 JSON 物件。", errorCode: ERROR_CODES.AI_JSON_PARSE_FAILED };
+      if (isHardTruncated) {
+        return jsonError({
+          error: "AI response ended before JSON was complete.",
+          errorCode: ERROR_CODES.AI_JSON_TRUNCATED,
+          diagnostics,
+          classificationSource: "finishReason",
+        });
+      }
+
+      return jsonError({
+        error: "AI response did not contain a JSON object.",
+        errorCode: ERROR_CODES.AI_JSON_NO_OBJECT,
+        diagnostics,
+      });
     }
 
     try {
       return { ok: true, data: JSON.parse(withoutFence.slice(start, end + 1)) };
     } catch {
-      return { ok: false, error: "AI 回應不是合法 JSON。", errorCode: ERROR_CODES.AI_JSON_PARSE_FAILED };
+      if (isHardTruncated) {
+        return jsonError({
+          error: "AI response ended before JSON was complete.",
+          errorCode: ERROR_CODES.AI_JSON_TRUNCATED,
+          diagnostics,
+          classificationSource: "finishReason",
+        });
+      }
+
+      return jsonError({
+        error: "AI response was not valid JSON.",
+        errorCode: ERROR_CODES.AI_JSON_PARSE_FAILED,
+        diagnostics,
+      });
     }
   }
 }
