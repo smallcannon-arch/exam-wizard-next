@@ -2,7 +2,9 @@
 
 Date: 2026-06-25
 
-Status: decision baseline after three effective 50-item production Worker observations with bounded batch concurrency `2`.
+Status: initial decision baseline after three effective 50-item production Worker observations with bounded batch concurrency `2`.
+
+Update: this file has been superseded by the 9-sample replication baseline in `docs/10C_WORKER_50_ITEM_REPLICATION_BASELINE_20260625.md`. The replication baseline found 8 / 9 pass samples and one Chinese-language `AI_JSON_PARSE_FAILED` job failure. Use the replication baseline for current readiness decisions.
 
 This file stores only summarized metrics and readiness decisions. It does not store raw prompt, raw output, full generated item text, full API responses, API keys, tokens, request headers, cookies, or repo-external raw output files.
 
@@ -51,7 +53,7 @@ This baseline does not claim full readiness for every grade, every subject, ever
 
 ## Decision
 
-The backend async generation path is initially viable for 50-item generation under the tested conditions.
+The backend async generation path is initially viable for 50-item generation under the tested conditions, but this statement was based on one sample per subject. Later replication narrowed this conclusion because one Chinese-language 50-item sample failed with `AI_JSON_PARSE_FAILED`.
 
 Accepted:
 
@@ -151,6 +153,21 @@ Recommended next steps:
 - Do not advertise 50-item generation as fast.
 - Do not remove the manual deploy gate.
 - Do not store raw prompt or raw output in the repository.
+
+## Replication Follow-Up
+
+The later 9-sample replication run changed the decision boundary:
+
+- overall pass rate: 8 / 9;
+- Chinese language arts: 2 / 3 pass, 1 `AI_JSON_PARSE_FAILED`;
+- Math: 3 / 3 pass;
+- Natural science: 3 / 3 pass;
+- leakage findings: 0;
+- invalid `distractorDesign` key findings: 0.
+
+Current statement:
+
+> Backend async 50-item generation is promising at concurrency `2`, but should remain in controlled rollout until `AI_JSON_PARSE_FAILED` recovery and quality-warning follow-ups are addressed.
 
 ## Next Decision Point
 
