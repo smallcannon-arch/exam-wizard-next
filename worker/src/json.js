@@ -67,13 +67,21 @@ function hasText(value) {
 const ITEM_TEXT_FIELDS = ["question", "stem", "prompt", "problem", "questionText", "itemText", "text"];
 const OPTION_CODES = ["A", "B", "C", "D"];
 export const CONTRACT_VIOLATION_TYPES = Object.freeze({
+  QUESTION_TYPE_MISSING: "QUESTION_TYPE_MISSING",
+  QUESTION_TYPE_MISMATCH: "QUESTION_TYPE_MISMATCH",
   OPTIONS_COUNT_INVALID: "OPTIONS_COUNT_INVALID",
   OPTIONS_TEXT_INVALID: "OPTIONS_TEXT_INVALID",
   ANSWER_CODE_INVALID: "ANSWER_CODE_INVALID",
+  TRUE_FALSE_OPTIONS_INVALID: "TRUE_FALSE_OPTIONS_INVALID",
+  TRUE_FALSE_ANSWER_INVALID: "TRUE_FALSE_ANSWER_INVALID",
+  FILL_IN_OPTIONS_INVALID: "FILL_IN_OPTIONS_INVALID",
+  FILL_IN_ANSWER_INVALID: "FILL_IN_ANSWER_INVALID",
+  ACCEPTED_ANSWERS_INVALID: "ACCEPTED_ANSWERS_INVALID",
   DISTRACTOR_KEY_INVALID: "DISTRACTOR_KEY_INVALID",
   DISTRACTOR_CORRECT_ANSWER_INCLUDED: "DISTRACTOR_CORRECT_ANSWER_INCLUDED",
   DISTRACTOR_MISSING_WRONG_OPTION: "DISTRACTOR_MISSING_WRONG_OPTION",
   DISTRACTOR_REQUIRED_FIELD_MISSING: "DISTRACTOR_REQUIRED_FIELD_MISSING",
+  GROUP_STIMULUS_INVALID: "GROUP_STIMULUS_INVALID",
 });
 
 const QUALITY_META_DISTRACTOR_REQUIRED_FIELDS = [
@@ -96,10 +104,32 @@ const STIMULUS_REFERENCE_TERMS = [
   "本文",
   "上文",
 ];
+const CHOICE_LIKE_QUESTION_TYPE_TERMS = ["選擇", "choice", "圖表", "判讀", "實驗", "探究"];
+const GROUP_QUESTION_TYPE_TERMS = ["學力", "題組", "情境", "scenario", "group", "tasa", "proficiency", "閱讀測驗"];
 
 function normalizeAnswerKey(value) {
   const text = String(value || "").trim().toUpperCase().replace(/[()\s.]/g, "");
   return OPTION_CODES.includes(text) ? text : "";
+}
+
+function normalizeTrueFalseAnswer(value) {
+  const text = String(value || "").trim().toUpperCase().replace(/[()\s.]/g, "");
+  if (["O", "X"].includes(text)) return text;
+  return "";
+}
+
+function normalizeQuestionTypeContract(value = "") {
+  const source = String(value || "").trim().toLowerCase();
+  if (!source) return "";
+  if (GROUP_QUESTION_TYPE_TERMS.some((term) => source.includes(term))) return "group";
+  if (source.includes("是非") || source.includes("true_false") || source.includes("truefalse")) return "trueFalse";
+  if (source.includes("填充") || source.includes("fill")) return "fill";
+  if (CHOICE_LIKE_QUESTION_TYPE_TERMS.some((term) => source.includes(term))) return "choiceLike";
+  return "";
+}
+
+function isExpectedGroupSlot(slot) {
+  return normalizeQuestionTypeContract(slot?.questionType || slot?.itemType) === "group" || !!slot?.isGroup;
 }
 
 function safeOptionCode(value) {
@@ -310,7 +340,7 @@ function contractViolation(type, index, details = {}) {
 function outputContractError(index, reason, violation) {
   return {
     ok: false,
-    error: `AI response item ${index + 1} has invalid option contract: ${reason}.`,
+    error: `AI response item ${index + 1} has invalid output contract: ${reason}.`,
     errorCode: ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID,
     contractViolation: violation || contractViolation(CONTRACT_VIOLATION_TYPES.OPTIONS_COUNT_INVALID, index, {
       field: "options",
@@ -318,8 +348,35 @@ function outputContractError(index, reason, violation) {
   };
 }
 
-function assertChoiceOptionContract(item, index) {
-  if (!Array.isArray(item?.options)) return { ok: true };
+function assertRequestedQuestionType(item, slot, index) {
+  const expected = normalizeQuestionTypeContract(slot.questionType || slot.itemType);
+  if (!expected) {
+    return outputContractError(index, "requested slot questionType is required for typed validation", contractViolation(
+      CONTRACT_VIOLATION_TYPES.QUESTION_TYPE_MISSING,
+      index,
+      { field: "questionType" },
+    ));
+  }
+  const actual = normalizeQuestionTypeContract(item?.questionType);
+  if (!actual || actual !== expected) {
+    return outputContractError(index, "questionType must match the requested slot", contractViolation(
+      CONTRACT_VIOLATION_TYPES.QUESTION_TYPE_MISMATCH,
+      index,
+      { field: "questionType" },
+    ));
+  }
+  return { ok: true };
+}
+
+function assertChoiceOptionContract(item, index, { requireOptions = false } = {}) {
+  if (!Array.isArray(item?.options)) {
+    if (!requireOptions) return { ok: true };
+    return outputContractError(index, "choice-like items must include options", contractViolation(
+      CONTRACT_VIOLATION_TYPES.OPTIONS_COUNT_INVALID,
+      index,
+      { field: "options", optionCode: null },
+    ));
+  }
 
   if (item.options.length !== OPTION_CODES.length) {
     return outputContractError(index, "options must contain exactly A/B/C/D", contractViolation(
@@ -395,6 +452,142 @@ function assertChoiceOptionContract(item, index) {
   return { ok: true };
 }
 
+function assertTrueFalseContract(item, index) {
+  if (hasOwnField(item, "options")) {
+    return outputContractError(index, "true/false items must omit options", contractViolation(
+      CONTRACT_VIOLATION_TYPES.TRUE_FALSE_OPTIONS_INVALID,
+      index,
+      { field: "options" },
+    ));
+  }
+
+  const answerKey = normalizeTrueFalseAnswer(item.answer);
+  if (!answerKey) {
+    return outputContractError(index, "true/false answer must be O or X", contractViolation(
+      CONTRACT_VIOLATION_TYPES.TRUE_FALSE_ANSWER_INVALID,
+      index,
+      { field: "answer", optionCode: safeOptionCode(item.answer) },
+    ));
+  }
+
+  if (hasOwnField(item, "correctAnswer")) {
+    const correctAnswerKey = normalizeTrueFalseAnswer(item.correctAnswer);
+    if (!correctAnswerKey || correctAnswerKey !== answerKey) {
+      return outputContractError(index, "true/false correctAnswer must match answer", contractViolation(
+        CONTRACT_VIOLATION_TYPES.TRUE_FALSE_ANSWER_INVALID,
+        index,
+        { field: "correctAnswer", optionCode: safeOptionCode(item.correctAnswer) },
+      ));
+    }
+  }
+
+  const distractorDesign = isPlainObject(item?.qualityMeta?.distractorDesign)
+    ? item.qualityMeta.distractorDesign
+    : {};
+  for (const key of Object.keys(distractorDesign)) {
+    const normalizedKey = normalizeTrueFalseAnswer(key);
+    if (!normalizedKey || normalizedKey === answerKey) {
+      return outputContractError(index, "true/false distractorDesign keys must only use the wrong O/X answer", contractViolation(
+        normalizedKey === answerKey
+          ? CONTRACT_VIOLATION_TYPES.DISTRACTOR_CORRECT_ANSWER_INCLUDED
+          : CONTRACT_VIOLATION_TYPES.DISTRACTOR_KEY_INVALID,
+        index,
+        { field: "qualityMeta.distractorDesign", optionCode: safeOptionCode(key) },
+      ));
+    }
+  }
+
+  return { ok: true };
+}
+
+function assertFillInContract(item, index) {
+  if (hasOwnField(item, "options")) {
+    return outputContractError(index, "fill-in items must omit options", contractViolation(
+      CONTRACT_VIOLATION_TYPES.FILL_IN_OPTIONS_INVALID,
+      index,
+      { field: "options" },
+    ));
+  }
+
+  const answerText = typeof item?.answer === "string" ? item.answer.trim() : "";
+  if (!answerText || normalizeAnswerKey(answerText) || normalizeTrueFalseAnswer(answerText)) {
+    return outputContractError(index, "fill-in answer must be non-empty text", contractViolation(
+      CONTRACT_VIOLATION_TYPES.FILL_IN_ANSWER_INVALID,
+      index,
+      { field: "answer", optionCode: safeOptionCode(answerText) },
+    ));
+  }
+
+  if (hasOwnField(item, "acceptedAnswers")) {
+    if (!Array.isArray(item.acceptedAnswers) || item.acceptedAnswers.some((entry) => !hasText(entry))) {
+      return outputContractError(index, "acceptedAnswers must be non-empty text array", contractViolation(
+        CONTRACT_VIOLATION_TYPES.ACCEPTED_ANSWERS_INVALID,
+        index,
+        { field: "acceptedAnswers" },
+      ));
+    }
+  }
+
+  return { ok: true };
+}
+
+function assertGroupContract(item, index) {
+  const choice = assertChoiceOptionContract(item, index, { requireOptions: true });
+  if (!choice.ok) return choice;
+
+  if (!hasText(item.groupId)) {
+    return outputContractError(index, "group items must include groupId", contractViolation(
+      CONTRACT_VIOLATION_TYPES.GROUP_STIMULUS_INVALID,
+      index,
+      { field: "groupId" },
+    ));
+  }
+
+  return { ok: true };
+}
+
+function assertTypedOutputContract(item, slot, index) {
+  if (!slot) return assertChoiceOptionContract(item, index);
+
+  const questionType = assertRequestedQuestionType(item, slot, index);
+  if (!questionType.ok) return questionType;
+
+  const contractType = normalizeQuestionTypeContract(slot.questionType || slot.itemType);
+  if (contractType === "trueFalse") return assertTrueFalseContract(item, index);
+  if (contractType === "fill") return assertFillInContract(item, index);
+  if (isExpectedGroupSlot(slot)) return assertGroupContract(item, index);
+  if (contractType === "choiceLike") return assertChoiceOptionContract(item, index, { requireOptions: true });
+
+  return { ok: true };
+}
+
+function assertGroupStimulusContract(items, expectedSlots) {
+  if (!Array.isArray(expectedSlots)) return { ok: true };
+  const groups = new Map();
+  for (let index = 0; index < items.length; index += 1) {
+    const slot = expectedSlots[index];
+    if (!isExpectedGroupSlot(slot)) continue;
+
+    const item = items[index];
+    const groupId = hasText(item?.groupId) ? String(item.groupId).trim() : `slot-${index + 1}`;
+    const group = groups.get(groupId) || { firstIndex: index, hasStimulus: false };
+    group.hasStimulus = group.hasStimulus || hasText(item?.stimulus);
+    groups.set(groupId, group);
+  }
+
+  for (const group of groups.values()) {
+    if (!group.hasStimulus) {
+      return outputContractError(group.firstIndex, "group items must include at least one stimulus", contractViolation(
+        CONTRACT_VIOLATION_TYPES.GROUP_STIMULUS_INVALID,
+        group.firstIndex,
+        { field: "stimulus" },
+      ));
+    }
+  }
+
+  return { ok: true };
+}
+
 function assertItemText(item, index) {
   if (!isPlainObject(item)) {
     return {
@@ -445,7 +638,7 @@ function assertStimulusContract(item, index) {
   return { ok: true };
 }
 
-export function assertItemsPayload(payload, expectedCount = null) {
+export function assertItemsPayload(payload, expectedCount = null, options = {}) {
   if (!payload || typeof payload !== "object" || !Array.isArray(payload.items)) {
     return { ok: false, error: "AI 回應缺少 items 陣列。", errorCode: ERROR_CODES.AI_ITEMS_PAYLOAD_INVALID };
   }
@@ -459,18 +652,28 @@ export function assertItemsPayload(payload, expectedCount = null) {
   }
 
   for (let index = 0; index < payload.items.length; index += 1) {
+    const expectedSlot = Array.isArray(options.expectedSlots) ? options.expectedSlots[index] : null;
     const itemText = assertItemText(payload.items[index], index);
     if (!itemText.ok) return itemText;
-
-    const stimulus = assertStimulusContract(payload.items[index], index);
-    if (!stimulus.ok) return stimulus;
 
     const qualityMeta = assertQualityMeta(payload.items[index], index);
     if (!qualityMeta.ok) return qualityMeta;
 
-    const choiceOptionContract = assertChoiceOptionContract(payload.items[index], index);
-    if (!choiceOptionContract.ok) return choiceOptionContract;
+    const outputContract = assertTypedOutputContract(
+      payload.items[index],
+      expectedSlot,
+      index,
+    );
+    if (!outputContract.ok) return outputContract;
+
+    if (!isExpectedGroupSlot(expectedSlot)) {
+      const stimulus = assertStimulusContract(payload.items[index], index);
+      if (!stimulus.ok) return stimulus;
+    }
   }
+
+  const groupStimulus = assertGroupStimulusContract(payload.items, options.expectedSlots);
+  if (!groupStimulus.ok) return groupStimulus;
 
   return { ok: true, items: payload.items };
 }

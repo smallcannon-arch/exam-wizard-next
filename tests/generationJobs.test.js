@@ -492,6 +492,29 @@ describe("async generation job skeleton", () => {
     expect(text).not.toContain("stack");
   });
 
+  it("applies requested intent questionType authority on the synchronous generate endpoint", async () => {
+    const data = payload(1);
+    data.intents[0].questionType = "fill";
+    mockGeminiItems([
+      generatedItem(1),
+    ]);
+
+    const response = await worker.fetch(jsonRequest("/generate-items", data), {
+      ALLOWED_ORIGIN: "*",
+      GEMINI_API_KEY: "test-key",
+    });
+    const body = await readJson(response);
+    const text = JSON.stringify(body).toLowerCase();
+
+    expect(response.status).toBe(502);
+    expect(body.ok).toBe(false);
+    expect(body.errorCode).toBe(ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID);
+    expect(text).not.toContain("raw prompt");
+    expect(text).not.toContain("raw output");
+    expect(text).not.toContain("token");
+    expect(text).not.toContain("question 1");
+  });
+
   it("creates a D1-backed queued job without invoking Gemini or returning raw request data", async () => {
     const db = createFakeJobsDb();
     const env = {
@@ -1164,6 +1187,56 @@ describe("async generation job skeleton", () => {
     expect(statusText).not.toContain("token");
     expect(statusText).not.toContain("headers");
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses requested batch intent questionType instead of model self-report", async () => {
+    const db = createFakeJobsDb();
+    const jobId = "gen_workflow_requested_type_authority_12345678";
+    const data = payload(1);
+    data.intents[0].questionType = "fill";
+    const plan = createGenerationJobPlan(data);
+    mockGeminiItems([
+      generatedItem(1),
+    ]);
+    db.seedJob({
+      job_id: jobId,
+      requested_item_count: 1,
+      batch_count: 1,
+      expires_at: "2026-06-25T00:00:00.000Z",
+    });
+    db.seedBatch({ job_id: jobId, batch_number: 1, expected_item_count: 1 });
+
+    const workflow = new GenerationWorkflow();
+    workflow.env = {
+      GENERATION_JOBS_DB: db,
+      GEMINI_API_KEY: "test-key",
+    };
+    const step = {
+      async do(_name, callback) {
+        return callback();
+      },
+    };
+
+    const result = await workflow.run({
+      payload: {
+        jobId,
+        request: plan.request,
+        batches: plan.batches,
+        progress: plan.progress,
+      },
+    }, step);
+
+    expect(result).toMatchObject({ ok: false, errorCode: ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID });
+    expect(db.state.jobs[0].status).toBe("failed");
+    expect(db.state.batches[0].status).toBe("failed_terminal");
+    expect(db.state.batches[0].contract_violation_type).toBe(CONTRACT_VIOLATION_TYPES.QUESTION_TYPE_MISMATCH);
+    expect(JSON.parse(db.state.batches[0].contract_violation_types)).toEqual([
+      CONTRACT_VIOLATION_TYPES.QUESTION_TYPE_MISMATCH,
+    ]);
+    expect(db.state.batches[0].contract_violation_item_index).toBe(1);
+    expect(db.state.batches[0].contract_violation_field).toBe("questionType");
+    expect(JSON.stringify(db.state).toLowerCase()).not.toContain("raw output");
+    expect(JSON.stringify(db.state).toLowerCase()).not.toContain("token");
   });
 
   it("retries a malformed JSON batch once and stores only one completed batch result", async () => {

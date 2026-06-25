@@ -153,7 +153,7 @@ async function generateAndValidateBatch({ env, request, batch, batchNumber }) {
           diagnostics: mergeUpstreamDiagnostics(parsed.diagnostics, latestUpstreamStatus),
         };
       } else {
-        const payload = assertItemsPayload(parsed.data, batch.expectedItemCount);
+        const payload = assertItemsPayload(parsed.data, batch.expectedItemCount, { expectedSlots: batch.intents });
         if (!payload.ok) {
           lastResult = {
             ok: false,
@@ -403,7 +403,7 @@ async function handleGenerateItems(request, env) {
   const parsed = extractJsonObject(ai.text);
   if (!parsed.ok) return errorResponse(request, env, parsed, 502);
 
-  const payload = assertItemsPayload(parsed.data);
+  const payload = assertItemsPayload(parsed.data, intents.length, { expectedSlots: intents });
   if (!payload.ok) return errorResponse(request, env, payload, 502);
 
   return jsonResponse(request, env, { ok: true, items: payload.items });
@@ -426,7 +426,7 @@ async function handleRegenerateItem(request, env) {
   const parsed = extractJsonObject(ai.text);
   if (!parsed.ok) return errorResponse(request, env, parsed, 502);
 
-  const payload = assertItemsPayload(parsed.data, 1);
+  const payload = assertItemsPayload(parsed.data, 1, { expectedSlots: [originalItem] });
   if (!payload.ok) return errorResponse(request, env, payload, 502);
 
   return jsonResponse(request, env, { ok: true, items: payload.items });

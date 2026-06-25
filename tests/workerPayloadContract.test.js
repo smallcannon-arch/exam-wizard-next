@@ -38,6 +38,20 @@ function item(overrides = {}) {
   };
 }
 
+function itemWithoutOptions(overrides = {}) {
+  const next = item(overrides);
+  delete next.options;
+  return next;
+}
+
+function slot(questionType, overrides = {}) {
+  return {
+    itemId: "Q-001",
+    questionType,
+    ...overrides,
+  };
+}
+
 describe("Worker items payload contract", () => {
   it("rejects payloads missing items", () => {
     const result = assertItemsPayload({});
@@ -308,6 +322,231 @@ describe("Worker items payload contract", () => {
     const result = assertItemsPayload(payload);
 
     expect(result.ok).toBe(true);
+  });
+
+  it("rejects requested choice-like slots when options are missing", () => {
+    const result = assertItemsPayload({
+      items: [itemWithoutOptions({ questionType: "choice" })],
+    }, 1, {
+      expectedSlots: [slot("\u9078\u64c7\u984c")],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errorCode).toBe(ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID);
+    expect(result.contractViolation).toMatchObject({
+      type: CONTRACT_VIOLATION_TYPES.OPTIONS_COUNT_INVALID,
+      itemIndex: 1,
+      field: "options",
+      optionCode: null,
+    });
+  });
+
+  it("accepts requested true/false slots without choice options", () => {
+    const result = assertItemsPayload({
+      items: [itemWithoutOptions({
+        questionType: "true_false",
+        answer: "O",
+        correctAnswer: "O",
+        qualityMeta: qualityMeta({
+          distractorDesign: {
+            X: distractor("X"),
+          },
+        }),
+      })],
+    }, 1, {
+      expectedSlots: [slot("\u662f\u975e\u984c")],
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects requested true/false slots that include choice options", () => {
+    const result = assertItemsPayload({
+      items: [item({
+        questionType: "true_false",
+        answer: "O",
+        qualityMeta: qualityMeta({
+          distractorDesign: {
+            X: distractor("X"),
+          },
+        }),
+      })],
+    }, 1, {
+      expectedSlots: [slot("\u662f\u975e\u984c")],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.contractViolation).toMatchObject({
+      type: CONTRACT_VIOLATION_TYPES.TRUE_FALSE_OPTIONS_INVALID,
+      itemIndex: 1,
+      field: "options",
+    });
+  });
+
+  it("rejects requested true/false slots with non O/X answers", () => {
+    const result = assertItemsPayload({
+      items: [itemWithoutOptions({
+        questionType: "true_false",
+        answer: "A",
+        qualityMeta: qualityMeta({
+          distractorDesign: {
+            X: distractor("X"),
+          },
+        }),
+      })],
+    }, 1, {
+      expectedSlots: [slot("\u662f\u975e\u984c")],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.contractViolation).toMatchObject({
+      type: CONTRACT_VIOLATION_TYPES.TRUE_FALSE_ANSWER_INVALID,
+      itemIndex: 1,
+      field: "answer",
+      optionCode: "A",
+    });
+  });
+
+  it("accepts requested fill-in slots without choice options", () => {
+    const result = assertItemsPayload({
+      items: [itemWithoutOptions({
+        questionType: "fill_in",
+        answer: "water",
+        acceptedAnswers: ["water", "Water"],
+        qualityMeta: qualityMeta({
+          distractorDesign: {},
+        }),
+      })],
+    }, 1, {
+      expectedSlots: [slot("\u586b\u5145\u984c")],
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects requested fill-in slots that include choice options", () => {
+    const result = assertItemsPayload({
+      items: [item({
+        questionType: "fill_in",
+        answer: "water",
+        qualityMeta: qualityMeta({
+          distractorDesign: {},
+        }),
+      })],
+    }, 1, {
+      expectedSlots: [slot("\u586b\u5145\u984c")],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.contractViolation).toMatchObject({
+      type: CONTRACT_VIOLATION_TYPES.FILL_IN_OPTIONS_INVALID,
+      itemIndex: 1,
+      field: "options",
+    });
+  });
+
+  it("rejects requested fill-in slots with answer codes instead of text", () => {
+    const result = assertItemsPayload({
+      items: [itemWithoutOptions({
+        questionType: "fill_in",
+        answer: "A",
+        qualityMeta: qualityMeta({
+          distractorDesign: {},
+        }),
+      })],
+    }, 1, {
+      expectedSlots: [slot("\u586b\u5145\u984c")],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.contractViolation).toMatchObject({
+      type: CONTRACT_VIOLATION_TYPES.FILL_IN_ANSWER_INVALID,
+      itemIndex: 1,
+      field: "answer",
+      optionCode: "A",
+    });
+  });
+
+  it("uses requested slot questionType as authority instead of model self-report", () => {
+    const result = assertItemsPayload({
+      items: [item({
+        questionType: "choice",
+      })],
+    }, 1, {
+      expectedSlots: [slot("\u586b\u5145\u984c")],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.contractViolation).toMatchObject({
+      type: CONTRACT_VIOLATION_TYPES.QUESTION_TYPE_MISMATCH,
+      itemIndex: 1,
+      field: "questionType",
+    });
+  });
+
+  it("rejects typed validation slots that omit requested questionType", () => {
+    const result = assertItemsPayload({
+      items: [item({
+        questionType: "choice",
+      })],
+    }, 1, {
+      expectedSlots: [{ itemId: "Q-001" }],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.contractViolation).toMatchObject({
+      type: CONTRACT_VIOLATION_TYPES.QUESTION_TYPE_MISSING,
+      itemIndex: 1,
+      field: "questionType",
+    });
+  });
+
+  it("accepts requested group slots with stimulus and rejects missing stimulus", () => {
+    const groupSlot = slot("proficiency", { isGroup: true });
+    const accepted = assertItemsPayload({
+      items: [item({
+        questionType: "proficiency",
+        groupId: "G-1",
+        stimulus: "Shared reading text",
+      })],
+    }, 1, {
+      expectedSlots: [groupSlot],
+    });
+    const inheritedStimulus = assertItemsPayload({
+      items: [
+        item({
+          questionType: "proficiency",
+          groupId: "G-1",
+          stimulus: "Shared reading text",
+        }),
+        item({
+          itemId: "Q-002",
+          questionType: "proficiency",
+          groupId: "G-1",
+          stimulus: "",
+        }),
+      ],
+    }, 2, {
+      expectedSlots: [groupSlot, { ...groupSlot, itemId: "Q-002" }],
+    });
+    const missingStimulus = assertItemsPayload({
+      items: [item({
+        questionType: "proficiency",
+        groupId: "G-1",
+        stimulus: "",
+      })],
+    }, 1, {
+      expectedSlots: [groupSlot],
+    });
+
+    expect(accepted.ok).toBe(true);
+    expect(inheritedStimulus.ok).toBe(true);
+    expect(missingStimulus.ok).toBe(false);
+    expect(missingStimulus.contractViolation).toMatchObject({
+      type: CONTRACT_VIOLATION_TYPES.GROUP_STIMULUS_INVALID,
+      itemIndex: 1,
+      field: "stimulus",
+    });
   });
 
   it("does not expose raw prompt, raw output, tokens, headers, or stack traces in error payloads", () => {
