@@ -66,6 +66,16 @@ function hasText(value) {
 
 const ITEM_TEXT_FIELDS = ["question", "stem", "prompt", "problem", "questionText", "itemText", "text"];
 const OPTION_CODES = ["A", "B", "C", "D"];
+export const CONTRACT_VIOLATION_TYPES = Object.freeze({
+  OPTIONS_COUNT_INVALID: "OPTIONS_COUNT_INVALID",
+  OPTIONS_TEXT_INVALID: "OPTIONS_TEXT_INVALID",
+  ANSWER_CODE_INVALID: "ANSWER_CODE_INVALID",
+  DISTRACTOR_KEY_INVALID: "DISTRACTOR_KEY_INVALID",
+  DISTRACTOR_CORRECT_ANSWER_INCLUDED: "DISTRACTOR_CORRECT_ANSWER_INCLUDED",
+  DISTRACTOR_MISSING_WRONG_OPTION: "DISTRACTOR_MISSING_WRONG_OPTION",
+  DISTRACTOR_REQUIRED_FIELD_MISSING: "DISTRACTOR_REQUIRED_FIELD_MISSING",
+});
+
 const QUALITY_META_DISTRACTOR_REQUIRED_FIELDS = [
   "misconceptionTag",
   "misconceptionDescription",
@@ -90,6 +100,20 @@ const STIMULUS_REFERENCE_TERMS = [
 function normalizeAnswerKey(value) {
   const text = String(value || "").trim().toUpperCase().replace(/[()\s.]/g, "");
   return OPTION_CODES.includes(text) ? text : "";
+}
+
+function safeOptionCode(value) {
+  const text = String(value || "").trim().toUpperCase().replace(/[()\s.]/g, "");
+  if (OPTION_CODES.includes(text)) return text;
+  return /^[A-Z]$/.test(text) ? text : "OTHER";
+}
+
+function optionCodeForCountDrift(optionCount) {
+  const count = Number(optionCount);
+  if (!Number.isInteger(count) || count < 0) return null;
+  const index = count > OPTION_CODES.length ? OPTION_CODES.length : count;
+  if (index < 0 || index >= 26) return "OTHER";
+  return String.fromCharCode(65 + index);
 }
 
 function safeMessage(error, errorCode) {
@@ -274,11 +298,23 @@ function assertQualityMeta(item, index) {
   return { ok: true };
 }
 
-function outputContractError(index, reason) {
+function contractViolation(type, index, details = {}) {
+  return {
+    type,
+    types: [type],
+    itemIndex: index + 1,
+    ...details,
+  };
+}
+
+function outputContractError(index, reason, violation) {
   return {
     ok: false,
     error: `AI response item ${index + 1} has invalid option contract: ${reason}.`,
     errorCode: ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID,
+    contractViolation: violation || contractViolation(CONTRACT_VIOLATION_TYPES.OPTIONS_COUNT_INVALID, index, {
+      field: "options",
+    }),
   };
 }
 
@@ -286,16 +322,28 @@ function assertChoiceOptionContract(item, index) {
   if (!Array.isArray(item?.options)) return { ok: true };
 
   if (item.options.length !== OPTION_CODES.length) {
-    return outputContractError(index, "options must contain exactly A/B/C/D");
+    return outputContractError(index, "options must contain exactly A/B/C/D", contractViolation(
+      CONTRACT_VIOLATION_TYPES.OPTIONS_COUNT_INVALID,
+      index,
+      { field: "options", optionCode: optionCodeForCountDrift(item.options.length) },
+    ));
   }
 
   if (item.options.some((option) => !hasText(option))) {
-    return outputContractError(index, "options must be non-empty text");
+    return outputContractError(index, "options must be non-empty text", contractViolation(
+      CONTRACT_VIOLATION_TYPES.OPTIONS_TEXT_INVALID,
+      index,
+      { field: "options" },
+    ));
   }
 
   const answerKey = normalizeAnswerKey(item.answer);
   if (!answerKey) {
-    return outputContractError(index, "answer must be A/B/C/D");
+    return outputContractError(index, "answer must be A/B/C/D", contractViolation(
+      CONTRACT_VIOLATION_TYPES.ANSWER_CODE_INVALID,
+      index,
+      { field: "answer", optionCode: safeOptionCode(item.answer) },
+    ));
   }
 
   const qualityMeta = item.qualityMeta;
@@ -307,10 +355,18 @@ function assertChoiceOptionContract(item, index) {
   for (const key of Object.keys(distractorDesign)) {
     const normalizedKey = normalizeAnswerKey(key);
     if (!normalizedKey) {
-      return outputContractError(index, "distractorDesign keys must be A/B/C/D option codes");
+      return outputContractError(index, "distractorDesign keys must be A/B/C/D option codes", contractViolation(
+        CONTRACT_VIOLATION_TYPES.DISTRACTOR_KEY_INVALID,
+        index,
+        { field: "qualityMeta.distractorDesign", optionCode: safeOptionCode(key) },
+      ));
     }
     if (normalizedKey === answerKey) {
-      return outputContractError(index, "distractorDesign must not include the correct answer");
+      return outputContractError(index, "distractorDesign must not include the correct answer", contractViolation(
+        CONTRACT_VIOLATION_TYPES.DISTRACTOR_CORRECT_ANSWER_INCLUDED,
+        index,
+        { field: "qualityMeta.distractorDesign", optionCode: normalizedKey },
+      ));
     }
     normalizedDistractorDesign.set(normalizedKey, distractorDesign[key]);
   }
@@ -319,11 +375,19 @@ function assertChoiceOptionContract(item, index) {
     if (key === answerKey) continue;
     const design = normalizedDistractorDesign.get(key);
     if (!isPlainObject(design)) {
-      return outputContractError(index, `distractorDesign is missing wrong option ${key}`);
+      return outputContractError(index, `distractorDesign is missing wrong option ${key}`, contractViolation(
+        CONTRACT_VIOLATION_TYPES.DISTRACTOR_MISSING_WRONG_OPTION,
+        index,
+        { field: "qualityMeta.distractorDesign", optionCode: key },
+      ));
     }
     for (const field of QUALITY_META_DISTRACTOR_REQUIRED_FIELDS) {
       if (!hasText(design[field])) {
-        return outputContractError(index, `distractorDesign ${key} is missing ${field}`);
+        return outputContractError(index, `distractorDesign ${key} is missing ${field}`, contractViolation(
+          CONTRACT_VIOLATION_TYPES.DISTRACTOR_REQUIRED_FIELD_MISSING,
+          index,
+          { field, optionCode: key },
+        ));
       }
     }
   }

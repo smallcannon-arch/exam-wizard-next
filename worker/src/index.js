@@ -134,6 +134,7 @@ async function generateAndValidateBatch({ env, request, batch, batchNumber }) {
             latencyMs,
             retryCount: attempt,
             diagnostics: mergeUpstreamDiagnostics(parsed.diagnostics, latestUpstreamStatus),
+            contractViolation: payload.contractViolation,
           };
         } else {
           return {
@@ -251,6 +252,7 @@ export class GenerationWorkflow extends WorkflowEntrypointBase {
               latencyMs: generated.latencyMs,
               retryCount: generated.retryCount,
               diagnostics: generated.diagnostics,
+              contractViolation: generated.contractViolation,
             })
           ));
         }
