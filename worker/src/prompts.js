@@ -308,8 +308,24 @@ const MATH_QUALITY_META_COMPACT_GUIDELINES = `
 - distractorDesign 只說明該錯誤選項的誘答性與錯誤點，不要寫成完整教案。
 `;
 
+const CHINESE_QUALITY_META_COMPACT_GUIDELINES = `
+# 國語 qualityMeta / distractorDesign 壓縮規則
+
+- 僅適用國語題；仍必須保留 qualityMeta 與 qualityMeta.distractorDesign，不得省略或改成扁平欄位。
+- 國語題 qualityMeta.correctReason 請控制在 18-40 字，只寫正答與題幹關鍵證據的對應。
+- 國語題 qualityMeta.teacherExplanation 請控制在 24-50 字，只用一句話說明能力焦點與誘答設計重點。
+- 每個 distractorDesign[optionCode] 使用短句，單一錯誤選項的 distractorDesign JSON 總長度不超過 160 字。
+- misconceptionDescription 請控制在 8-18 字；whyStudentsMayChooseIt 請控制在 10-24 字；whyItIsWrong 請控制在 16-36 字；revisionNote 請控制在 6-14 字。
+- 不要在每個錯誤選項重複題幹、正答解析、完整文本內容或完整教學說明。
+- 若多個錯誤選項迷思相近，請只寫出差異點，不要複寫同一段說明。
+- distractorDesign 只說明該錯誤選項的誘答性與錯誤點，不要寫成教師教案。
+`;
+
 function getQualityMetaCompactGuidelines(subject) {
-  return normalizeSubject(subject) === "數學" ? MATH_QUALITY_META_COMPACT_GUIDELINES : "";
+  const normalizedSubject = normalizeSubject(subject);
+  if (normalizedSubject === "數學") return MATH_QUALITY_META_COMPACT_GUIDELINES;
+  if (normalizedSubject === "國語") return CHINESE_QUALITY_META_COMPACT_GUIDELINES;
+  return "";
 }
 
 export function buildGenerateItemsPrompt({ project = {}, materialText = "", objectives = [], intents = [], checkedChineseSubcategories = [], fewShotExamples = FEWSHOT_EXAMPLES }) {

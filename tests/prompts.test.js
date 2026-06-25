@@ -300,6 +300,33 @@ describe("worker prompts", () => {
     expect(chinesePrompt).toContain("國語科評量向度與細項特別要求");
   });
 
+  it("國語 prompt 套用 qualityMeta / distractorDesign 壓縮契約", () => {
+    const chinesePrompt = buildGenerateItemsPrompt({
+      project,
+      materialText: "課文重點",
+      objectives,
+      intents,
+      checkedChineseSubcategories: ["提取訊息"],
+    });
+    const mathPrompt = buildGenerateItemsPrompt({
+      project: mathProject,
+      materialText: "數學重點",
+      objectives,
+      intents: [mathIntent],
+    });
+
+    expect(chinesePrompt).toContain("國語 qualityMeta / distractorDesign 壓縮規則");
+    expect(chinesePrompt).toContain("qualityMeta.correctReason 請控制在 18-40 字");
+    expect(chinesePrompt).toContain("qualityMeta.teacherExplanation 請控制在 24-50 字");
+    expect(chinesePrompt).toContain("單一錯誤選項的 distractorDesign JSON 總長度不超過 160 字");
+    expect(chinesePrompt).toContain("misconceptionDescription 請控制在 8-18 字");
+    expect(chinesePrompt).toContain("whyStudentsMayChooseIt 請控制在 10-24 字");
+    expect(chinesePrompt).toContain("whyItIsWrong 請控制在 16-36 字");
+    expect(chinesePrompt).toContain("不要在每個錯誤選項重複題幹、正答解析、完整文本內容或完整教學說明");
+    expect(chinesePrompt).not.toContain("數學 qualityMeta / distractorDesign 壓縮規則");
+    expect(mathPrompt).not.toContain("國語 qualityMeta / distractorDesign 壓縮規則");
+  });
+
   it("數學單題重出也套用 qualityMeta compact 契約", () => {
     const prompt = buildRegenerateItemPrompt({
       project: mathProject,
