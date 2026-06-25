@@ -3,6 +3,8 @@ import { ERROR_CODES, assertItemsPayload, readJson, safeErrorPayload } from "./j
 
 export const ASYNC_GENERATION_MAX_ITEM_COUNT = 50;
 export const ASYNC_GENERATION_BATCH_SIZE = 4;
+export const ASYNC_GENERATION_DEFAULT_MAX_CONCURRENT_BATCHES = 1;
+export const ASYNC_GENERATION_MAX_CONCURRENT_BATCHES_LIMIT = 3;
 
 const JOB_STATUS = Object.freeze({
   QUEUED: "queued",
@@ -48,6 +50,14 @@ function isPlainObject(value) {
 function toSafeCount(value, fallback = 0) {
   const count = Number(value);
   return Number.isFinite(count) && count >= 0 ? Math.floor(count) : fallback;
+}
+
+export function resolveAsyncGenerationMaxConcurrentBatches(env = {}) {
+  const configured = Number(env?.ASYNC_GENERATION_MAX_CONCURRENT_BATCHES);
+  const value = Number.isFinite(configured) && configured > 0
+    ? Math.floor(configured)
+    : ASYNC_GENERATION_DEFAULT_MAX_CONCURRENT_BATCHES;
+  return Math.min(Math.max(value, 1), ASYNC_GENERATION_MAX_CONCURRENT_BATCHES_LIMIT);
 }
 
 function createJobId() {
@@ -480,9 +490,24 @@ export async function markGenerationJobFailed(db, jobId, errorCode) {
 }
 
 export async function markGenerationBatchRunning(db, jobId, batchNumber) {
+  return markGenerationBatchesRunning(db, jobId, [batchNumber]);
+}
+
+export async function markGenerationBatchesRunning(db, jobId, batchNumbers = []) {
   if (!hasD1Interface(db) || !isValidJobId(jobId)) {
     return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_UNAVAILABLE };
   }
+
+  const safeBatchNumbers = Array.from(new Set(
+    (Array.isArray(batchNumbers) ? batchNumbers : [])
+      .map((batchNumber) => toSafeCount(batchNumber))
+      .filter((batchNumber) => batchNumber > 0)
+  )).sort((a, b) => a - b);
+  if (safeBatchNumbers.length === 0) {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_STATUS_INVALID };
+  }
+
+  const currentBatch = safeBatchNumbers[0];
 
   try {
     const statements = [
@@ -493,8 +518,8 @@ export async function markGenerationBatchRunning(db, jobId, batchNumber) {
           current_batch = ?,
           updated_at = CURRENT_TIMESTAMP
         WHERE job_id = ?
-      `).bind(JOB_STATUS.RUNNING, batchNumber, jobId),
-      db.prepare(`
+      `).bind(JOB_STATUS.RUNNING, currentBatch, jobId),
+      ...safeBatchNumbers.map((batchNumber) => db.prepare(`
         UPDATE generation_job_batches
         SET
           status = ?,
@@ -502,7 +527,7 @@ export async function markGenerationBatchRunning(db, jobId, batchNumber) {
           updated_at = CURRENT_TIMESTAMP
         WHERE job_id = ?
           AND batch_number = ?
-      `).bind(JOB_STATUS.RUNNING, jobId, batchNumber),
+      `).bind(JOB_STATUS.RUNNING, jobId, batchNumber)),
     ];
 
     if (typeof db.batch === "function") {
@@ -516,7 +541,7 @@ export async function markGenerationBatchRunning(db, jobId, batchNumber) {
     return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_STATUS_INVALID };
   }
 
-  return { ok: true };
+  return { ok: true, currentBatch, runningBatchCount: safeBatchNumbers.length };
 }
 
 export async function markGenerationBatchFailed(db, jobId, batchNumber, errorCode) {

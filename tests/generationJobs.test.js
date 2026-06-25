@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import worker, { GenerationWorkflow } from "../worker/src/index.js";
-import { cleanupExpiredGenerationJobs, createGenerationJobPlan } from "../worker/src/generationJobs.js";
+import {
+  cleanupExpiredGenerationJobs,
+  createGenerationJobPlan,
+  resolveAsyncGenerationMaxConcurrentBatches,
+} from "../worker/src/generationJobs.js";
 import { ERROR_CODES } from "../worker/src/json.js";
 
 function intent(index) {
@@ -64,6 +68,36 @@ function mockGeminiItemBatches(itemBatches) {
       headers: { "Content-Type": "application/json" },
     });
   }));
+}
+
+function mockConcurrentGeminiItemBatches(itemBatches) {
+  const batches = [...itemBatches];
+  let inFlight = 0;
+  let maxInFlight = 0;
+  vi.stubGlobal("fetch", vi.fn(async () => {
+    const items = batches.shift() || [];
+    inFlight += 1;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    inFlight -= 1;
+    return new Response(JSON.stringify({
+      candidates: [
+        {
+          content: {
+            parts: [{ text: JSON.stringify({ items }) }],
+          },
+        },
+      ],
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }));
+  return {
+    getMaxInFlight() {
+      return maxInFlight;
+    },
+  };
 }
 
 function jsonRequest(path, body, init = {}) {
@@ -272,6 +306,14 @@ describe("async generation job skeleton", () => {
     expect(plan.progress.batchCount).toBe(3);
     expect(plan.batches.map((batch) => batch.expectedItemCount)).toEqual([4, 4, 2]);
     expect(plan.batches[0].expectedItemIds).toEqual(["Q-1", "Q-2", "Q-3", "Q-4"]);
+  });
+
+  it("resolves bounded batch concurrency with conservative defaults", () => {
+    expect(resolveAsyncGenerationMaxConcurrentBatches()).toBe(1);
+    expect(resolveAsyncGenerationMaxConcurrentBatches({ ASYNC_GENERATION_MAX_CONCURRENT_BATCHES: "0" })).toBe(1);
+    expect(resolveAsyncGenerationMaxConcurrentBatches({ ASYNC_GENERATION_MAX_CONCURRENT_BATCHES: "2" })).toBe(2);
+    expect(resolveAsyncGenerationMaxConcurrentBatches({ ASYNC_GENERATION_MAX_CONCURRENT_BATCHES: "20" })).toBe(3);
+    expect(resolveAsyncGenerationMaxConcurrentBatches({ ASYNC_GENERATION_MAX_CONCURRENT_BATCHES: "bad" })).toBe(1);
   });
 
   it("rejects requests above the 50-item MVP cap", () => {
@@ -558,6 +600,78 @@ describe("async generation job skeleton", () => {
     expect(JSON.stringify(db.state).toLowerCase()).not.toContain("raw output");
     expect(JSON.stringify(db.state).toLowerCase()).not.toContain("token");
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("runs bounded concurrent Workflow batches and preserves final item order", async () => {
+    const db = createFakeJobsDb();
+    const jobId = "gen_workflow_concurrent_12345678";
+    const data = payload(9);
+    const plan = createGenerationJobPlan(data);
+    const concurrency = mockConcurrentGeminiItemBatches([
+      Array.from({ length: 4 }, (_, index) => generatedItem(index + 1)),
+      Array.from({ length: 4 }, (_, index) => generatedItem(index + 5)),
+      [generatedItem(9)],
+    ]);
+    db.seedJob({
+      job_id: jobId,
+      requested_item_count: 9,
+      batch_count: 3,
+      expires_at: "2026-06-25T00:00:00.000Z",
+    });
+    db.seedBatch({ job_id: jobId, batch_number: 1, expected_item_count: 4 });
+    db.seedBatch({ job_id: jobId, batch_number: 2, expected_item_count: 4 });
+    db.seedBatch({ job_id: jobId, batch_number: 3, expected_item_count: 1 });
+
+    const workflow = new GenerationWorkflow();
+    workflow.env = {
+      ASYNC_GENERATION_MAX_CONCURRENT_BATCHES: "2",
+      GENERATION_JOBS_DB: db,
+      GEMINI_API_KEY: "test-key",
+    };
+    const stepNames = [];
+    const step = {
+      async do(name, callback) {
+        stepNames.push(name);
+        return callback();
+      },
+    };
+
+    const result = await workflow.run({
+      payload: {
+        jobId,
+        request: plan.request,
+        batches: plan.batches,
+        progress: plan.progress,
+      },
+    }, step);
+
+    expect(result).toMatchObject({
+      ok: true,
+      jobId,
+      status: "completed",
+      requestedItemCount: 9,
+      batchSize: 4,
+      batchCount: 3,
+      completedBatchCount: 3,
+      completedItemCount: 9,
+      currentBatch: null,
+    });
+    expect(stepNames).toContain("mark batches 1,2 running");
+    expect(stepNames).toContain("mark batches 3 running");
+    expect(concurrency.getMaxInFlight()).toBe(2);
+    expect(JSON.parse(db.state.jobs[0].result_json).items.map((item) => item.id)).toEqual([
+      "G-1",
+      "G-2",
+      "G-3",
+      "G-4",
+      "G-5",
+      "G-6",
+      "G-7",
+      "G-8",
+      "G-9",
+    ]);
+    expect(db.state.batches.map((batch) => batch.status)).toEqual(["completed", "completed", "completed"]);
+    expect(fetch).toHaveBeenCalledTimes(3);
   });
 
   it("marks the failed batch and does not store final result when a later multi-batch output fails contract", async () => {
