@@ -27,6 +27,8 @@ describe("Chinese distractorDesign compact prompt contract", () => {
 
     expect(prompt).toContain("\u570b\u8a9e qualityMeta / distractorDesign \u58d3\u7e2e\u898f\u5247");
     expect(prompt).toContain("\u55ae\u4e00\u932f\u8aa4\u9078\u9805\u7684 distractorDesign JSON \u7e3d\u9577\u5ea6\u4e0d\u8d85\u904e 140 \u5b57");
+    expect(prompt).toContain("distractorDesign \u5916\u5c64 key \u5fc5\u9808\u53ea\u5beb\u932f\u8aa4\u9078\u9805\u4ee3\u865f");
+    expect(prompt).toContain("\u6a19\u7c64\u53ea\u80fd\u653e\u5728 misconceptionTag \u6b04\u4f4d");
     expect(prompt).toContain("misconceptionDescription \u8acb\u63a7\u5236\u5728 6-14 \u5b57");
     expect(prompt).toContain("whyStudentsMayChooseIt \u8acb\u63a7\u5236\u5728 8-18 \u5b57");
     expect(prompt).toContain("whyItIsWrong \u8acb\u63a7\u5236\u5728 12-28 \u5b57");

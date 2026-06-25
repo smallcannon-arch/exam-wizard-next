@@ -217,6 +217,8 @@ describe("worker prompts", () => {
     expect(prompt).toContain("answer 不得是選項文字、完整句子、數字或選項內容");
     expect(prompt).toContain("qualityMeta.distractorDesign 必須是以錯誤選項代號為 key 的物件");
     expect(prompt).toContain("qualityMeta.distractorDesign keys 必須只能從 \"A\"、\"B\"、\"C\"、\"D\" 中選擇");
+    expect(prompt).toContain("distractorDesign 外層 key 必須是單一選項代號");
+    expect(prompt).toContain("misconceptionTag 只能放在該選項物件內的 misconceptionTag 欄位");
     expect(prompt).toContain("必須排除正確答案代號");
     expect(prompt).toContain("不得使用選項文字、完整句子或數字索引作為 key");
     expect(prompt).toContain("不得是陣列");
@@ -319,6 +321,8 @@ describe("worker prompts", () => {
     expect(chinesePrompt).toContain("qualityMeta.correctReason 請控制在 18-40 字");
     expect(chinesePrompt).toContain("qualityMeta.teacherExplanation 請控制在 24-50 字");
     expect(chinesePrompt).toContain("單一錯誤選項的 distractorDesign JSON 總長度不超過 140 字");
+    expect(chinesePrompt).toContain("distractorDesign 外層 key 必須只寫錯誤選項代號");
+    expect(chinesePrompt).toContain("標籤只能放在 misconceptionTag 欄位");
     expect(chinesePrompt).toContain("misconceptionDescription 請控制在 6-14 字");
     expect(chinesePrompt).toContain("whyStudentsMayChooseIt 請控制在 8-18 字");
     expect(chinesePrompt).toContain("whyItIsWrong 請控制在 12-28 字");

@@ -285,6 +285,7 @@ const JSON_OUTPUT_STABILITY_GUIDELINES = `
 - 若輸出 correctAnswer，也必須與 answer 一樣使用 A/B/C/D 選項代號，且必須與 answer 相同。
 - qualityMeta.distractorDesign 必須是以錯誤選項代號為 key 的物件，不得是陣列。
 - qualityMeta.distractorDesign keys 必須只能從 "A"、"B"、"C"、"D" 中選擇，必須排除正確答案代號，不得使用選項文字、完整句子或數字索引作為 key。
+- distractorDesign 外層 key 必須是單一選項代號，例如 "B"；不得寫成 "tag B"、"B tag"、"文字 C" 或任何包含 misconceptionTag / 文字的複合 key。misconceptionTag 只能放在該選項物件內的 misconceptionTag 欄位。
 - 4 選 1 題目的 qualityMeta.distractorDesign 通常應剛好包含 3 個 key，分別對應三個錯誤選項。
 - 正確格式範例："distractorDesign": { "A": { "misconceptionTag": "partial_reading", "whyItIsWrong": "此選項只符合局部資訊。", "revisionNote": "保留此誘答。" }, "C": { ... }, "D": { ... } }。
 - 禁止格式範例："answer": "從容"、"answer": "正確選項全文"、"distractorDesign": { "從容": { ... } }。
@@ -315,6 +316,7 @@ const CHINESE_QUALITY_META_COMPACT_GUIDELINES = `
 - 國語題 qualityMeta.correctReason 請控制在 18-40 字，只寫正答與題幹關鍵證據的對應。
 - 國語題 qualityMeta.teacherExplanation 請控制在 24-50 字，只用一句話說明能力焦點與誘答設計重點。
 - 每個 distractorDesign[optionCode] 使用短句，單一錯誤選項的 distractorDesign JSON 總長度不超過 140 字。
+- distractorDesign 外層 key 必須只寫錯誤選項代號（例如 "B"），不得把 misconceptionTag 或文字接在 key 上；標籤只能放在 misconceptionTag 欄位。
 - misconceptionDescription 請控制在 6-14 字；whyStudentsMayChooseIt 請控制在 8-18 字；whyItIsWrong 請控制在 12-28 字；revisionNote 請控制在 4-10 字。
 - 同一題三個錯誤選項的 misconceptionTag 不得三個完全相同；若確實同類，至少兩個選項要用不同 tag 表示不同迷思角度。
 - 不要預設使用 structure_confusion；只有真的混淆文章結構時才可使用。
