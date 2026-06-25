@@ -3,7 +3,7 @@ import { makeObjectiveId } from "./core/ids.js";
 import { summarizeScoreByObjective } from "./core/scoring.js";
 import { buildItemSlots, buildSectionsByQuestionType, distributeObjectivesToSlots } from "./core/blueprint.js";
 import { buildPlanSequences, getPlanTotals, validatePlan } from "./core/plan.js";
-import { getQuestionTypeOptions, SUBJECT_OPTIONS, CHINESE_AUDIT_STRUCTURE, getChineseDimension, getChineseSubcategory, getChineseDimensionBySubcategory } from "./core/questionTypes.js";
+import { CHOICE_ONLY_STOPGAP_ENABLED, CHOICE_ONLY_STOPGAP_MESSAGE, getQuestionTypeOptions, SUBJECT_OPTIONS, CHINESE_AUDIT_STRUCTURE, getChineseDimension, getChineseSubcategory, getChineseDimensionBySubcategory } from "./core/questionTypes.js";
 import { generateExcelXml } from "./core/excelGenerator.js";
 import { validateExam } from "./core/validation.js";
 import { replaceItemById } from "./core/replaceItem.js";
@@ -1137,11 +1137,12 @@ function renderPlanTable() {
   const totals = getPlanTotals(state.planRows);
 
   const rowsHtml = state.planRows.map((row, index) => {
-    const options = baseOptions.includes(row.questionType) ? baseOptions : [...baseOptions, row.questionType];
+    const selectedQuestionType = baseOptions.includes(row.questionType) ? row.questionType : baseOptions[0];
+    const options = baseOptions;
     const optionHtml = options
-      .map((type) => `<option value="${escapeHtml(type)}" ${type === row.questionType ? "selected" : ""}>${escapeHtml(type)}</option>`)
+      .map((type) => `<option value="${escapeHtml(type)}" ${type === selectedQuestionType ? "selected" : ""}>${escapeHtml(type)}</option>`)
       .join("");
-    const isGroup = !!row.isGroup;
+    const isGroup = CHOICE_ONLY_STOPGAP_ENABLED ? false : !!row.isGroup;
     const subScores = Array.isArray(row.subScores) ? row.subScores : [2, 3];
     const groupScore = subScores.reduce((sum, s) => sum + Number(s) || 0, 0);
     const displayGroupCount = row.groupCount || 1;
@@ -1152,6 +1153,7 @@ function renderPlanTable() {
       ? (groupCount * groupScore) + (singleCount * (Number(row.score) || 0))
       : (Number(row.count) || 0) * (Number(row.score) || 0);
     const disabledAttr = isGroup ? "" : "disabled";
+    const groupCheckboxDisabled = CHOICE_ONLY_STOPGAP_ENABLED ? "disabled aria-disabled=\"true\"" : "";
     const inputBg = isGroup ? "#fff" : "#eaeaea";
     const inputColor = isGroup ? "#000" : "#999";
     const textColor = isGroup ? "var(--muted)" : "#bbb";
@@ -1189,8 +1191,8 @@ function renderPlanTable() {
       <td style="vertical-align:middle; text-align:center; padding:12px 8px;"><select data-plan-field="questionType" data-plan-index="${index}" style="margin:0; height:38px; padding:6px 28px 6px 10px; border-radius:8px; border:1px solid var(--line); width:auto; font-size:16px;">${optionHtml}</select></td>
       <td style="vertical-align:middle; text-align:center; padding:12px 8px;">
         <label style="display:inline-flex; align-items:center; gap:8px; cursor:pointer; margin:0; font-size:16px; font-weight:600; color:var(--dark);">
-          <input type="checkbox" data-plan-field="isGroup" data-plan-index="${index}" ${isGroup ? "checked" : ""} style="width:auto; margin:0; transform: scale(1.35); cursor:pointer;">
-          <span>題組</span>
+          <input type="checkbox" data-plan-field="isGroup" data-plan-index="${index}" ${isGroup ? "checked" : ""} ${groupCheckboxDisabled} style="width:auto; margin:0; transform: scale(1.35); cursor:pointer;">
+          <span>${CHOICE_ONLY_STOPGAP_ENABLED ? "題組（暫停）" : "題組"}</span>
         </label>
       </td>
       <td style="vertical-align:middle; text-align:center; padding:12px 8px;"><input type="number" min="1" data-plan-field="count" data-plan-index="${index}" value="${escapeHtml(row.count)}" style="margin:0; height:38px; width:100px; padding:6px 10px; border-radius:8px; border:1px solid var(--line); text-align:center; font-size:16px;"></td>
@@ -1203,8 +1205,8 @@ function renderPlanTable() {
   return `
     <h3 style="font-size:20px; font-weight:bold; margin-top:24px;">配題表（題型／題數／配分）</h3>
     <p class="notice" style="font-size:15px; line-height:1.6;">
-      題型清單已依您的學科「<span style="color:#d32f2f; font-weight:bold;">${escapeHtml(subject || "預設")}</span>」自動篩選。<br>
-      <strong>💡 溫馨提示</strong>：選取「題組」的項目會被 AI 自動拆解為指定數量的子題，並將該題配分由各子題分配，您在此階段可以放心為其配置較高的分數！
+      題型清單目前已收斂為「<span style="color:#d32f2f; font-weight:bold;">標準四選一選擇題</span>」。<br>
+      <strong>目前限制</strong>：${escapeHtml(CHOICE_ONLY_STOPGAP_MESSAGE)}題組、是非、填充與情境題組待題型契約分流完成後再開放。
     </p>
     <div class="table-wrap"><table style="font-size:16px;">
       <thead>
@@ -1463,6 +1465,7 @@ function renderStep3Or4() {
   return `<section class="panel">
     <h2>③ 配題與藍圖</h2>
     <p class="notice">${isChinese ? "藍圖鎖定每題題型、配分與評量向度；AI 生成時將嚴格遵循指定的向度命題，以確保向度佔分精準。" : "藍圖只鎖定每題的題型與配分；各題對應哪個學習目標、認知層次與出題順序，交由 AI 依下列節數比例與整卷整體性編排。"}</p>
+    ${CHOICE_ONLY_STOPGAP_ENABLED ? `<p class="notice">${escapeHtml(CHOICE_ONLY_STOPGAP_MESSAGE)}本輪題位固定為單題，不開放題組設定。</p>` : ""}
 
     ${targetsSectionHtml}
 
@@ -1492,11 +1495,11 @@ function renderStep3Or4() {
     </table></div>
 
     <h3>題位（共 ${intents.length} 題）</h3>
-    <p class="notice" style="margin-bottom:12px;">您可以自由勾選特定題號為「題組」，並設定其子題數量。非選擇題型亦可設定為題組。</p>
+    <p class="notice" style="margin-bottom:12px;">${CHOICE_ONLY_STOPGAP_ENABLED ? "本輪題位固定為標準四選一單題；題組與混合題型待題型契約分流完成後再開放。" : "您可以自由勾選特定題號為「題組」，並設定其子題數量。非選擇題型亦可設定為題組。"}</p>
     <div class="table-wrap"><table>
       <thead><tr><th>題號</th><th>題型</th><th>配分</th><th>題組與設定</th></tr></thead>
       <tbody>${intents.slice(0, 80).map((slot, index) => {
-        const isGroup = !!slot.isGroup;
+        const isGroup = CHOICE_ONLY_STOPGAP_ENABLED ? false : !!slot.isGroup;
         const rowStyle = isGroup ? `style="background: #f0f7ff; border-left: 4px solid var(--blue);"` : "";
         const typeLabel = slot.questionType === "學力檢測題"
           ? `${escapeHtml(slot.questionType)} <span style="background:var(--blue); color:#fff; font-size:11px; padding:2px 6px; border-radius:4px; margin-left:8px; font-weight:600; display:inline-block; vertical-align:middle;">情境題組</span>`
@@ -1508,8 +1511,8 @@ function renderStep3Or4() {
           <td>
             <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
               <label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer; margin:0; font-size:14px; color:var(--ink);">
-                <input type="checkbox" data-slot-index="${index}" data-slot-field="isGroup" ${isGroup ? "checked" : ""} style="width:auto; margin:0;">
-                <span>合併為題組</span>
+                <input type="checkbox" data-slot-index="${index}" data-slot-field="isGroup" ${isGroup ? "checked" : ""} ${CHOICE_ONLY_STOPGAP_ENABLED ? "disabled aria-disabled=\"true\"" : ""} style="width:auto; margin:0;">
+                <span>${CHOICE_ONLY_STOPGAP_ENABLED ? "題組暫停" : "合併為題組"}</span>
               </label>
               <select data-slot-index="${index}" data-slot-field="subCount" style="width:auto; display:inline-block; padding:2px 6px; font-size:13px; height:28px; border-radius:6px;" ${!isGroup ? "disabled" : ""}>
                 <option value="2" ${slot.subCount === 2 ? "selected" : ""}>2 個子題</option>
@@ -1971,6 +1974,9 @@ function updateStateFromEvent(event) {
     const index = Number(planIndex);
     const subIndex = event.target.dataset.subIndex;
     if (state.planRows[index]) {
+      if (CHOICE_ONLY_STOPGAP_ENABLED && ["isGroup", "groupCount", "subCount", "subScore"].includes(planField)) {
+        return true;
+      }
       if (planField === "subScore" && subIndex !== undefined) {
         const sIdx = Number(subIndex);
         const val = Math.max(1, Number(event.target.value) || 1);
@@ -2019,7 +2025,12 @@ function updateStateFromEvent(event) {
         const value = planField === "questionType" ? event.target.value : Number(event.target.value);
         state.planRows[index] = { ...state.planRows[index], [planField]: value };
         if (planField === "questionType") {
-          if (value === "學力檢測題") {
+          if (CHOICE_ONLY_STOPGAP_ENABLED) {
+            state.planRows[index].isGroup = false;
+            state.planRows[index].groupCount = 1;
+            state.planRows[index].subScores = [];
+            state.planRows[index].score = state.planRows[index].score || 2;
+          } else if (value === "學力檢測題") {
             state.planRows[index].isGroup = true;
             state.planRows[index].groupCount = state.planRows[index].count || 4;
             state.planRows[index].subScores = [2, 3];
@@ -2293,6 +2304,9 @@ app.addEventListener("change", (event) => {
   if (slotField && slotIndex !== undefined) {
     const index = Number(slotIndex);
     if (state.intents[index]) {
+      if (CHOICE_ONLY_STOPGAP_ENABLED && ["isGroup", "subCount"].includes(slotField)) {
+        return;
+      }
       let value;
       if (slotField === "isGroup") {
         value = event.target.checked;

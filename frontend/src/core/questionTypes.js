@@ -2,6 +2,9 @@
 // 純資料，不依賴 DOM。
 
 export const LITERACY_ASSESSMENT_TYPE = "學力檢測題";
+export const STANDARD_CHOICE_QUESTION_TYPE = "選擇題";
+export const CHOICE_ONLY_STOPGAP_ENABLED = true;
+export const CHOICE_ONLY_STOPGAP_MESSAGE = "混合題型支援開發中，目前暫限標準四選一選擇題。";
 
 const PRESETS = {
   國語文: ["選擇題", "填充題", "注音", "國字", "改錯", "照樣造句", "重組", "閱讀測驗", "圖表判讀題", "短文寫作"],
@@ -26,9 +29,15 @@ export function matchSubject(subject) {
 }
 
 export function getQuestionTypeOptions(subject) {
+  if (CHOICE_ONLY_STOPGAP_ENABLED) return [STANDARD_CHOICE_QUESTION_TYPE];
   const key = matchSubject(subject);
   const base = key ? PRESETS[key] : DEFAULT_TYPES;
   return [...base, LITERACY_ASSESSMENT_TYPE];
+}
+
+export function isSupportedGenerationQuestionType(questionType) {
+  if (!CHOICE_ONLY_STOPGAP_ENABLED) return true;
+  return String(questionType || "").trim() === STANDARD_CHOICE_QUESTION_TYPE;
 }
 
 // 國語科專屬：根據題型預估預設評量向度
@@ -148,4 +157,3 @@ export function getChineseDimensionBySubcategory(subcategory) {
   }
   return null;
 }
-

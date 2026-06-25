@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildPlanSequences, getPlanTotals, normalizePlanRows, validatePlan } from "../frontend/src/core/plan.js";
-import { getQuestionTypeOptions, matchSubject } from "../frontend/src/core/questionTypes.js";
+import { CHOICE_ONLY_STOPGAP_MESSAGE, getQuestionTypeOptions, matchSubject } from "../frontend/src/core/questionTypes.js";
+import { createInitialState } from "../frontend/src/state.js";
 
 const rows = [
   { questionType: "選擇題", count: 20, score: 2 },
@@ -28,18 +29,33 @@ describe("getPlanTotals", () => {
 describe("validatePlan", () => {
   it("合計等於總分時通過", () => {
     const plan = [
-      { questionType: "選擇題", count: 35, score: 2 },
-      { questionType: "學力檢測題", count: 6, score: 5 },
+      { questionType: "選擇題", count: 50, score: 2 },
     ];
     const result = validatePlan(plan, 100);
     expect(result.ok).toBe(true);
-    expect(result.totalItems).toBe(41);
+    expect(result.totalItems).toBe(50);
     expect(result.totalScore).toBe(100);
   });
 
+  it("止血期間阻擋混合題型與題組", () => {
+    const mixed = validatePlan([
+      { questionType: "選擇題", count: 20, score: 2 },
+      { questionType: "是非題", count: 10, score: 2 },
+    ]);
+    expect(mixed.ok).toBe(false);
+    expect(mixed.error).toContain(CHOICE_ONLY_STOPGAP_MESSAGE);
+
+    const grouped = validatePlan([
+      { questionType: "選擇題", count: 4, score: 2, isGroup: true, groupCount: 1, subScores: [2, 3] },
+    ]);
+    expect(grouped.ok).toBe(false);
+    expect(grouped.error).toContain(CHOICE_ONLY_STOPGAP_MESSAGE);
+  });
+
   it("合計不等於總分時回傳錯誤", () => {
-    expect(validatePlan(rows, 100).ok).toBe(false);
-    expect(validatePlan(rows, 100).error).toContain("不符");
+    const choiceRows = [{ questionType: "選擇題", count: 20, score: 2 }];
+    expect(validatePlan(choiceRows, 100).ok).toBe(false);
+    expect(validatePlan(choiceRows, 100).error).toContain("不符");
   });
 
   it("沒有有效列時回傳錯誤", () => {
@@ -98,21 +114,26 @@ describe("buildPlanSequences 混合題組與單題", () => {
 });
 
 describe("questionTypes", () => {
-  it("依科目帶出常用題型並附學力檢測題", () => {
+  it("止血期間只帶出標準四選一選擇題", () => {
     expect(matchSubject("自然")).toBe("自然");
     const options = getQuestionTypeOptions("自然");
-    expect(options[0]).toBe("選擇題");
-    expect(options).toContain("實驗探究題");
-    expect(options).toContain("閱讀測驗");
-    expect(options[options.length - 1]).toBe("學力檢測題");
+    expect(options).toEqual(["選擇題"]);
 
     expect(matchSubject("社會")).toBe("社會");
     const socialOptions = getQuestionTypeOptions("社會");
-    expect(socialOptions).toContain("閱讀測驗");
+    expect(socialOptions).toEqual(["選擇題"]);
   });
 
   it("未知科目用通用清單", () => {
     expect(matchSubject("天文")).toBe(null);
-    expect(getQuestionTypeOptions("天文")).toContain("學力檢測題");
+    expect(getQuestionTypeOptions("天文")).toEqual(["選擇題"]);
+  });
+});
+
+describe("initial plan rows", () => {
+  it("預設配題為 50 題標準四選一單題", () => {
+    expect(createInitialState().planRows).toEqual([
+      { questionType: "選擇題", count: 50, score: 2, isGroup: false, groupCount: 1, subScores: [] },
+    ]);
   });
 });
