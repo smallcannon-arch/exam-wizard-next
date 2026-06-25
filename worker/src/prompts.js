@@ -29,11 +29,13 @@ const QUESTION_TYPE_GUIDELINES = `
 ## 2. 是非題
 - 敘述必須明確、判斷依據單一。避免使用雙重否定、模稜兩可的語詞（如「可能」、「大概」、「有時候」）。
 - 答案限制為單一字元，僅能是 "O"（代表對）或 "X"（代表錯）。
+- 不得提供 options；不要做成 A/B/C/D 或二選一選項陣列。
 
 ## 3. 填充題
 - 空格位置應明確，使用「（　　）」或「_______」標註。
 - 所挖的空必須是關鍵名詞、核心概念或重要詞彙，避免挖在無意義的連接詞或虛字上。
 - 答案應具體且唯一，解析需寫明完整正確詞彙與給分標準。
+- 不得提供 options；answer 必須是標準答案文字，可另以 acceptedAnswers 表示可接受答案。
 
 ## 4. 連連看 / 配合題
 - 題目內必須清楚列出左方選項與右方選項，例如：
@@ -70,7 +72,7 @@ const QUESTION_TYPE_GUIDELINES = `
 ## 11. 學力檢測題
 - 參考臺灣國家教育研究院 TASA（學力檢測）或縣市學力追蹤檢測之題型。
 - 題目應為生活素養情境題，考查學生跨概念的整合能力與高階思考。
-- 通常為 4 選項的選擇題，選項干擾項需極具診斷性。
+- 第一個混合題型實作中，學力檢測題子題採 4 選項選擇題形式，選項干擾項需極具診斷性。
 
 ## 12. 國字 / 注音 / 改錯 (國語科專屬)
 - 國字：句子中挖空，空格內標示注音，要求學生寫出國字（例如：「妹妹的（ㄌㄧㄢˇ）上露出笑容。」）。
@@ -121,6 +123,8 @@ const QUESTION_TYPE_HEADER = QUESTION_TYPE_GUIDELINES.slice(
   0,
   QUESTION_TYPE_GUIDELINES.indexOf(QUESTION_TYPE_SECTION_DEFS.choice)
 ).trimEnd();
+
+const CHOICE_LIKE_CONTRACT_KEYS = new Set(["choice", "chart", "experiment", "proficiency", "reading"]);
 
 function normalizeQuestionType(questionType = "", itemType = "", subject = "") {
   const source = [questionType, itemType].filter(Boolean).join(" ").toLowerCase();
@@ -192,6 +196,17 @@ function getQuestionTypeGuidelines(intents = [], subject = "") {
   return [QUESTION_TYPE_HEADER, ...sections].join("\n\n");
 }
 
+function getOutputContractFlags(questionTypeKeys, { hasGroupSlot = false } = {}) {
+  const fallback = questionTypeKeys === null;
+  const keys = Array.isArray(questionTypeKeys) ? questionTypeKeys : [];
+  return {
+    choiceLike: fallback || hasGroupSlot || keys.some((key) => CHOICE_LIKE_CONTRACT_KEYS.has(key)),
+    trueFalse: fallback || keys.includes("trueFalse"),
+    fill: fallback || keys.includes("fill"),
+    group: fallback || hasGroupSlot || keys.includes("proficiency") || keys.includes("reading"),
+  };
+}
+
 const QUALITY_DESIGN_GUIDELINES = `
 # 優良題感與 few-shot 使用規則
 
@@ -258,42 +273,111 @@ function getChineseSubcategoryLines(checkedChineseSubcategories = []) {
     .filter(Boolean);
 }
 
-const INTERNAL_OUTPUT_GUIDELINES = `
+const INTERNAL_OUTPUT_BASE_GUIDELINES = `
 # 命題輸出 v2：單一 canonical item + qualityMeta
 
 - 不要輸出 internalVersion 與 studentVersion 兩份完整題目資料；只輸出一份 canonical item。
-- question、options、answer、explanation、primaryObjectiveId 等核心欄位是學生版可見資料。explanation 是給學生看的簡明解析，應只說明學生需要知道的解題理由。
+- question、answer、explanation、primaryObjectiveId 等核心欄位是學生版可見資料；options 是否存在依題型 contract 決定。explanation 是給學生看的簡明解析，應只說明學生需要知道的解題理由。
 - 每題都必須新增 qualityMeta 作為教師／審題／系統內部資料。學生版會由系統自動隱藏 qualityMeta。
 - qualityMeta 必須包含：schemaVersion（固定為 "item-quality-meta/v1"）, abilityFocus, correctReason, distractorDesign, teacherExplanation, selfCheck。
 - subject, grade, unit, cognitiveLevel, difficulty, itemType 屬於可由系統或題目資料補回的 metadata；若你已能從題位明確得知可輸出，但不要為了填滿欄位而重複長文或自行編造。
 - qualityMeta.correctReason 用來精簡說明正答為何正確；qualityMeta.teacherExplanation 用來給教師／審題者看，請用一句話摘要本題能力重點、誘答設計與審題注意。
 - qualityMeta.teacherExplanation 是必填欄位，不得省略；即使已有 explanation 與 qualityMeta.correctReason，也必須另行填寫 qualityMeta.teacherExplanation。
-- 選擇題形式題目的 answer 必須是正確選項代號（"A"、"B"、"C"、"D"），不可填選項文字；qualityMeta.distractorDesign 必須是以錯誤選項代號為 key 的物件，不得是陣列；請只為錯誤選項填寫。每個錯誤選項至少包含 misconceptionTag, misconceptionDescription, whyStudentsMayChooseIt, whyItIsWrong, revisionNote。正答選項不可放入 distractorDesign。
 - qualityMeta.selfCheck 必須包含 singleCorrectAnswer, matchesPrimaryObjectiveId, matchesCognitiveLevel, allDistractorsHaveMisconceptionTags, noObviousGiveaway, gradeAppropriate, noUnnecessaryDifficulty。
 - 不要把 teacherExplanation、selfCheck 或誘答設計註記寫進 question、options 或 explanation。
 `;
 
-const JSON_OUTPUT_STABILITY_GUIDELINES = `
+function getInternalOutputGuidelines(contractFlags) {
+  const parts = [INTERNAL_OUTPUT_BASE_GUIDELINES.trimEnd()];
+
+  if (contractFlags.choiceLike) {
+    parts.push(
+      "- 選擇題形式題目（選擇題、圖表判讀題、實驗探究題、學力檢測題與閱讀測驗子題）必須提供 options，answer 必須是正確選項代號（\"A\"、\"B\"、\"C\"、\"D\"），不可填選項文字；qualityMeta.distractorDesign 必須是以錯誤選項代號為 key 的物件，不得是陣列；請只為錯誤選項填寫。每個錯誤選項至少包含 misconceptionTag, misconceptionDescription, whyStudentsMayChooseIt, whyItIsWrong, revisionNote。正答選項不可放入 distractorDesign。"
+    );
+  }
+
+  if (contractFlags.trueFalse) {
+    parts.push(
+      "- 是非題不得輸出 options；answer 必須是 \"O\" 或 \"X\"，不可填完整句子、選項文字或 A/B/C/D；qualityMeta.distractorDesign 可使用錯誤答案代號作為 key，或在無誘答設計時設為空物件。"
+    );
+  }
+
+  if (contractFlags.fill) {
+    parts.push(
+      "- 填充題不得輸出 options；answer 必須是非空文字答案，不可使用 A/B/C/D 或 O/X 代號；若有同義或可接受答案，可用 acceptedAnswers 陣列列出，qualityMeta.distractorDesign 可設為空物件。"
+    );
+  }
+
+  if (contractFlags.group) {
+    parts.push(
+      "- 題組／學力檢測題必須保留 groupId 與 stimulus contract；第一個混合題型實作中，題組子題採選擇題形式，子題的 options、answer 與 distractorDesign 依選擇題形式規則處理。"
+    );
+  }
+
+  return parts.join("\n");
+}
+
+const JSON_OUTPUT_STABILITY_BASE_GUIDELINES = `
 # JSON 輸出穩定性規則
 
 - 你必須只輸出一個合法 JSON 物件，不得輸出 Markdown、程式碼區塊、前言、後記、註解或任何 JSON 外文字。
 - 所有 JSON 字串欄位都必須是單行字串，不得在字串內直接換行。
 - 若字串內容需要表示引號，請使用中文引號「」或單引號，不得在字串內使用未跳脫的英文雙引號。
-- options 必須是 JSON array（例如 ["選項一", "選項二", "選項三", "選項四"]），不得是 object，也不得寫成 {"A":"...","B":"..."}。
-- options 的順序就是學生看到的 A/B/C/D 選項順序；若使用選項物件，也必須放在 array 內，不得以 A/B/C/D 作為 options 物件 key。
-- answer 必須是 "A"、"B"、"C"、"D" 其中之一；answer 不得是選項文字、完整句子、數字或選項內容。
-- 若輸出 correctAnswer，也必須與 answer 一樣使用 A/B/C/D 選項代號，且必須與 answer 相同。
-- qualityMeta.distractorDesign 必須是以錯誤選項代號為 key 的物件，不得是陣列。
-- qualityMeta.distractorDesign keys 必須只能從 "A"、"B"、"C"、"D" 中選擇，必須排除正確答案代號，不得使用選項文字、完整句子或數字索引作為 key。
-- distractorDesign 外層 key 必須是單一選項代號，例如 "B"；不得寫成 "tag B"、"B tag"、"文字 C" 或任何包含 misconceptionTag / 文字的複合 key。misconceptionTag 只能放在該選項物件內的 misconceptionTag 欄位。
-- 4 選 1 題目的 qualityMeta.distractorDesign 通常應剛好包含 3 個 key，分別對應三個錯誤選項。
-- 正確格式範例："distractorDesign": { "A": { "misconceptionTag": "partial_reading", "whyItIsWrong": "此選項只符合局部資訊。", "revisionNote": "保留此誘答。" }, "C": { ... }, "D": { ... } }。
-- 禁止格式範例："answer": "從容"、"answer": "正確選項全文"、"distractorDesign": { "從容": { ... } }。
-- 禁止格式範例："distractorDesign": [ { "option": "A", "misconceptionTag": "partial_reading" } ]。
-- qualityMeta.distractorDesign 中每個錯誤選項物件都必須包含 misconceptionTag, misconceptionDescription, whyStudentsMayChooseIt, whyItIsWrong, revisionNote。
 - 每一個 JSON 欄位之間都必須以逗號分隔，不得省略逗號，特別是 whyItIsWrong 與 revisionNote 之間。
 - 為降低 JSON 格式錯誤風險與輸出長度：correctReason 請控制在 30-60 字；misconceptionDescription 請控制在 15-30 字；whyStudentsMayChooseIt 請控制在 20-40 字；whyItIsWrong 請控制在 30-60 字；revisionNote 請控制在 10-25 字；teacherExplanation 請控制在 40-80 字且只寫一句話。以上欄位皆使用單一段落，不得條列、不得換行。
 `;
+
+function getJsonOutputStabilityGuidelines(contractFlags) {
+  const parts = [JSON_OUTPUT_STABILITY_BASE_GUIDELINES.trimEnd()];
+
+  if (contractFlags.choiceLike) {
+    parts.push(
+      "# 選擇題形式 JSON contract",
+      "- 選擇題形式題目必須輸出 options；options 必須是 JSON array（例如 [\"選項一\", \"選項二\", \"選項三\", \"選項四\"]），剛好 4 個非空字串，不得是 object，也不得寫成 {\"A\":\"...\",\"B\":\"...\"}。",
+      "- options 的順序就是學生看到的 A/B/C/D 選項順序；若使用選項物件，也必須放在 array 內，不得以 A/B/C/D 作為 options 物件 key。",
+      "- 選擇題形式題目的 answer 必須是 \"A\"、\"B\"、\"C\"、\"D\" 其中之一；answer 不得是選項文字、完整句子、數字或選項內容。",
+      "- 若選擇題形式題目輸出 correctAnswer，也必須與 answer 一樣使用 A/B/C/D 選項代號，且必須與 answer 相同。",
+      "- 選擇題形式題目的 qualityMeta.distractorDesign 必須是以錯誤選項代號為 key 的物件，不得是陣列。",
+      "- 選擇題形式題目的 qualityMeta.distractorDesign keys 必須只能從 \"A\"、\"B\"、\"C\"、\"D\" 中選擇，必須排除正確答案代號，不得使用選項文字、完整句子或數字索引作為 key。",
+      "- distractorDesign 外層 key 必須是單一選項代號，例如 \"B\"；不得寫成 \"tag B\"、\"B tag\"、\"文字 C\" 或任何包含 misconceptionTag / 文字的複合 key。misconceptionTag 只能放在該選項物件內的 misconceptionTag 欄位。",
+      "- 4 選 1 題目的 qualityMeta.distractorDesign 通常應剛好包含 3 個 key，分別對應三個錯誤選項。",
+      "- 正確格式範例：\"distractorDesign\": { \"A\": { \"misconceptionTag\": \"partial_reading\", \"whyItIsWrong\": \"此選項只符合局部資訊。\", \"revisionNote\": \"保留此誘答。\" }, \"C\": { ... }, \"D\": { ... } }。",
+      "- 禁止格式範例：\"answer\": \"從容\"、\"answer\": \"正確選項全文\"、\"distractorDesign\": { \"從容\": { ... } }。",
+      "- 禁止格式範例：\"distractorDesign\": [ { \"option\": \"A\", \"misconceptionTag\": \"partial_reading\" } ]。",
+      "- qualityMeta.distractorDesign 中每個錯誤選項物件都必須包含 misconceptionTag, misconceptionDescription, whyStudentsMayChooseIt, whyItIsWrong, revisionNote。"
+    );
+  }
+
+  if (contractFlags.trueFalse) {
+    parts.push(
+      "# 是非題 JSON contract",
+      "- 是非題的 answer 必須是 \"O\" 或 \"X\" 其中之一；不得使用 A/B/C/D、完整句子、數字或選項內容。",
+      "- 是非題的 options 必須省略；不得輸出空陣列、2 個選項陣列或 A/B/C/D 選項。",
+      "- 若是非題輸出 correctAnswer，也必須與 answer 一樣使用 \"O\" 或 \"X\"，且必須與 answer 相同。",
+      "- 是非題的 qualityMeta.distractorDesign 可以使用錯誤答案代號作為 key（例如 answer 為 \"O\" 時可填 \"X\"），也可在無誘答設計時使用空物件。"
+    );
+  }
+
+  if (contractFlags.fill) {
+    parts.push(
+      "# 填充題 JSON contract",
+      "- 填充題的 answer 必須是非空文字答案；不得使用 A/B/C/D 或 O/X 代號作為答案。",
+      "- 填充題的 options 必須省略；不得輸出空陣列或選項陣列。",
+      "- 若填充題有多個可接受答案，可輸出 acceptedAnswers，其值必須是非空字串陣列。",
+      "- 填充題的 qualityMeta.distractorDesign 若沒有選項誘答，必須使用空物件。"
+    );
+  }
+
+  if (contractFlags.group) {
+    parts.push(
+      "# 題組／學力檢測題 JSON contract",
+      "- 題組／學力檢測題必須維持 groupId 與 stimulus；至少第一個子題必須提供非空 stimulus，第一個混合題型實作中各子題採選擇題形式。",
+      "- 題組子題的 options、answer、correctAnswer 與 qualityMeta.distractorDesign 必須遵守選擇題形式 JSON contract。"
+    );
+  }
+
+  return parts.join("\n");
+}
 
 const MATH_QUALITY_META_COMPACT_GUIDELINES = `
 # 數學 qualityMeta / distractorDesign 壓縮規則
@@ -362,6 +446,7 @@ export function buildGenerateItemsPrompt({ project = {}, materialText = "", obje
   const questionTypeGuidelines = getQuestionTypeGuidelines(intentList, project.subject);
   const hasQuestionTypeKey = (key) => useFullQuestionTypeFallback || questionTypeKeys.includes(key);
   const hasGroupSlot = intentList.some((slot) => slot?.isGroup);
+  const outputContractFlags = getOutputContractFlags(questionTypeKeys, { hasGroupSlot });
   const selectedFewShotExamples = selectFewShotExamples({
     examples: fewShotExamples,
     subject: project.subject,
@@ -430,9 +515,9 @@ export function buildGenerateItemsPrompt({ project = {}, materialText = "", obje
       "  2. 各子題的 `itemId` 分別命名為 `\"{原 itemId}-1\"`, `\"{原 itemId}-2\"`, `\"{原 itemId}-3\"`（例如 `\"Q-041-1\"`, `\"Q-041-2\"`）。",
       "  3. 各子題必須是獨立的物件，具有自己的 `itemId`, `questionType` (沿用原題位的 questionType), `score` 等。",
       "  4. 所有子題的 `score`（配分）必須是正整數，且依序完全符合該題位 `subScores` 陣列中所指定的各子題配分（例如原本題位 `subScores` 為 `[2, 3]`，則第一個子題配 2 分，第二個子題配 3 分）。其加總必須等於原題位的 `score` 設定分值。",
-      "  5. 組內的第一個子題（如 `\"Q-041-1\"`）必須填寫共同的 `stimulus`（情境引言 / 長文本段落），而其餘子題（如 `\"Q-041-2\"`）的 `stimulus` 則留空（`\"\"`）。",
+      "  5. 組內所有子題必須使用同一段共同 `stimulus`（情境引言 / 長文本段落）；為避免繼承語意不明，建議每個子題都重複填寫相同 stimulus，至少第一個子題不可為空。",
       "  6. 每個子題的 `question` 欄位為該子題自身的提問（不要在提問前面加上 (1) 這種題號，純為提問文字）。",
-      "  7. 每個子題有自己獨立的 `options`、`answer` 與 `explanation`（若是選擇題、是非題、實驗探究題、圖表判讀題或學力檢測題類型的子題，options 至少提供 4 個選項）。",
+      "  7. 第一個混合題型實作中，每個題組子題採選擇題形式：各自有獨立的 `options`（剛好 4 個）、`answer`（A/B/C/D）與 `explanation`。",
       ""
     );
   }
@@ -442,11 +527,10 @@ export function buildGenerateItemsPrompt({ project = {}, materialText = "", obje
   }
 
   promptParts.push(
-    getDistractorDesignGuidelines(project.subject),
+    ...(outputContractFlags.choiceLike ? [getDistractorDesignGuidelines(project.subject), ""] : []),
+    getInternalOutputGuidelines(outputContractFlags),
     "",
-    INTERNAL_OUTPUT_GUIDELINES,
-    "",
-    ...(qualityMetaCompactGuidelines ? [qualityMetaCompactGuidelines, ""] : [])
+    ...(qualityMetaCompactGuidelines && outputContractFlags.choiceLike ? [qualityMetaCompactGuidelines, ""] : [])
   );
 
   if (isChinese) {
@@ -470,11 +554,13 @@ export function buildGenerateItemsPrompt({ project = {}, materialText = "", obje
   promptParts.push(
     questionTypeGuidelines,
     "",
-    JSON_OUTPUT_STABILITY_GUIDELINES,
+    getJsonOutputStabilityGuidelines(outputContractFlags),
     "",
     "# 輸出要求",
     "只輸出 JSON，不要 Markdown。格式：{\"items\":[...]}。items 的排列順序就是考卷的出題順序，請依編排原則排好。",
-    `每題必須包含：itemId（沿用題位或子題題號）, questionType（沿用題位）, score（配分）, primaryObjectiveId, objectiveIds, cognitiveLevel, stimulus, question, options, answer, explanation, qualityMeta${isChinese ? ", chineseDimension, chineseSubcategory" : ""}。如果是學力檢測題的子題，必須包含 groupId，其他題型 groupId 填空字串即可。`,
+    `每題共同必須包含：itemId（沿用題位或子題題號）, questionType（沿用題位）, score（配分）, primaryObjectiveId, objectiveIds, cognitiveLevel, stimulus, question, answer, explanation, qualityMeta${isChinese ? ", chineseDimension, chineseSubcategory" : ""}。`,
+    "options、acceptedAnswers、groupId 等欄位依上述題型 JSON contract 輸出；不屬於該題型的欄位請省略，不要為了填滿欄位而輸出空陣列或錯誤格式。",
+    "如果是學力檢測題或題組子題，必須包含 groupId；其他題型 groupId 可省略或填空字串。",
     "選擇題形式題目的 qualityMeta.distractorDesign 必須包含每個錯誤選項的迷思設計；非選擇題若沒有選項，可將 qualityMeta.distractorDesign 設為空物件。"
   );
 
@@ -529,6 +615,8 @@ export function buildRegenerateItemPrompt({ project = {}, materialText = "", obj
   const isChinese = normalizeSubject(project.subject) === "國語";
   const qualityMetaCompactGuidelines = getQualityMetaCompactGuidelines(project.subject);
   const questionTypeGuidelines = getQuestionTypeGuidelines([originalItem], project.subject);
+  const questionTypeKeys = getQuestionTypeKeysForIntents([originalItem], project.subject);
+  const outputContractFlags = getOutputContractFlags(questionTypeKeys, { hasGroupSlot: Boolean(originalItem?.isGroup || originalItem?.groupId) });
 
   const promptParts = [
     "# 角色",
@@ -559,14 +647,13 @@ export function buildRegenerateItemPrompt({ project = {}, materialText = "", obj
     "",
     QUALITY_DESIGN_GUIDELINES,
     "",
-    getDistractorDesignGuidelines(project.subject),
+    ...(outputContractFlags.choiceLike ? [getDistractorDesignGuidelines(project.subject), ""] : []),
+    getInternalOutputGuidelines(outputContractFlags),
     "",
-    INTERNAL_OUTPUT_GUIDELINES,
-    "",
-    ...(qualityMetaCompactGuidelines ? [qualityMetaCompactGuidelines, ""] : []),
+    ...(qualityMetaCompactGuidelines && outputContractFlags.choiceLike ? [qualityMetaCompactGuidelines, ""] : []),
     questionTypeGuidelines,
     "",
-    JSON_OUTPUT_STABILITY_GUIDELINES,
+    getJsonOutputStabilityGuidelines(outputContractFlags),
     "",
     "# 輸出要求",
     "只輸出 JSON，不要 Markdown。格式：{\"items\":[一題]}。",
