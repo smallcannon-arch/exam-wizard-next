@@ -314,10 +314,14 @@ const CHINESE_QUALITY_META_COMPACT_GUIDELINES = `
 - 僅適用國語題；仍必須保留 qualityMeta 與 qualityMeta.distractorDesign，不得省略或改成扁平欄位。
 - 國語題 qualityMeta.correctReason 請控制在 18-40 字，只寫正答與題幹關鍵證據的對應。
 - 國語題 qualityMeta.teacherExplanation 請控制在 24-50 字，只用一句話說明能力焦點與誘答設計重點。
-- 每個 distractorDesign[optionCode] 使用短句，單一錯誤選項的 distractorDesign JSON 總長度不超過 160 字。
-- misconceptionDescription 請控制在 8-18 字；whyStudentsMayChooseIt 請控制在 10-24 字；whyItIsWrong 請控制在 16-36 字；revisionNote 請控制在 6-14 字。
-- 不要在每個錯誤選項重複題幹、正答解析、完整文本內容或完整教學說明。
-- 若多個錯誤選項迷思相近，請只寫出差異點，不要複寫同一段說明。
+- 每個 distractorDesign[optionCode] 使用短句，單一錯誤選項的 distractorDesign JSON 總長度不超過 140 字。
+- misconceptionDescription 請控制在 6-14 字；whyStudentsMayChooseIt 請控制在 8-18 字；whyItIsWrong 請控制在 12-28 字；revisionNote 請控制在 4-10 字。
+- 同一題三個錯誤選項的 misconceptionTag 不得三個完全相同；若確實同類，至少兩個選項要用不同 tag 表示不同迷思角度。
+- 不要預設使用 structure_confusion；只有真的混淆文章結構時才可使用。
+- 優先用具體標籤區分錯誤來源，例如 keyword_trap、partial_reading、stem_neglect、referent_confusion、main_idea_confusion、synonym_gap、life_experience_override。
+- 每個錯誤選項只寫一個核心迷思，不要同時塞入多個教學診斷。
+- 不要在每個錯誤選項重複題幹、正答解析、完整文本內容、選項全文或完整教學說明。
+- 若多個錯誤選項迷思相近，請只寫出具體差異點，不要複寫同一段說明。
 - distractorDesign 只說明該錯誤選項的誘答性與錯誤點，不要寫成教師教案。
 `;
 
