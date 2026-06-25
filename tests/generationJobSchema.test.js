@@ -5,6 +5,7 @@ const wranglerConfig = readFileSync("worker/wrangler.toml", "utf8");
 const wranglerExample = readFileSync("worker/wrangler.toml.example", "utf8");
 const migration = readFileSync("worker/migrations/0001_generation_jobs.sql", "utf8");
 const diagnosticsMigration = readFileSync("worker/migrations/0002_batch_safe_diagnostics.sql", "utf8");
+const upstreamDiagnosticsMigration = readFileSync("worker/migrations/0003_batch_upstream_status.sql", "utf8");
 
 describe("async generation D1 resource prep", () => {
   it("binds the generation jobs D1 database in wrangler config", () => {
@@ -38,7 +39,7 @@ describe("async generation D1 resource prep", () => {
   });
 
   it("does not define raw prompt, raw output, secret, header, or stack trace storage columns", () => {
-    const normalized = `${migration}\n${diagnosticsMigration}`.toLowerCase();
+    const normalized = `${migration}\n${diagnosticsMigration}\n${upstreamDiagnosticsMigration}`.toLowerCase();
 
     expect(normalized).not.toMatch(/\braw_prompt\b/);
     expect(normalized).not.toMatch(/\braw_output\b/);
@@ -55,5 +56,11 @@ describe("async generation D1 resource prep", () => {
     expect(diagnosticsMigration).toContain("ADD COLUMN json_candidate_length INTEGER");
     expect(diagnosticsMigration).toContain("ADD COLUMN json_classification_source TEXT");
     expect(diagnosticsMigration).toContain("IN ('none', 'parser', 'finish_reason')");
+  });
+
+  it("adds nullable upstream HTTP status metadata in a follow-up migration", () => {
+    expect(upstreamDiagnosticsMigration).toContain("ALTER TABLE generation_job_batches");
+    expect(upstreamDiagnosticsMigration).toContain("ADD COLUMN upstream_status INTEGER");
+    expect(upstreamDiagnosticsMigration).toContain("BETWEEN 100 AND 599");
   });
 });

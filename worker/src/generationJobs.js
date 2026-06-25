@@ -60,6 +60,12 @@ function toNullableSafeCount(value) {
   return Number.isFinite(count) && count >= 0 ? Math.floor(count) : null;
 }
 
+function normalizeUpstreamStatus(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const status = Number(value);
+  return Number.isInteger(status) && status >= 100 && status <= 599 ? status : null;
+}
+
 function normalizeFinishReason(value) {
   const text = String(value || "").trim().toUpperCase();
   return /^[A-Z0-9_-]{1,64}$/.test(text) ? text : null;
@@ -77,6 +83,7 @@ function safeBatchDiagnostics(value = {}) {
     outputLength: toNullableSafeCount(diagnostics.outputLength),
     jsonCandidateLength: toNullableSafeCount(diagnostics.jsonCandidateLength),
     jsonClassificationSource: normalizeJsonClassificationSource(diagnostics.classificationSource),
+    upstreamStatus: normalizeUpstreamStatus(diagnostics.upstreamStatus),
   };
 }
 
@@ -87,6 +94,7 @@ function compactBatchDiagnostics(value = {}) {
   if (diagnostics.outputLength !== null) compact.outputLength = diagnostics.outputLength;
   if (diagnostics.jsonCandidateLength !== null) compact.jsonCandidateLength = diagnostics.jsonCandidateLength;
   if (diagnostics.jsonClassificationSource) compact.jsonClassificationSource = diagnostics.jsonClassificationSource;
+  if (diagnostics.upstreamStatus !== null) compact.upstreamStatus = diagnostics.upstreamStatus;
   return compact;
 }
 
@@ -108,6 +116,7 @@ function safeBatchPayload(row = {}) {
     outputLength: row.output_length,
     jsonCandidateLength: row.json_candidate_length,
     classificationSource: row.json_classification_source,
+    upstreamStatus: row.upstream_status,
   });
   if (Object.keys(diagnostics).length > 0) batch.diagnostics = diagnostics;
   return batch;
@@ -448,7 +457,8 @@ async function readGenerationJobBatches(db, jobId) {
         finish_reason,
         output_length,
         json_candidate_length,
-        json_classification_source
+        json_classification_source,
+        upstream_status
       FROM generation_job_batches
       WHERE job_id = ?
       ORDER BY batch_number ASC
@@ -661,6 +671,7 @@ export async function markGenerationBatchFailed(db, jobId, batchNumber, errorCod
           output_length = ?,
           json_candidate_length = ?,
           json_classification_source = ?,
+          upstream_status = ?,
           failed_at = CURRENT_TIMESTAMP,
           updated_at = CURRENT_TIMESTAMP
         WHERE job_id = ?
@@ -674,6 +685,7 @@ export async function markGenerationBatchFailed(db, jobId, batchNumber, errorCod
         safeDiagnostics.outputLength,
         safeDiagnostics.jsonCandidateLength,
         safeDiagnostics.jsonClassificationSource,
+        safeDiagnostics.upstreamStatus,
         jobId,
         batchNumber
       ),
@@ -729,6 +741,7 @@ export async function markGenerationBatchCompleted(db, jobId, batchNumber, itemC
           output_length = ?,
           json_candidate_length = ?,
           json_classification_source = ?,
+          upstream_status = ?,
           error_code = NULL,
           completed_at = CURRENT_TIMESTAMP,
           updated_at = CURRENT_TIMESTAMP
@@ -743,6 +756,7 @@ export async function markGenerationBatchCompleted(db, jobId, batchNumber, itemC
         safeDiagnostics.outputLength,
         safeDiagnostics.jsonCandidateLength,
         safeDiagnostics.jsonClassificationSource,
+        safeDiagnostics.upstreamStatus,
         jobId,
         batchNumber
       ),

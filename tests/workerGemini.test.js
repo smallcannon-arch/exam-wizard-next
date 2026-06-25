@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { callGemini, DEFAULT_GEMINI_TIMEOUT_MS, resolveGeminiTimeoutMs } from "../worker/src/gemini.js";
+import {
+  callGemini,
+  classifyGeminiHttpError,
+  DEFAULT_GEMINI_TIMEOUT_MS,
+  resolveGeminiTimeoutMs,
+} from "../worker/src/gemini.js";
+import { ERROR_CODES } from "../worker/src/json.js";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -45,6 +51,41 @@ describe("Worker Gemini timeout policy", () => {
     expect(result.finishReason).toBe("MAX_TOKENS");
     expect(text).not.toContain("secret-test-key");
     expect(text).not.toContain("raw prompt");
+    expect(text).not.toContain("headers");
+    expect(text).not.toContain("x-goog-api-key");
+  });
+
+  it("classifies safe upstream HTTP status codes for retry policy", () => {
+    expect(classifyGeminiHttpError(429)).toBe(ERROR_CODES.GEMINI_RATE_LIMIT);
+    expect(classifyGeminiHttpError(500)).toBe(ERROR_CODES.GEMINI_UPSTREAM_SERVER_ERROR);
+    expect(classifyGeminiHttpError(503)).toBe(ERROR_CODES.GEMINI_UPSTREAM_SERVER_ERROR);
+    expect(classifyGeminiHttpError(400)).toBe(ERROR_CODES.GEMINI_UPSTREAM_REQUEST_ERROR);
+    expect(classifyGeminiHttpError(401)).toBe(ERROR_CODES.GEMINI_UPSTREAM_REQUEST_ERROR);
+    expect(classifyGeminiHttpError("bad")).toBe(ERROR_CODES.GEMINI_UPSTREAM_ERROR);
+  });
+
+  it("returns safe upstream status metadata without exposing raw error bodies", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      error: "raw output with secret-test-key and token should not leak",
+    }), {
+      status: 429,
+      headers: { "Content-Type": "application/json" },
+    })));
+
+    const result = await callGemini({
+      env: { GEMINI_API_KEY: "secret-test-key" },
+      prompt: "raw prompt should not be returned",
+    });
+    const text = JSON.stringify(result).toLowerCase();
+
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe(429);
+    expect(result.upstreamStatus).toBe(429);
+    expect(result.errorCode).toBe(ERROR_CODES.GEMINI_RATE_LIMIT);
+    expect(text).not.toContain("secret-test-key");
+    expect(text).not.toContain("raw prompt");
+    expect(text).not.toContain("raw output");
+    expect(text).not.toContain("token");
     expect(text).not.toContain("headers");
     expect(text).not.toContain("x-goog-api-key");
   });
