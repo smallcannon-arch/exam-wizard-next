@@ -685,6 +685,7 @@ describe("async generation job skeleton", () => {
       partial: false,
     });
     expect(JSON.parse(db.state.jobs[0].result_json).items).toHaveLength(4);
+    expect(JSON.parse(db.state.jobs[0].result_json).items.map((item) => item.itemIndex)).toEqual([1, 2, 3, 4]);
     expect(db.state.batches[0].status).toBe("completed");
     expect(db.state.batches[0].completed_item_count).toBe(4);
     expect(db.state.batches[0].latency_ms).toBeGreaterThanOrEqual(0);
@@ -762,6 +763,7 @@ describe("async generation job skeleton", () => {
       "G-5",
       "G-6",
     ]);
+    expect(JSON.parse(db.state.jobs[0].result_json).items.map((item) => item.itemIndex)).toEqual([1, 2, 3, 4, 5, 6]);
     expect(db.state.batches.map((batch) => batch.status)).toEqual(["completed", "completed"]);
     expect(db.state.batches.map((batch) => batch.completed_item_count)).toEqual([4, 2]);
     expect(JSON.stringify(db.state).toLowerCase()).not.toContain("sensitive classroom source text");
@@ -839,27 +841,171 @@ describe("async generation job skeleton", () => {
       "G-8",
       "G-9",
     ]);
+    expect(JSON.parse(db.state.jobs[0].result_json).items.map((item) => item.itemIndex)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
     expect(db.state.batches.map((batch) => batch.status)).toEqual(["completed", "completed", "completed"]);
     expect(fetch).toHaveBeenCalledTimes(3);
   });
 
-  it("marks the failed batch and does not store final result when a later multi-batch output fails contract", async () => {
+  it("marks a later failed batch as partial when enough planned slots remain usable", async () => {
     const db = createFakeJobsDb();
-    const jobId = "gen_workflow_multi_fail_12345678";
-    const data = payload(5);
+    const jobId = "gen_workflow_multi_partial_12345678";
+    const data = payload(20);
     const plan = createGenerationJobPlan(data);
+    const leakedOptionText = "E. LEAK_SENTINEL_PARTIAL_OPTION_TEXT should not leak";
     mockGeminiItemBatches([
       Array.from({ length: 4 }, (_, index) => generatedItem(index + 1)),
-      [{ id: "G-5", question: "Question without qualityMeta" }],
+      Array.from({ length: 4 }, (_, index) => generatedItem(index + 5)),
+      [
+        {
+          ...generatedItem(9),
+          question: "LEAK_SENTINEL_PARTIAL_QUESTION_TEXT should not leak",
+          options: ["A", "B", "C", "D", leakedOptionText],
+        },
+        generatedItem(10),
+        generatedItem(11),
+        generatedItem(12),
+      ],
+      Array.from({ length: 4 }, (_, index) => generatedItem(index + 13)),
+      Array.from({ length: 4 }, (_, index) => generatedItem(index + 17)),
     ]);
     db.seedJob({
       job_id: jobId,
-      requested_item_count: 5,
-      batch_count: 2,
+      requested_item_count: 20,
+      batch_count: 5,
       expires_at: "2026-06-25T00:00:00.000Z",
     });
-    db.seedBatch({ job_id: jobId, batch_number: 1, expected_item_count: 4 });
-    db.seedBatch({ job_id: jobId, batch_number: 2, expected_item_count: 1 });
+    for (let batchNumber = 1; batchNumber <= 5; batchNumber += 1) {
+      db.seedBatch({ job_id: jobId, batch_number: batchNumber, expected_item_count: 4 });
+    }
+
+    const workflow = new GenerationWorkflow();
+    workflow.env = {
+      GENERATION_JOBS_DB: db,
+      GEMINI_API_KEY: "test-key",
+    };
+    const step = {
+      async do(_name, callback) {
+        return callback();
+      },
+    };
+
+    const result = await workflow.run({
+      payload: {
+        jobId,
+        request: plan.request,
+        batches: plan.batches,
+        progress: plan.progress,
+      },
+    }, step);
+
+    expect(result).toMatchObject({
+      ok: true,
+      status: "partial",
+      completedItemCount: 16,
+      missingItemCount: 4,
+    });
+    expect(db.state.jobs[0].status).toBe("partial");
+    expect(db.state.jobs[0].error_code).toBeNull();
+    expect(db.state.jobs[0].completed_batch_count).toBe(4);
+    expect(db.state.jobs[0].completed_item_count).toBe(16);
+    const resultPayload = JSON.parse(db.state.jobs[0].result_json);
+    expect(resultPayload).toMatchObject({
+      batchCount: 5,
+      completedBatchCount: 4,
+      completedItemCount: 16,
+      requestedItemCount: 20,
+      partial: true,
+    });
+    expect(resultPayload.items.map((item) => item.id)).toEqual([
+      "G-1",
+      "G-2",
+      "G-3",
+      "G-4",
+      "G-5",
+      "G-6",
+      "G-7",
+      "G-8",
+      "G-13",
+      "G-14",
+      "G-15",
+      "G-16",
+      "G-17",
+      "G-18",
+      "G-19",
+      "G-20",
+    ]);
+    expect(resultPayload.items.map((item) => item.itemIndex)).toEqual([
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+    ]);
+    expect(resultPayload.missingItems.map((item) => item.itemIndex)).toEqual([9, 10, 11, 12]);
+    expect(resultPayload.missingItems).toEqual(resultPayload.missingItems.map((item) => ({
+      itemIndex: item.itemIndex,
+      batchNumber: 3,
+      errorCode: ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID,
+      failureItemIndex: 9,
+      contractViolationTypes: [CONTRACT_VIOLATION_TYPES.OPTIONS_COUNT_INVALID],
+      contractViolationField: "options",
+      contractViolationOptionCode: "E",
+    })));
+    expect(db.state.batches.map((batch) => batch.status)).toEqual([
+      "completed",
+      "completed",
+      "failed_terminal",
+      "completed",
+      "completed",
+    ]);
+    expect(db.state.batches[2].error_code).toBe(ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID);
+    const stateText = JSON.stringify(db.state).toLowerCase();
+    expect(stateText).not.toContain("leak_sentinel");
+    expect(stateText).not.toContain("raw output");
+    expect(stateText).not.toContain("token");
+    expect(fetch).toHaveBeenCalledTimes(5);
+  });
+
+  it("marks the job failed when failed batches leave too few usable planned slots", async () => {
+    const db = createFakeJobsDb();
+    const jobId = "gen_workflow_multi_below_partial_12345678";
+    const data = payload(12);
+    const plan = createGenerationJobPlan(data);
+    mockGeminiItemBatches([
+      Array.from({ length: 4 }, (_, index) => generatedItem(index + 1)),
+      [
+        { id: "G-5", question: "Question without qualityMeta" },
+        generatedItem(6),
+        generatedItem(7),
+        generatedItem(8),
+      ],
+      [
+        { id: "G-9", question: "Question without qualityMeta" },
+        generatedItem(10),
+        generatedItem(11),
+        generatedItem(12),
+      ],
+    ]);
+    db.seedJob({
+      job_id: jobId,
+      requested_item_count: 12,
+      batch_count: 3,
+      expires_at: "2026-06-25T00:00:00.000Z",
+    });
+    for (let batchNumber = 1; batchNumber <= 3; batchNumber += 1) {
+      db.seedBatch({ job_id: jobId, batch_number: batchNumber, expected_item_count: 4 });
+    }
 
     const workflow = new GenerationWorkflow();
     workflow.env = {
@@ -887,11 +1033,12 @@ describe("async generation job skeleton", () => {
     expect(db.state.jobs[0].completed_batch_count).toBe(1);
     expect(db.state.jobs[0].completed_item_count).toBe(4);
     expect(db.state.jobs[0].result_json).toBeUndefined();
-    expect(db.state.batches.map((batch) => batch.status)).toEqual(["completed", "failed_terminal"]);
-    expect(db.state.batches[1].error_code).toBe(ERROR_CODES.AI_QUALITY_META_MISSING);
-    expect(JSON.stringify(db.state).toLowerCase()).not.toContain("raw output");
-    expect(JSON.stringify(db.state).toLowerCase()).not.toContain("token");
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(db.state.batches.map((batch) => batch.status)).toEqual([
+      "completed",
+      "failed_terminal",
+      "failed_terminal",
+    ]);
+    expect(fetch).toHaveBeenCalledTimes(3);
   });
 
   it("marks the single batch failed when AI output misses qualityMeta", async () => {
@@ -1501,6 +1648,102 @@ describe("async generation job skeleton", () => {
     expect(text).not.toContain("raw prompt");
     expect(text).not.toContain("raw output");
     expect(text).not.toContain("token");
+  });
+
+  it("returns partial D1-backed job results with safe missing-slot metadata", async () => {
+    const db = createFakeJobsDb();
+    const jobId = "gen_partial_result_12345678";
+    const items = Array.from({ length: 16 }, (_, index) => generatedItem(index + 1));
+    db.seedJob({
+      job_id: jobId,
+      status: "partial",
+      requested_item_count: 20,
+      batch_count: 5,
+      completed_batch_count: 4,
+      completed_item_count: 16,
+      result_item_count: 16,
+      result_json: JSON.stringify({
+        items,
+        batchCount: 5,
+        completedBatchCount: 4,
+        completedItemCount: 16,
+        requestedItemCount: 20,
+        partial: true,
+        missingItems: [
+          {
+            itemIndex: 9,
+            batchNumber: 3,
+            errorCode: ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID,
+            failureItemIndex: 9,
+            contractViolationTypes: [CONTRACT_VIOLATION_TYPES.OPTIONS_COUNT_INVALID],
+            contractViolationField: "options",
+            contractViolationOptionCode: "E",
+            unsafeText: "LEAK_SENTINEL_MISSING_ITEM_TEXT should not leak",
+          },
+        ],
+      }),
+    });
+
+    const response = await worker.fetch(new Request(`https://worker.test/generation-jobs/${jobId}/result`), {
+      ALLOWED_ORIGIN: "*",
+      GENERATION_JOBS_DB: db,
+    });
+    const body = await readJson(response);
+    const text = JSON.stringify(body).toLowerCase();
+
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.status).toBe("partial");
+    expect(body.partial).toBe(true);
+    expect(body.items).toHaveLength(16);
+    expect(body.missingItems).toEqual([{
+      itemIndex: 9,
+      batchNumber: 3,
+      errorCode: ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID,
+      failureItemIndex: 9,
+      contractViolationTypes: [CONTRACT_VIOLATION_TYPES.OPTIONS_COUNT_INVALID],
+      contractViolationField: "options",
+      contractViolationOptionCode: "E",
+    }]);
+    expect(text).not.toContain("leak_sentinel");
+    expect(text).not.toContain("raw prompt");
+    expect(text).not.toContain("raw output");
+    expect(text).not.toContain("token");
+  });
+
+  it("rejects malformed partial D1-backed result payloads", async () => {
+    const db = createFakeJobsDb();
+    const jobId = "gen_bad_partial_result_12345678";
+    db.seedJob({
+      job_id: jobId,
+      status: "partial",
+      requested_item_count: 4,
+      batch_count: 1,
+      completed_batch_count: 0,
+      completed_item_count: 0,
+      result_item_count: 0,
+      result_json: JSON.stringify({
+        items: [],
+        partial: true,
+        missingItems: [
+          {
+            batchNumber: 1,
+            errorCode: ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID,
+          },
+        ],
+      }),
+    });
+
+    const response = await worker.fetch(new Request(`https://worker.test/generation-jobs/${jobId}/result`), {
+      ALLOWED_ORIGIN: "*",
+      GENERATION_JOBS_DB: db,
+    });
+    const body = await readJson(response);
+
+    expect(response.status).toBe(502);
+    expect(body.ok).toBe(false);
+    expect(body.errorCode).toBe(ERROR_CODES.ASYNC_JOB_RESULT_INVALID);
+    expect(body.items).toBeUndefined();
   });
 
   it("does not return result items while D1-backed jobs are still running", async () => {

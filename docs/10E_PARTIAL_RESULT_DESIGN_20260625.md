@@ -275,6 +275,8 @@ Recommended split:
 
 Rollback should be possible by reverting the backend PR and deploying the previous Worker. If additive D1 metadata is added, it should remain nullable and should not need rollback.
 
+Backend deployment must be sequenced carefully. A Worker that returns `partial` should not be exposed to normal production UI traffic until the frontend can treat `partial` as a terminal state and explain missing slots. Backend-only deploy is acceptable for controlled observation-runner smoke, but teacher-facing production use requires the frontend presentation PR or an explicit owner acceptance of the interim behavior.
+
 ## 12. Decision Points
 
 Stop for owner decision before:

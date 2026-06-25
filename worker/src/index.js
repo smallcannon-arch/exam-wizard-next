@@ -4,6 +4,7 @@ import { ERROR_CODES, assertItemsPayload, assertObjectivesPayload, extractJsonOb
 import { handleOptions, jsonResponse } from "./cors.js";
 import {
   completeGenerationJob,
+  completePartialGenerationJob,
   markGenerationBatchCompleted,
   markGenerationBatchFailed,
   markGenerationBatchesRunning,
@@ -83,6 +84,33 @@ function mergeUpstreamDiagnostics(diagnostics = {}, upstreamStatus = null) {
     ...diagnostics,
     upstreamStatus,
   };
+}
+
+function createBatchStartIndexMap(batches = []) {
+  const safeBatches = Array.isArray(batches) ? batches : [];
+  let nextItemIndex = 1;
+  const startByBatchNumber = new Map();
+  for (let index = 0; index < safeBatches.length; index += 1) {
+    const batch = safeBatches[index] || {};
+    const batchNumber = Number.isFinite(Number(batch.batchNumber)) ? Number(batch.batchNumber) : index + 1;
+    const expectedItemCount = Math.max(0, Math.floor(Number(batch.expectedItemCount) || 0));
+    startByBatchNumber.set(batchNumber, nextItemIndex);
+    nextItemIndex += expectedItemCount;
+  }
+  return startByBatchNumber;
+}
+
+function createResultItemsFromCompletedBatches(completedBatches = [], batches = []) {
+  const startByBatchNumber = createBatchStartIndexMap(batches);
+  return completedBatches
+    .sort((a, b) => a.batchNumber - b.batchNumber)
+    .flatMap((batch) => {
+      const startItemIndex = startByBatchNumber.get(batch.batchNumber) || 1;
+      return batch.items.map((item, index) => ({
+        ...item,
+        itemIndex: startItemIndex + index,
+      }));
+    });
 }
 
 async function generateAndValidateBatch({ env, request, batch, batchNumber }) {
@@ -198,6 +226,7 @@ export class GenerationWorkflow extends WorkflowEntrypointBase {
 
     const maxConcurrentBatches = resolveAsyncGenerationMaxConcurrentBatches(this.env);
     const completedBatches = [];
+    const failedBatchResults = [];
     for (let index = 0; index < batches.length; index += maxConcurrentBatches) {
       const batchWindow = batches.slice(index, index + maxConcurrentBatches).map((batch, offset) => ({
         batch,
@@ -242,27 +271,38 @@ export class GenerationWorkflow extends WorkflowEntrypointBase {
         if (!batchCompleted.ok) return batchCompleted;
       }
 
-      const failedBatches = generatedResults
+      const windowFailedBatches = generatedResults
         .filter((generated) => !generated.ok)
         .sort((a, b) => a.batchNumber - b.batchNumber);
-      if (failedBatches.length) {
-        for (const generated of failedBatches) {
+      if (windowFailedBatches.length) {
+        for (const generated of windowFailedBatches) {
           await step.do(`mark batch ${generated.batchNumber} failed`, async () => (
             markGenerationBatchFailed(this.env?.GENERATION_JOBS_DB, jobId, generated.batchNumber, generated.errorCode, {
               latencyMs: generated.latencyMs,
               retryCount: generated.retryCount,
               diagnostics: generated.diagnostics,
               contractViolation: generated.contractViolation,
+              markJobFailed: false,
             })
           ));
         }
-        return failedBatches[0];
+        failedBatchResults.push(...windowFailedBatches);
       }
     }
 
-    const items = completedBatches
-      .sort((a, b) => a.batchNumber - b.batchNumber)
-      .flatMap((batch) => batch.items);
+    const items = createResultItemsFromCompletedBatches(completedBatches, batches);
+    if (failedBatchResults.length) {
+      const partial = await step.do("complete partial multi-batch job", async () => (
+        completePartialGenerationJob(this.env?.GENERATION_JOBS_DB, jobId, items, batches, failedBatchResults, {
+          requestedItemCount: progress.requestedItemCount,
+          batchSize: progress.batchSize,
+          batchCount: progress.batchCount || batches.length,
+          completedBatchCount: completedBatches.length,
+        })
+      ));
+      return partial;
+    }
+
     const expectedItemCount = Number(progress.requestedItemCount);
     if (Number.isFinite(expectedItemCount) && items.length !== expectedItemCount) {
       await step.do("mark job failed after final item count check", async () => (

@@ -5,12 +5,14 @@ export const ASYNC_GENERATION_MAX_ITEM_COUNT = 50;
 export const ASYNC_GENERATION_BATCH_SIZE = 4;
 export const ASYNC_GENERATION_DEFAULT_MAX_CONCURRENT_BATCHES = 1;
 export const ASYNC_GENERATION_MAX_CONCURRENT_BATCHES_LIMIT = 3;
+export const PARTIAL_RESULT_MIN_COMPLETION_RATIO = 0.8;
 
 const JOB_STATUS = Object.freeze({
   QUEUED: "queued",
   RUNNING: "running",
   VALIDATING: "validating",
   COMPLETED: "completed",
+  PARTIAL: "partial",
   FAILED: "failed",
   PARTIAL_FAILED: "partial_failed",
   EXPIRED: "expired",
@@ -26,6 +28,7 @@ const WORKFLOW_STATUS_MAP = Object.freeze({
   complete: JOB_STATUS.COMPLETED,
   completed: JOB_STATUS.COMPLETED,
   success: JOB_STATUS.COMPLETED,
+  partial: JOB_STATUS.PARTIAL,
   partial_failed: JOB_STATUS.PARTIAL_FAILED,
   errored: JOB_STATUS.FAILED,
   error: JOB_STATUS.FAILED,
@@ -167,6 +170,10 @@ function compactBatchDiagnostics(value = {}) {
   return compact;
 }
 
+function safeErrorCode(value) {
+  return SAFE_ERROR_CODES.has(value) ? value : ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID;
+}
+
 function safeBatchPayload(row = {}) {
   const status = SAFE_BATCH_STATUSES.has(row.status) ? row.status : "queued";
   const batch = {
@@ -206,6 +213,96 @@ function safeBatchPayload(row = {}) {
     };
   }
   return batch;
+}
+
+function createBatchSlotPlan(batches = []) {
+  const safeBatches = Array.isArray(batches) ? batches : [];
+  let nextItemIndex = 1;
+  return safeBatches.map((batch, index) => {
+    const batchNumber = toSafeCount(batch?.batchNumber, index + 1);
+    const expectedItemCount = toSafeCount(batch?.expectedItemCount);
+    const itemIndexes = Array.from({ length: expectedItemCount }, (_, offset) => nextItemIndex + offset);
+    nextItemIndex += expectedItemCount;
+    return {
+      batchNumber,
+      expectedItemCount,
+      itemIndexes,
+      startItemIndex: itemIndexes[0] || null,
+    };
+  });
+}
+
+function createMissingItemsFromFailedBatches(batches = [], failedBatches = []) {
+  const slotPlan = createBatchSlotPlan(batches);
+  const failedByBatch = new Map(
+    (Array.isArray(failedBatches) ? failedBatches : [])
+      .map((failed) => [toSafeCount(failed?.batchNumber), failed])
+      .filter(([batchNumber]) => batchNumber > 0)
+  );
+  const missingItems = [];
+
+  for (const batch of slotPlan) {
+    const failed = failedByBatch.get(batch.batchNumber);
+    if (!failed) continue;
+
+    const errorCode = safeErrorCode(failed.errorCode);
+    const violation = safeContractViolation(failed.contractViolation);
+    const localFailureIndex = violation.itemIndex;
+    const failureItemIndex = localFailureIndex !== null && batch.startItemIndex !== null
+      ? batch.startItemIndex + localFailureIndex - 1
+      : null;
+    const upstreamStatus = normalizeUpstreamStatus(failed?.diagnostics?.upstreamStatus);
+
+    for (const itemIndex of batch.itemIndexes) {
+      const missing = {
+        itemIndex,
+        batchNumber: batch.batchNumber,
+        errorCode,
+      };
+      if (failureItemIndex !== null) missing.failureItemIndex = failureItemIndex;
+      if (violation.types.length > 0) missing.contractViolationTypes = violation.types;
+      if (violation.field) missing.contractViolationField = violation.field;
+      if (violation.optionCode) missing.contractViolationOptionCode = violation.optionCode;
+      if (upstreamStatus !== null) missing.upstreamStatus = upstreamStatus;
+      missingItems.push(missing);
+    }
+  }
+
+  return missingItems.sort((a, b) => a.itemIndex - b.itemIndex);
+}
+
+function safeMissingItemPayload(value = {}) {
+  const item = isPlainObject(value) ? value : {};
+  const itemIndex = normalizeContractViolationItemIndex(item.itemIndex);
+  const batchNumber = normalizeContractViolationItemIndex(item.batchNumber);
+  const errorCode = safeErrorCode(item.errorCode);
+  if (itemIndex === null || batchNumber === null) return null;
+
+  const missing = { itemIndex, batchNumber, errorCode };
+  const failureItemIndex = normalizeContractViolationItemIndex(item.failureItemIndex);
+  if (failureItemIndex !== null) missing.failureItemIndex = failureItemIndex;
+  const contractViolationTypes = normalizeContractViolationTypes(item.contractViolationTypes);
+  if (contractViolationTypes.length > 0) missing.contractViolationTypes = contractViolationTypes;
+  const contractViolationField = normalizeContractViolationField(item.contractViolationField);
+  if (contractViolationField) missing.contractViolationField = contractViolationField;
+  const contractViolationOptionCode = normalizeContractViolationOptionCode(item.contractViolationOptionCode);
+  if (contractViolationOptionCode) missing.contractViolationOptionCode = contractViolationOptionCode;
+  const upstreamStatus = normalizeUpstreamStatus(item.upstreamStatus);
+  if (upstreamStatus !== null) missing.upstreamStatus = upstreamStatus;
+  return missing;
+}
+
+function normalizeMissingItemsPayload(value = []) {
+  if (!Array.isArray(value)) return { ok: false, missingItems: [] };
+  const missingItems = value.map(safeMissingItemPayload);
+  if (missingItems.some((item) => !item)) {
+    return { ok: false, missingItems: [] };
+  }
+  return { ok: true, missingItems };
+}
+
+function partialResultMinimumItemCount(requestedItemCount) {
+  return Math.ceil(toSafeCount(requestedItemCount) * PARTIAL_RESULT_MIN_COMPLETION_RATIO);
 }
 
 export function resolveAsyncGenerationMaxConcurrentBatches(env = {}) {
@@ -593,7 +690,8 @@ async function readGenerationJobResult(db, jobId) {
     return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_NOT_FOUND, status: 404 };
   }
 
-  if (row.status !== JOB_STATUS.COMPLETED) {
+  const isPartial = row.status === JOB_STATUS.PARTIAL;
+  if (row.status !== JOB_STATUS.COMPLETED && !isPartial) {
     return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_RESULT_UNAVAILABLE, status: 409 };
   }
 
@@ -604,7 +702,7 @@ async function readGenerationJobResult(db, jobId) {
     return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_RESULT_INVALID, status: 502 };
   }
 
-  if (!isPlainObject(data) || data.partial === true) {
+  if (!isPlainObject(data) || Boolean(data.partial) !== isPartial) {
     return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_RESULT_INVALID, status: 502 };
   }
 
@@ -620,6 +718,12 @@ async function readGenerationJobResult(db, jobId) {
       errorCode: payload.errorCode || ERROR_CODES.ASYNC_JOB_RESULT_INVALID,
       status: 502,
     };
+  }
+  const missingResult = isPartial
+    ? normalizeMissingItemsPayload(data.missingItems)
+    : { ok: true, missingItems: [] };
+  if (!missingResult.ok || (isPartial && missingResult.missingItems.length === 0)) {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_RESULT_INVALID, status: 502 };
   }
 
   return {
@@ -638,6 +742,8 @@ async function readGenerationJobResult(db, jobId) {
         },
       }),
       items: payload.items,
+      partial: isPartial,
+      missingItems: missingResult.missingItems,
     },
   };
 }
@@ -791,7 +897,10 @@ export async function markGenerationBatchFailed(db, jobId, batchNumber, errorCod
         jobId,
         batchNumber
       ),
-      db.prepare(`
+    ];
+
+    if (options.markJobFailed !== false) {
+      statements.push(db.prepare(`
         UPDATE generation_jobs
         SET
           status = ?,
@@ -799,8 +908,8 @@ export async function markGenerationBatchFailed(db, jobId, batchNumber, errorCod
           failed_at = CURRENT_TIMESTAMP,
           updated_at = CURRENT_TIMESTAMP
         WHERE job_id = ?
-      `).bind(JOB_STATUS.FAILED, errorCode, jobId),
-    ];
+      `).bind(JOB_STATUS.FAILED, errorCode, jobId));
+    }
 
     if (typeof db.batch === "function") {
       await db.batch(statements);
@@ -895,11 +1004,15 @@ export async function completeGenerationJob(db, jobId, items, progress = {}) {
 
   const itemCount = items.length;
   const batchCount = toSafeCount(progress.batchCount, 1);
+  const requestedItemCount = toSafeCount(progress.requestedItemCount, itemCount);
   const resultJson = JSON.stringify({
     items,
     batchCount,
     completedBatchCount: batchCount,
+    completedItemCount: itemCount,
+    requestedItemCount,
     partial: false,
+    missingItems: [],
   });
 
   try {
@@ -925,12 +1038,93 @@ export async function completeGenerationJob(db, jobId, items, progress = {}) {
     ok: true,
     jobId,
     status: JOB_STATUS.COMPLETED,
-    requestedItemCount: toSafeCount(progress.requestedItemCount, itemCount),
+    requestedItemCount,
     batchSize: toSafeCount(progress.batchSize, ASYNC_GENERATION_BATCH_SIZE),
     batchCount,
     completedBatchCount: batchCount,
     completedItemCount: itemCount,
     currentBatch: null,
+  };
+}
+
+export async function completePartialGenerationJob(db, jobId, items, batches, failedBatches, progress = {}) {
+  if (!hasD1Interface(db) || !isValidJobId(jobId) || !Array.isArray(items)) {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_UNAVAILABLE };
+  }
+
+  const itemCount = items.length;
+  const batchCount = toSafeCount(progress.batchCount, Array.isArray(batches) ? batches.length : 0);
+  const requestedItemCount = toSafeCount(progress.requestedItemCount, itemCount);
+  const minimumItemCount = partialResultMinimumItemCount(requestedItemCount);
+  const firstErrorCode = safeErrorCode(Array.isArray(failedBatches) && failedBatches[0]?.errorCode);
+
+  if (itemCount < minimumItemCount) {
+    const failed = await markGenerationJobFailed(db, jobId, firstErrorCode);
+    if (!failed.ok) return failed;
+    return {
+      ok: false,
+      jobId,
+      status: JOB_STATUS.FAILED,
+      errorCode: firstErrorCode,
+      requestedItemCount,
+      batchSize: toSafeCount(progress.batchSize, ASYNC_GENERATION_BATCH_SIZE),
+      batchCount,
+      completedBatchCount: toSafeCount(progress.completedBatchCount),
+      completedItemCount: itemCount,
+      currentBatch: null,
+    };
+  }
+
+  const missingItems = createMissingItemsFromFailedBatches(batches, failedBatches);
+  const resultJson = JSON.stringify({
+    items,
+    batchCount,
+    completedBatchCount: toSafeCount(progress.completedBatchCount),
+    completedItemCount: itemCount,
+    requestedItemCount,
+    partial: true,
+    missingItems,
+  });
+
+  try {
+    await db.prepare(`
+      UPDATE generation_jobs
+      SET
+        status = ?,
+        completed_batch_count = ?,
+        completed_item_count = ?,
+        current_batch = ?,
+        error_code = NULL,
+        result_item_count = ?,
+        result_json = ?,
+        completed_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE job_id = ?
+    `).bind(
+      JOB_STATUS.PARTIAL,
+      toSafeCount(progress.completedBatchCount),
+      itemCount,
+      null,
+      itemCount,
+      resultJson,
+      jobId
+    ).run();
+  } catch {
+    return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_STATUS_INVALID };
+  }
+
+  return {
+    ok: true,
+    jobId,
+    status: JOB_STATUS.PARTIAL,
+    requestedItemCount,
+    batchSize: toSafeCount(progress.batchSize, ASYNC_GENERATION_BATCH_SIZE),
+    batchCount,
+    completedBatchCount: toSafeCount(progress.completedBatchCount),
+    completedItemCount: itemCount,
+    currentBatch: null,
+    partial: true,
+    missingItemCount: missingItems.length,
   };
 }
 
