@@ -5,27 +5,58 @@ import { normalizeGeneratedItems } from "../frontend/src/core/normalizeItem.js";
 const DEFAULT_API_BASE_URL = "https://exam-wizard-next-proxy.smallcannon.workers.dev";
 const MAX_ITEM_COUNT = 50;
 
-const TEXT = {
-  subjectChinese: "\u570b\u8a9e",
-  grade4: "\u56db\u5e74\u7d1a",
+const COMMON_TEXT = {
   choiceQuestion: "\u9078\u64c7\u984c",
   apply: "\u61c9\u7528",
   understand: "\u7406\u89e3",
   remember: "\u8a18\u61b6",
-  readingWriting: "\u6bb5\u7bc7\u8b80\u5beb",
-  wordsSentences: "\u5b57\u8a5e\u53e5\u7406\u89e3",
-  material:
-    "\u56db\u5e74\u7d1a\u570b\u8a9e\u7d9c\u5408\u7df4\u7fd2\uff1a\u8a9e\u8a5e\u7406\u89e3\u3001\u53e5\u610f\u5224\u65b7\u3001\u6a19\u9ede\u7b26\u865f\u3001\u6bb5\u843d\u91cd\u9ede\u8207\u751f\u6d3b\u60c5\u5883\u95b1\u8b80\u3002\u984c\u76ee\u9700\u81ea\u6210\u4e00\u984c\uff1b\u82e5\u984c\u5e79\u8981\u6c42\u4f9d\u64da\u6587\u672c\u4f5c\u7b54\uff0c\u5fc5\u9808\u5728\u540c\u4e00\u984c\u63d0\u4f9b stimulus\u3002",
-  objective1:
-    "\u80fd\u7406\u89e3\u56db\u5e74\u7d1a\u570b\u8a9e\u8ab2\u6587\u5e38\u898b\u8a9e\u8a5e\u3001\u53e5\u610f\u3001\u6bb5\u843d\u91cd\u9ede\u8207\u6a19\u9ede\u7528\u6cd5\u3002",
-  objective2:
-    "\u80fd\u6839\u64da\u77ed\u53e5\u8207\u751f\u6d3b\u60c5\u5883\u5224\u65b7\u8a5e\u8a9e\u4f7f\u7528\u3001\u8a9e\u610f\u95dc\u4fc2\u8207\u57fa\u672c\u95b1\u8b80\u7406\u89e3\u3002",
-  subcategories: [
-    "\u63d0\u53d6\u8a0a\u606f",
-    "\u8a9e\u8a5e\u7406\u89e3",
-    "\u6a19\u9ede\u7b26\u865f",
-    "\u53e5\u610f\u5224\u65b7",
-  ],
+};
+
+const SUBJECT_PRESETS = {
+  chinese: {
+    aliases: ["chinese", "mandarin", "\u570b\u8a9e", "\u570b\u8a9e\u6587"],
+    subject: "\u570b\u8a9e",
+    grade: "\u56db\u5e74\u7d1a",
+    material:
+      "\u56db\u5e74\u7d1a\u570b\u8a9e\u7d9c\u5408\u7df4\u7fd2\uff1a\u8a9e\u8a5e\u7406\u89e3\u3001\u53e5\u610f\u5224\u65b7\u3001\u6a19\u9ede\u7b26\u865f\u3001\u6bb5\u843d\u91cd\u9ede\u8207\u751f\u6d3b\u60c5\u5883\u95b1\u8b80\u3002\u984c\u76ee\u9700\u81ea\u6210\u4e00\u984c\uff1b\u82e5\u984c\u5e79\u8981\u6c42\u4f9d\u64da\u6587\u672c\u4f5c\u7b54\uff0c\u5fc5\u9808\u5728\u540c\u4e00\u984c\u63d0\u4f9b stimulus\u3002",
+    objectives: [
+      "\u80fd\u7406\u89e3\u56db\u5e74\u7d1a\u570b\u8a9e\u8ab2\u6587\u5e38\u898b\u8a9e\u8a5e\u3001\u53e5\u610f\u3001\u6bb5\u843d\u91cd\u9ede\u8207\u6a19\u9ede\u7528\u6cd5\u3002",
+      "\u80fd\u6839\u64da\u77ed\u53e5\u8207\u751f\u6d3b\u60c5\u5883\u5224\u65b7\u8a5e\u8a9e\u4f7f\u7528\u3001\u8a9e\u610f\u95dc\u4fc2\u8207\u57fa\u672c\u95b1\u8b80\u7406\u89e3\u3002",
+    ],
+    subcategories: [
+      "\u63d0\u53d6\u8a0a\u606f",
+      "\u8a9e\u8a5e\u7406\u89e3",
+      "\u6a19\u9ede\u7b26\u865f",
+      "\u53e5\u610f\u5224\u65b7",
+    ],
+    dimension(index) {
+      return index % 4 === 0 ? "\u6bb5\u7bc7\u8b80\u5beb" : "\u5b57\u8a5e\u53e5\u7406\u89e3";
+    },
+  },
+  math: {
+    aliases: ["math", "mathematics", "\u6578\u5b78"],
+    subject: "\u6578\u5b78",
+    grade: "\u56db\u5e74\u7d1a",
+    material:
+      "\u56db\u5e74\u7d1a\u6578\u5b78\u7d9c\u5408\u7df4\u7fd2\uff1a\u6574\u6578\u56db\u5247\u904b\u7b97\u3001\u5206\u6578\u8207\u5c0f\u6578\u57fa\u790e\u6982\u5ff5\u3001\u5468\u9577\u9762\u7a4d\u3001\u55ae\u4f4d\u63db\u7b97\u8207\u5716\u8868\u5224\u8b80\u3002\u984c\u76ee\u61c9\u81ea\u6210\u4e00\u984c\uff0c\u907f\u514d\u9700\u8981\u984d\u5916\u5716\u7247\u6216\u672a\u63d0\u4f9b\u7684\u8868\u683c\u624d\u80fd\u4f5c\u7b54\u3002",
+    objectives: [
+      "\u80fd\u6839\u64da\u984c\u610f\u5224\u65b7\u6578\u91cf\u95dc\u4fc2\u4e26\u9078\u64c7\u9069\u7576\u7b97\u5f0f\u89e3\u984c\u3002",
+      "\u80fd\u904b\u7528\u5206\u6578\u3001\u5c0f\u6578\u3001\u5e7e\u4f55\u8207\u8cc7\u6599\u5224\u8b80\u6982\u5ff5\u89e3\u6c7a\u751f\u6d3b\u60c5\u5883\u554f\u984c\u3002",
+    ],
+    subcategories: [],
+  },
+  natural: {
+    aliases: ["natural", "science", "\u81ea\u7136", "\u81ea\u7136\u79d1\u5b78"],
+    subject: "\u81ea\u7136",
+    grade: "\u4e94\u5e74\u7d1a",
+    material:
+      "\u4e94\u5e74\u7d1a\u81ea\u7136\u7d9c\u5408\u7df4\u7fd2\uff1a\u751f\u7269\u9069\u61c9\u3001\u6c34\u6eb6\u6db2\u8207\u7269\u8cea\u8b8a\u5316\u3001\u529b\u8207\u904b\u52d5\u3001\u5730\u7403\u8207\u5929\u6c23\u89c0\u5bdf\u3001\u5be6\u9a57\u8b8a\u56e0\u8207\u5716\u8868\u8cc7\u6599\u5224\u8b80\u3002\u984c\u76ee\u9700\u81ea\u6210\u4e00\u984c\uff1b\u82e5\u8981\u6c42\u4f9d\u64da\u89c0\u5bdf\u8cc7\u6599\u4f5c\u7b54\uff0c\u5fc5\u9808\u5728\u984c\u5e79\u4e2d\u63d0\u4f9b\u5fc5\u8981\u8cc7\u6599\u3002",
+    objectives: [
+      "\u80fd\u7406\u89e3\u81ea\u7136\u73fe\u8c61\u3001\u7269\u8cea\u7279\u6027\u8207\u751f\u7269\u9069\u61c9\u7b49\u57fa\u672c\u6982\u5ff5\u3002",
+      "\u80fd\u6839\u64da\u5be6\u9a57\u60c5\u5883\u3001\u89c0\u5bdf\u8cc7\u6599\u8207\u5716\u8868\u5224\u8b80\u7d50\u679c\u4e26\u63a8\u8ad6\u3002",
+    ],
+    subcategories: [],
+  },
 };
 
 function getArgValue(name, fallback = "") {
@@ -43,27 +74,39 @@ function safeNumber(value, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
-function buildPayload(itemCount) {
-  const objectives = [
-    { objectiveId: "O-001", text: TEXT.objective1, periodCount: 2 },
-    { objectiveId: "O-002", text: TEXT.objective2, periodCount: 2 },
-  ];
+function resolveSubjectPreset(value = "") {
+  const normalized = String(value || "chinese").trim().toLowerCase();
+  return Object.values(SUBJECT_PRESETS).find((preset) => (
+    preset.aliases.some((alias) => String(alias).trim().toLowerCase() === normalized)
+  )) || null;
+}
+
+function buildPayload(itemCount, preset, grade) {
+  const objectives = preset.objectives.map((text, index) => ({
+    objectiveId: `O-${String(index + 1).padStart(3, "0")}`,
+    text,
+    periodCount: 2,
+  }));
   const intents = Array.from({ length: itemCount }, (_, index) => ({
     itemId: `Q-${String(index + 1).padStart(3, "0")}`,
-    questionType: TEXT.choiceQuestion,
+    questionType: COMMON_TEXT.choiceQuestion,
     score: 1,
     primaryObjectiveId: index < Math.ceil(itemCount / 2) ? "O-001" : "O-002",
     objectiveIds: [index < Math.ceil(itemCount / 2) ? "O-001" : "O-002"],
-    cognitiveLevel: index % 5 === 0 ? TEXT.apply : index % 3 === 0 ? TEXT.understand : TEXT.remember,
-    chineseDimension: index % 4 === 0 ? TEXT.readingWriting : TEXT.wordsSentences,
+    cognitiveLevel: index % 5 === 0
+      ? COMMON_TEXT.apply
+      : index % 3 === 0
+        ? COMMON_TEXT.understand
+        : COMMON_TEXT.remember,
+    ...(preset.dimension ? { chineseDimension: preset.dimension(index) } : {}),
   }));
 
   return {
-    project: { subject: TEXT.subjectChinese, grade: TEXT.grade4 },
-    materialText: TEXT.material,
+    project: { subject: preset.subject, grade },
+    materialText: preset.material,
     objectives,
     intents,
-    checkedChineseSubcategories: TEXT.subcategories,
+    checkedChineseSubcategories: preset.subcategories,
   };
 }
 
@@ -85,11 +128,11 @@ function hasPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function assertObservationInputSafe() {
+function assertObservationInputSafe(preset, grade) {
   const checks = [
-    { field: "subject", expected: "\u570b\u8a9e", actual: TEXT.subjectChinese },
-    { field: "grade", expected: "\u56db\u5e74\u7d1a", actual: TEXT.grade4 },
-    { field: "questionType", expected: "\u9078\u64c7\u984c", actual: TEXT.choiceQuestion },
+    { field: "subject", expected: preset.subject, actual: preset.subject },
+    { field: "grade", expected: grade, actual: grade },
+    { field: "questionType", expected: COMMON_TEXT.choiceQuestion, actual: COMMON_TEXT.choiceQuestion },
   ];
   const failures = checks.filter((check) => (
     check.actual !== check.expected || String(check.actual).includes("??")
@@ -98,9 +141,9 @@ function assertObservationInputSafe() {
     ? { ok: false, failures }
     : {
         ok: true,
-        subject: TEXT.subjectChinese,
-        grade: TEXT.grade4,
-        questionType: TEXT.choiceQuestion,
+        subject: preset.subject,
+        grade,
+        questionType: COMMON_TEXT.choiceQuestion,
       };
 }
 
@@ -192,7 +235,18 @@ async function main() {
   const pollIntervalMs = Math.max(1000, safeNumber(getArgValue("--poll-ms", "5000"), 5000));
   const timeoutMs = Math.max(60000, safeNumber(getArgValue("--timeout-ms", "900000"), 900000));
   const apiBaseUrl = getArgValue("--api-base-url", DEFAULT_API_BASE_URL);
-  const inputCheck = assertObservationInputSafe();
+  const preset = resolveSubjectPreset(getArgValue("--subject", "chinese"));
+  if (!preset) {
+    console.log(JSON.stringify({
+      ok: false,
+      stage: "input_check",
+      error: "Unsupported observation subject. Use chinese, math, or natural.",
+    }, null, 2));
+    process.exit(2);
+  }
+
+  const grade = getArgValue("--grade", preset.grade);
+  const inputCheck = assertObservationInputSafe(preset, grade);
   if (!inputCheck.ok) {
     console.log(JSON.stringify({
       ok: false,
@@ -203,7 +257,7 @@ async function main() {
     process.exit(2);
   }
 
-  const payload = buildPayload(itemCount);
+  const payload = buildPayload(itemCount, preset, grade);
   const started = Date.now();
 
   const create = await requestJson(apiBaseUrl, "/generation-jobs", {
