@@ -60,7 +60,7 @@ Do not frame a partial result as:
 Recommended copy:
 
 - Title: `已完成 X / Y 題，N 題待補`
-- Body: `可先檢視已完成題目；待補題位已保留，可重新執行整份生成以補齊。`
+- Body: `可先檢視已完成題目；待補題位已保留，可於後續補齊。`
 - Missing slot label: `此題待補`
 
 Avoid overly alarming wording. A `partial` result has crossed the backend usefulness threshold and is not the same as a failed job.
@@ -131,26 +131,22 @@ Example:
 
 ```text
 第 38 題待補
-此題未能完成格式檢查。可重新執行整份生成以補齊。
+此題未能生成，可於後續補齊。
 ```
 
-## 7. Safe Reason Labels
+## 7. Missing Slot Copy
 
-Map backend `errorCode` values to teacher-facing labels.
+The MVP should use one teacher-facing missing-slot sentence.
 
-Recommended mapping:
+Recommended copy:
 
-| Backend signal | Teacher-facing label |
-| --- | --- |
-| `AI_OUTPUT_CONTRACT_INVALID` | `題目格式未通過檢查` |
-| `AI_STIMULUS_MISSING` | `閱讀材料未完整附上` |
-| `AI_JSON_PARSE_FAILED`, `AI_JSON_NO_OBJECT` | `題目格式未完成` |
-| `AI_JSON_TRUNCATED` | `AI 回應內容未完整` |
-| `GEMINI_RATE_LIMIT`, `GEMINI_UPSTREAM_SERVER_ERROR`, `GEMINI_NETWORK_ERROR` | `AI 服務暫時不穩` |
-| `GEMINI_UPSTREAM_REQUEST_ERROR` | `AI 服務請求未完成` |
-| any unknown code | `此題未能完成` |
+```text
+此題未能生成，可於後續補齊。
+```
 
 Do not render the raw `errorCode`, contract violation enum, upstream status, sanitized option code, or batch diagnostics in the normal teacher-facing UI.
+
+Do not classify missing slots in teacher-facing copy for the MVP. The result page should communicate that a slot is preserved and waiting for follow-up, not ask teachers to interpret technical failure classes.
 
 If a future debug view is needed, it must remain separate from student-facing output and should still use only safe metadata.
 
@@ -181,9 +177,11 @@ Recommended MVP behavior:
 - Review screen: show generated items plus missing-slot placeholders.
 - Audit screen: show a partial-result notice before the existing validation summary.
 - Student and teacher output preview: include a clear notice if missing slots remain.
-- Export/download: require an explicit teacher acknowledgement before exporting a partial result, or keep export disabled until missing slots are resolved.
+- Export/download/print: keep final output disabled while missing slots remain.
 
-The first implementation should choose one conservative policy and test it. The important invariant is that placeholders must never appear as fake generated questions.
+MVP policy: when a partial result still has missing slots, keep the output preview visible but disable print, Word export, and Excel export. Show a clear message such as `這份試卷仍有待補題位，暫不匯出正式卷。請先補齊後再輸出。`
+
+The important invariant is that placeholders must never appear as fake generated questions, and the UI must not silently export a shorter paper as if it were final.
 
 ## 10. Frontend Implementation Targets
 

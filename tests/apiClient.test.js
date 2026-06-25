@@ -83,4 +83,27 @@ describe("apiClient async generation job calls", () => {
     expect(result.items[0].options).toEqual(["Alpha", "Beta", "Gamma", "Delta"]);
     expect(result.items[0].answer).toBe("A");
   });
+
+  it("preserves safe partial result metadata while normalizing items", async () => {
+    mockFetchJson({
+      ok: true,
+      status: "partial",
+      partial: true,
+      requestedItemCount: 4,
+      completedItemCount: 3,
+      items: [item()],
+      missingItems: [{ itemIndex: 4, errorCode: "AI_OUTPUT_CONTRACT_INVALID" }],
+    });
+
+    const result = await getGenerationJobResultViaApi({
+      apiBaseUrl: "https://worker.test",
+      jobId: "gen_12345678",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.status).toBe("partial");
+    expect(result.partial).toBe(true);
+    expect(result.items[0].options).toEqual(["Alpha", "Beta", "Gamma", "Delta"]);
+    expect(result.missingItems).toEqual([{ itemIndex: 4, errorCode: "AI_OUTPUT_CONTRACT_INVALID" }]);
+  });
 });

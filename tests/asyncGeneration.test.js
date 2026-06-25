@@ -46,6 +46,7 @@ describe("asyncGeneration helpers", () => {
 
   it("detects terminal async statuses", () => {
     expect(isAsyncGenerationSuccess("completed")).toBe(true);
+    expect(isAsyncGenerationSuccess("partial")).toBe(true);
     expect(isAsyncGenerationFailure("failed")).toBe(true);
     expect(isAsyncGenerationFailure("partial_failed")).toBe(true);
     expect(isAsyncGenerationFailure("expired")).toBe(true);

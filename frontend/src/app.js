@@ -22,6 +22,14 @@ import { buildGenerationFailureMessages, createGenerationProgress, getGeneration
 import { createGenerationBatches, mergeSerialBatchItems, shouldUseSerialBatching } from "./core/generationBatching.js";
 import { ASYNC_GENERATION_DEFAULTS, createAsyncInitialProgress, isAsyncGenerationFailure, isAsyncGenerationSuccess, progressFromAsyncStatus, shouldUseAsyncGeneration } from "./core/asyncGeneration.js";
 import { shouldRetryGeneration } from "./core/generationRetry.js";
+import {
+  buildPartialSlotView,
+  getPartialExportBlockMessage,
+  getPartialResultSummary,
+  getSlotsForGeneratedItems,
+  normalizePartialResult,
+  shouldBlockPartialExport,
+} from "./core/partialResult.js";
 
 // 目標提取 Gem（沿用現有連結）；教材提取 Gem 建立後，把網址填到 GEM_MATERIAL_URL。
 const GEM_OBJECTIVES_URL = "https://gemini.google.com/gem/1Xd6a-3N4dZvvzC7TdgP1yBjAa2IXDUFb?usp=sharing";
@@ -104,6 +112,7 @@ function setProjectField(field, value) {
   if (field === "frameworkId" && previous !== value) {
     state.intents = [];
     state.items = [];
+    state.partialResult = null;
     state.sections = [];
     state.objectivePlans = [];
     state.objectiveTargets = [];
@@ -277,6 +286,7 @@ function buildBlueprint() {
     intents: distributedSlots,
     sections: [],
     items: [],
+    partialResult: null,
     errors: [],
     messages: [`已建立藍圖：${slotResult.slots.length} 題、總分 ${totalScore} 分。各題對應的學習目標與出題順序，將在生成時由 AI 依${usesChineseDimension(state.project) ? "評量向度比例" : "節數比例"}與整卷整體性編排。`],
     step: 3,
@@ -387,12 +397,17 @@ async function requestGeneratedItemsWithAsyncJob(intents) {
 }
 
 function mapGeneratedItemsToSlots(items, slots, objectives) {
-  return items.map((item) => {
+  return items.map((item, index) => {
     let normalizedItemId = String(item.itemId).trim();
     const parts = normalizedItemId.split("-");
     let slot = null;
+    const explicitIndex = Math.floor(Number(item.itemIndex));
 
-    if (parts.length >= 2) {
+    if (Number.isFinite(explicitIndex) && explicitIndex >= 1 && explicitIndex <= slots.length) {
+      slot = slots[explicitIndex - 1];
+    }
+
+    if (!slot && parts.length >= 2) {
       const parentNum = parseInt(parts[1], 10) || parseInt(parts[0], 10);
       if (!isNaN(parentNum)) {
         slot = slots.find(s => {
@@ -400,7 +415,7 @@ function mapGeneratedItemsToSlots(items, slots, objectives) {
           return sParts.length >= 2 && parseInt(sParts[1], 10) === parentNum;
         });
       }
-    } else {
+    } else if (!slot) {
       const num = parseInt(normalizedItemId, 10);
       if (!isNaN(num)) {
         slot = slots.find(s => {
@@ -458,6 +473,9 @@ function mapGeneratedItemsToSlots(items, slots, objectives) {
 
     return {
       ...item,
+      itemIndex: Number.isFinite(explicitIndex) && explicitIndex >= 1
+        ? explicitIndex
+        : slot ? slots.indexOf(slot) + 1 : index + 1,
       itemId: normalizedItemId,
       groupId,
       primaryObjectiveId: primaryId,
@@ -493,12 +511,13 @@ async function generateItems() {
           currentBatchItems: generationBatches[0]?.requestedCount || 0,
         }
       : {});
-  setState({ errors: [], messages: [] });
+  setState({ errors: [], messages: [], partialResult: null });
   updateGenerationProgress("generating");
 
   try {
     let importedItems = [];
     let generatedCheck = null;
+    let generatedPartialResult = null;
 
     if (useAsyncJob) {
       const result = await requestGeneratedItemsWithAsyncJob(state.intents);
@@ -513,9 +532,13 @@ async function generateItems() {
 
       updateGenerationProgress("validating", { completedItems: result.items.length });
 
+      generatedPartialResult = normalizePartialResult(result, { requestedItemCount: state.intents.length });
       importedItems = mapGeneratedItemsToSlots(result.items, state.intents, state.objectives);
+      const validationSlots = generatedPartialResult
+        ? getSlotsForGeneratedItems({ slots: state.intents, items: importedItems })
+        : state.intents;
       generatedCheck = validateGeneratedPaper({
-        slots: state.intents,
+        slots: validationSlots,
         objectives: state.objectives,
         items: importedItems,
         qualityMode: "v2",
@@ -633,10 +656,16 @@ const sections = sectionResult.ok
 
 setState({
   items: importedItems,
+  partialResult: generatedPartialResult,
   sections,
   errors: [],
   messages: [
-    `已產生 ${importedItems.length} 題正式草稿（AI 已依${usesChineseDimension(state.project) ? "評量向度比例" : "節數比例"}與整卷整體性編排）。`,
+    ...(generatedPartialResult
+      ? [
+          getPartialResultSummary(generatedPartialResult).title,
+          "可先檢視已完成題目；待補題位已保留，可於後續補齊。",
+        ]
+      : [`已產生 ${importedItems.length} 題正式草稿（AI 已依${usesChineseDimension(state.project) ? "評量向度比例" : "節數比例"}與整卷整體性編排）。`]),
     ...(generatedCheck.warnings || []),
   ],
   step: 4,
@@ -855,6 +884,25 @@ function renderQualityMetaPanel(rawItem) {
     </table></div>` : ""}
     ${selfCheckRows ? `<div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; font-size:12px;">${selfCheckRows}</div>` : ""}
   </details>`;
+}
+
+function renderPartialResultNotice() {
+  if (!state.partialResult?.partial) return "";
+  const summary = getPartialResultSummary(state.partialResult);
+  return `<div class="notice success partial-result-notice" role="status" aria-live="polite">
+    <strong>${escapeHtml(summary.title)}</strong>
+    <p>${escapeHtml(summary.body)}</p>
+  </div>`;
+}
+
+function renderPartialMissingSlotCard(entry) {
+  const itemIndex = Math.max(1, Number(entry?.itemIndex) || 0);
+  const itemId = entry?.slot?.itemId || `Q-${String(itemIndex).padStart(3, "0")}`;
+  return `<article class="item-card partial-missing-card" aria-label="第 ${escapeHtml(itemIndex)} 題待補">
+    <div class="item-meta">${escapeHtml(itemId)}｜第 ${escapeHtml(itemIndex)} 題待補</div>
+    <strong>此題待補</strong>
+    <p>此題未能生成，可於後續補齊。</p>
+  </article>`;
 }
 
 function getFolderDisplay(file) {
@@ -1491,9 +1539,28 @@ function renderItems() {
   const summary = summarizeScoreByObjective(state.items);
   const cardsHtml = [];
   const renderedGroups = new Set();
+  const partialSlotView = state.partialResult?.partial
+    ? buildPartialSlotView({
+        slots: state.intents,
+        items: state.items,
+        missingItems: state.partialResult.missingItems,
+      })
+    : [];
+  const missingEntries = partialSlotView
+    .filter((entry) => entry.type === "missing")
+    .sort((a, b) => a.itemIndex - b.itemIndex);
+  let missingCursor = 0;
+
+  const renderMissingBefore = (itemIndex) => {
+    while (missingCursor < missingEntries.length && missingEntries[missingCursor].itemIndex < itemIndex) {
+      cardsHtml.push(renderPartialMissingSlotCard(missingEntries[missingCursor]));
+      missingCursor += 1;
+    }
+  };
 
   for (let i = 0; i < state.items.length; i++) {
     const item = state.items[i];
+    renderMissingBefore(Math.max(1, Number(item.itemIndex) || i + 1));
     const groupId = item.groupId;
 
     const getChineseDimSelect = (subItem) => {
@@ -1598,10 +1665,12 @@ function renderItems() {
       </article>`);
     }
   }
+  renderMissingBefore(Number.MAX_SAFE_INTEGER);
 
   return `<section class="panel">
     <h2>④ 修題定稿</h2>
     <p class="notice">這裡沒有備選池。題目就是正式草稿；不滿意的題目，直接重出該題。</p>
+    ${renderPartialResultNotice()}
     <div class="table-wrap"><table>
       <thead><tr><th>目標</th><th>計分單位數</th><th>分數</th></tr></thead>
       <tbody>${summary.map((row) => {
@@ -1628,6 +1697,7 @@ function renderAudit() {
 
   return `<section class="panel">
     <h2>⑤ 檢核</h2>
+    ${renderPartialResultNotice()}
     <div class="notice ${result.ok ? "success" : "error"}">${result.ok ? "基本檢核通過。仍請人工確認題意、答案與解析。" : "發現錯誤，請先修正。"}</div>
     ${result.errors.length ? `<h3>錯誤</h3><ul>${result.errors.map((error) => `<li>${escapeHtml(error)}</li>`).join("")}</ul>` : ""}
     ${result.warnings.length ? `<h3>提醒</h3><ul>${result.warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul>` : ""}
@@ -1681,8 +1751,20 @@ function renderOutput() {
     planRows: state.planRows,
     sections: state.sections,
   });
+  const partialExportBlocked = shouldBlockPartialExport(state.partialResult);
+  const partialExportBlockMessage = getPartialExportBlockMessage();
+  const exportButtonDisabledAttrs = partialExportBlocked
+    ? `disabled aria-disabled="true" title="${escapeHtml(partialExportBlockMessage)}"`
+    : "";
+  const printActionAttr = partialExportBlocked ? "" : `onclick="window.print()"`;
+  const wordActionAttr = partialExportBlocked ? "" : `onclick="window.downloadWordAudit()"`;
+  const excelActionAttr = partialExportBlocked ? "" : `onclick="window.downloadExcelAudit()"`;
 
   window.downloadWordAudit = () => {
+    if (partialExportBlocked) {
+      console.warn(partialExportBlockMessage);
+      return;
+    }
     const isChinese = (state.project.subject === "國語");
     const cleanHtmlForExport = (html) => {
       let cleaned = html;
@@ -1750,6 +1832,10 @@ function renderOutput() {
   };
 
   window.downloadExcelAudit = () => {
+    if (partialExportBlocked) {
+      console.warn(partialExportBlockMessage);
+      return;
+    }
     const excelXml = generateExcelXml({
       project,
       objectives: state.objectives,
@@ -1768,11 +1854,13 @@ function renderOutput() {
 
   return `<section class="panel">
     <h2>⑥ 輸出</h2>
+    ${renderPartialResultNotice()}
+    ${partialExportBlocked ? `<div class="notice error" role="alert">${escapeHtml(partialExportBlockMessage)}</div>` : ""}
     
     <div class="actions" style="margin-bottom: 24px; display: flex; gap: 12px; flex-wrap: wrap;">
-      <button onclick="window.print()" style="font-weight:600; padding:12px 24px; font-size:16px;">🖨️ 列印審核表 (A4 自動排版)</button>
-      <button onclick="window.downloadWordAudit()" style="font-weight:600; padding:12px 24px; font-size:16px; background-color:#2b579a; color:white; border-color:#2b579a;">📝 匯出 Word 檔</button>
-      <button onclick="window.downloadExcelAudit()" style="font-weight:600; padding:12px 24px; font-size:16px; background-color:#217346; color:white; border-color:#217346;">📊 匯出 Excel 檔</button>
+      <button ${printActionAttr} ${exportButtonDisabledAttrs} style="font-weight:600; padding:12px 24px; font-size:16px;">🖨️ 列印審核表 (A4 自動排版)</button>
+      <button ${wordActionAttr} ${exportButtonDisabledAttrs} style="font-weight:600; padding:12px 24px; font-size:16px; background-color:#2b579a; color:white; border-color:#2b579a;">📝 匯出 Word 檔</button>
+      <button ${excelActionAttr} ${exportButtonDisabledAttrs} style="font-weight:600; padding:12px 24px; font-size:16px; background-color:#217346; color:white; border-color:#217346;">📊 匯出 Excel 檔</button>
     </div>
 
     <div id="auditTablePrintArea" class="audit-table-container" style="background:#fff; border:1px solid var(--line); border-radius:18px; padding:32px; box-shadow:0 10px 30px rgba(0,0,0,0.04); margin-bottom:32px; overflow-x:auto;">
