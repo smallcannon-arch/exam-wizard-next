@@ -93,7 +93,8 @@ export async function callGemini({ env, prompt, files = [] }) {
     };
   }
 
-  const text = data?.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("") || "";
+  const candidate = data?.candidates?.[0] || {};
+  const text = candidate?.content?.parts?.map((part) => part.text || "").join("") || "";
 
   if (!text.trim()) {
     return {
@@ -104,5 +105,9 @@ export async function callGemini({ env, prompt, files = [] }) {
     };
   }
 
-  return { ok: true, text };
+  return {
+    ok: true,
+    text,
+    finishReason: typeof candidate.finishReason === "string" ? candidate.finishReason : null,
+  };
 }

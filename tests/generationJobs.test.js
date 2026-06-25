@@ -70,6 +70,28 @@ function mockGeminiItemBatches(itemBatches) {
   }));
 }
 
+function mockGeminiTextResponses(responses) {
+  const queue = [...responses];
+  vi.stubGlobal("fetch", vi.fn(async () => {
+    const response = queue.shift() || {};
+    const text = typeof response === "string" ? response : response.text;
+    const finishReason = typeof response === "object" ? response.finishReason : undefined;
+    return new Response(JSON.stringify({
+      candidates: [
+        {
+          finishReason,
+          content: {
+            parts: [{ text: text || "" }],
+          },
+        },
+      ],
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }));
+}
+
 function mockConcurrentGeminiItemBatches(itemBatches) {
   const batches = [...itemBatches];
   let inFlight = 0;
@@ -233,10 +255,24 @@ function createFakeJobsDb() {
                 ));
                 if (!batch) return { success: true, meta: { changes: 0 } };
 
+                if (/error_code/i.test(sql) && /latency_ms/i.test(sql) && !/error_code\s*=\s*NULL/i.test(sql)) {
+                  batch.status = values[0];
+                  batch.error_code = values[1];
+                  batch.latency_ms = values[2];
+                  batch.retry_count = values[3];
+                  return { success: true, meta: { changes: 1 } };
+                }
+
                 if (/latency_ms/i.test(sql)) {
                   batch.status = values[0];
                   batch.completed_item_count = values[1];
                   batch.latency_ms = values[2];
+                  if (/retry_count/i.test(sql)) {
+                    batch.retry_count = values[3];
+                  }
+                  if (/error_code\s*=\s*NULL/i.test(sql)) {
+                    batch.error_code = null;
+                  }
                   return { success: true, meta: { changes: 1 } };
                 }
 
@@ -766,6 +802,138 @@ describe("async generation job skeleton", () => {
     expect(db.state.batches[0].error_code).toBe(ERROR_CODES.AI_QUALITY_META_MISSING);
     expect(JSON.stringify(db.state).toLowerCase()).not.toContain("raw output");
     expect(JSON.stringify(db.state).toLowerCase()).not.toContain("token");
+  });
+
+  it("retries a malformed JSON batch once and stores only one completed batch result", async () => {
+    const db = createFakeJobsDb();
+    const jobId = "gen_workflow_retry_parse_12345678";
+    const data = payload(4);
+    const plan = createGenerationJobPlan(data);
+    mockGeminiTextResponses([
+      "{\"items\":[",
+      JSON.stringify({ items: Array.from({ length: 4 }, (_, index) => generatedItem(index + 1)) }),
+    ]);
+    db.seedJob({
+      job_id: jobId,
+      requested_item_count: 4,
+      batch_count: 1,
+      expires_at: "2026-06-25T00:00:00.000Z",
+    });
+    db.seedBatch({ job_id: jobId, batch_number: 1, expected_item_count: 4 });
+
+    const workflow = new GenerationWorkflow();
+    workflow.env = {
+      GENERATION_JOBS_DB: db,
+      GEMINI_API_KEY: "test-key",
+    };
+    const step = {
+      async do(_name, callback) {
+        return callback();
+      },
+    };
+
+    const result = await workflow.run({
+      payload: {
+        jobId,
+        request: plan.request,
+        batches: plan.batches,
+        progress: plan.progress,
+      },
+    }, step);
+
+    expect(result).toMatchObject({ ok: true, status: "completed", completedItemCount: 4 });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(db.state.batches[0].status).toBe("completed");
+    expect(db.state.batches[0].retry_count).toBe(1);
+    expect(db.state.batches[0].error_code).toBeNull();
+    expect(JSON.parse(db.state.jobs[0].result_json).items).toHaveLength(4);
+  });
+
+  it("does not retry hard JSON truncation reported by Gemini finishReason", async () => {
+    const db = createFakeJobsDb();
+    const jobId = "gen_workflow_truncated_12345678";
+    const data = payload(4);
+    const plan = createGenerationJobPlan(data);
+    mockGeminiTextResponses([{ text: "{\"items\":[", finishReason: "MAX_TOKENS" }]);
+    db.seedJob({
+      job_id: jobId,
+      requested_item_count: 4,
+      batch_count: 1,
+      expires_at: "2026-06-25T00:00:00.000Z",
+    });
+    db.seedBatch({ job_id: jobId, batch_number: 1, expected_item_count: 4 });
+
+    const workflow = new GenerationWorkflow();
+    workflow.env = {
+      GENERATION_JOBS_DB: db,
+      GEMINI_API_KEY: "test-key",
+    };
+    const step = {
+      async do(_name, callback) {
+        return callback();
+      },
+    };
+
+    const result = await workflow.run({
+      payload: {
+        jobId,
+        request: plan.request,
+        batches: plan.batches,
+        progress: plan.progress,
+      },
+    }, step);
+
+    expect(result).toMatchObject({ ok: false, errorCode: ERROR_CODES.AI_JSON_TRUNCATED });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(db.state.jobs[0].status).toBe("failed");
+    expect(db.state.batches[0].status).toBe("failed_terminal");
+    expect(db.state.batches[0].retry_count).toBe(0);
+  });
+
+  it("fails safely after one malformed JSON retry is exhausted", async () => {
+    const db = createFakeJobsDb();
+    const jobId = "gen_workflow_retry_exhausted_12345678";
+    const data = payload(4);
+    const plan = createGenerationJobPlan(data);
+    mockGeminiTextResponses(["{\"items\":[,]}", "{\"items\":[,]}"]);
+    db.seedJob({
+      job_id: jobId,
+      requested_item_count: 4,
+      batch_count: 1,
+      expires_at: "2026-06-25T00:00:00.000Z",
+    });
+    db.seedBatch({ job_id: jobId, batch_number: 1, expected_item_count: 4 });
+
+    const workflow = new GenerationWorkflow();
+    workflow.env = {
+      GENERATION_JOBS_DB: db,
+      GEMINI_API_KEY: "test-key",
+    };
+    const step = {
+      async do(_name, callback) {
+        return callback();
+      },
+    };
+
+    const result = await workflow.run({
+      payload: {
+        jobId,
+        request: plan.request,
+        batches: plan.batches,
+        progress: plan.progress,
+      },
+    }, step);
+
+    const stateText = JSON.stringify(db.state).toLowerCase();
+    expect(result).toMatchObject({ ok: false, errorCode: ERROR_CODES.AI_JSON_PARSE_FAILED });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(db.state.jobs[0].status).toBe("failed");
+    expect(db.state.batches[0].status).toBe("failed_terminal");
+    expect(db.state.batches[0].retry_count).toBe(1);
+    expect(db.state.jobs[0].result_json).toBeUndefined();
+    expect(stateText).not.toContain("raw prompt");
+    expect(stateText).not.toContain("raw output");
+    expect(stateText).not.toContain("token");
   });
 
   it("returns a safe not-found error for missing D1-backed jobs", async () => {

@@ -16,9 +16,11 @@ describe("generation retry policy", () => {
   it("does not retry long client or worker timeouts", () => {
     expect(isRetryableGenerationFailure({ ok: false, error: "timeout", errorCode: "CLIENT_TIMEOUT" })).toBe(false);
     expect(isRetryableGenerationFailure({ ok: false, error: "timeout", errorCode: "GEMINI_TIMEOUT" })).toBe(false);
+    expect(isRetryableGenerationFailure({ ok: false, errorCode: "AI_JSON_TRUNCATED" })).toBe(false);
   });
 
   it("does not retry output contract failures", () => {
+    expect(isRetryableGenerationFailure({ ok: false, errorCode: "AI_JSON_NO_OBJECT" })).toBe(false);
     expect(isRetryableGenerationFailure({ ok: false, errorCode: "AI_QUALITY_META_MISSING" })).toBe(false);
     expect(isRetryableGenerationFailure({ ok: false, errorCode: "AI_ITEMS_PAYLOAD_INVALID" })).toBe(false);
     expect(isRetryableGenerationFailure({ ok: false, errorCode: "AI_OUTPUT_CONTRACT_INVALID" })).toBe(false);

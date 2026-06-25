@@ -544,10 +544,13 @@ export async function markGenerationBatchesRunning(db, jobId, batchNumbers = [])
   return { ok: true, currentBatch, runningBatchCount: safeBatchNumbers.length };
 }
 
-export async function markGenerationBatchFailed(db, jobId, batchNumber, errorCode) {
+export async function markGenerationBatchFailed(db, jobId, batchNumber, errorCode, options = {}) {
   if (!hasD1Interface(db) || !isValidJobId(jobId)) {
     return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_UNAVAILABLE };
   }
+
+  const safeLatencyMs = toSafeCount(options.latencyMs);
+  const safeRetryCount = toSafeCount(options.retryCount);
 
   try {
     const statements = [
@@ -556,11 +559,13 @@ export async function markGenerationBatchFailed(db, jobId, batchNumber, errorCod
         SET
           status = ?,
           error_code = ?,
+          latency_ms = ?,
+          retry_count = ?,
           failed_at = CURRENT_TIMESTAMP,
           updated_at = CURRENT_TIMESTAMP
         WHERE job_id = ?
           AND batch_number = ?
-      `).bind("failed_terminal", errorCode, jobId, batchNumber),
+      `).bind("failed_terminal", errorCode, safeLatencyMs, safeRetryCount, jobId, batchNumber),
       db.prepare(`
         UPDATE generation_jobs
         SET
@@ -593,6 +598,7 @@ export async function markGenerationBatchCompleted(db, jobId, batchNumber, itemC
 
   const safeItemCount = toSafeCount(itemCount);
   const safeLatencyMs = toSafeCount(latencyMs);
+  const safeRetryCount = toSafeCount(progress.retryCount);
   const batchCount = toSafeCount(progress.batchCount);
   const completedBatchCount = Math.min(toSafeCount(progress.completedBatchCount), batchCount || toSafeCount(batchNumber));
   const completedItemCount = Math.min(toSafeCount(progress.completedItemCount), toSafeCount(progress.requestedItemCount, safeItemCount));
@@ -606,11 +612,13 @@ export async function markGenerationBatchCompleted(db, jobId, batchNumber, itemC
           status = ?,
           completed_item_count = ?,
           latency_ms = ?,
+          retry_count = ?,
+          error_code = NULL,
           completed_at = CURRENT_TIMESTAMP,
           updated_at = CURRENT_TIMESTAMP
         WHERE job_id = ?
           AND batch_number = ?
-      `).bind("completed", safeItemCount, safeLatencyMs, jobId, batchNumber),
+      `).bind("completed", safeItemCount, safeLatencyMs, safeRetryCount, jobId, batchNumber),
       db.prepare(`
         UPDATE generation_jobs
         SET
