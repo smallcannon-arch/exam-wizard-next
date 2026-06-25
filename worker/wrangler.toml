@@ -7,6 +7,7 @@ ALLOWED_ORIGIN = "https://smallcannon-arch.github.io"
 GEMINI_API_VERSION = "v1beta"
 GEMINI_MODEL = "gemini-3.5-flash"
 GEMINI_TIMEOUT_MS = "300000"
+ASYNC_GENERATION_MAX_CONCURRENT_BATCHES = "2"
 
 [[d1_databases]]
 binding = "GENERATION_JOBS_DB"
