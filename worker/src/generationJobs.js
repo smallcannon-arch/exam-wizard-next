@@ -45,8 +45,13 @@ const SAFE_BATCH_STATUSES = new Set(["queued", "running", "validating", "complet
 const SAFE_JSON_CLASSIFICATION_SOURCES = new Set(["none", "parser", "finish_reason"]);
 const SAFE_CONTRACT_VIOLATION_TYPES = new Set(Object.values(CONTRACT_VIOLATION_TYPES));
 const SAFE_CONTRACT_VIOLATION_FIELDS = new Set([
+  "questionType",
   "options",
   "answer",
+  "correctAnswer",
+  "acceptedAnswers",
+  "groupId",
+  "stimulus",
   "qualityMeta.distractorDesign",
   "misconceptionTag",
   "misconceptionDescription",
