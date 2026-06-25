@@ -9,6 +9,23 @@ export function resolveGeminiTimeoutMs(env = {}) {
     : DEFAULT_GEMINI_TIMEOUT_MS;
 }
 
+export function classifyGeminiHttpError(status) {
+  const safeStatus = Number(status);
+  if (!Number.isFinite(safeStatus)) {
+    return ERROR_CODES.GEMINI_UPSTREAM_ERROR;
+  }
+  if (safeStatus === 429) {
+    return ERROR_CODES.GEMINI_RATE_LIMIT;
+  }
+  if (safeStatus >= 500 && safeStatus <= 599) {
+    return ERROR_CODES.GEMINI_UPSTREAM_SERVER_ERROR;
+  }
+  if (safeStatus >= 400 && safeStatus <= 499) {
+    return ERROR_CODES.GEMINI_UPSTREAM_REQUEST_ERROR;
+  }
+  return ERROR_CODES.GEMINI_UPSTREAM_ERROR;
+}
+
 export async function callGemini({ env, prompt, files = [] }) {
   const apiKey = env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -77,22 +94,23 @@ export async function callGemini({ env, prompt, files = [] }) {
       ok: false,
       status: 502,
       error: "AI 服務暫時無法連線，請稍後再試。",
-      errorCode: ERROR_CODES.GEMINI_UPSTREAM_ERROR,
+      errorCode: ERROR_CODES.GEMINI_NETWORK_ERROR,
     };
   }
   clearTimeout(timer);
 
-  const data = await response.json().catch(() => null);
-
   if (!response.ok) {
+    const upstreamStatus = Number(response.status);
     return {
       ok: false,
-      status: response.status,
+      status: upstreamStatus,
+      upstreamStatus,
       error: "Gemini API 呼叫失敗。請檢查 API key、模型名稱、版本與額度。",
-      errorCode: ERROR_CODES.GEMINI_UPSTREAM_ERROR,
+      errorCode: classifyGeminiHttpError(upstreamStatus),
     };
   }
 
+  const data = await response.json().catch(() => null);
   const candidate = data?.candidates?.[0] || {};
   const text = candidate?.content?.parts?.map((part) => part.text || "").join("") || "";
 

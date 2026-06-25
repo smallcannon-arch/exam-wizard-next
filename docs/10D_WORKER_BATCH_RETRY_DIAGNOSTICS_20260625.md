@@ -93,3 +93,60 @@ Out of scope for this small follow-up:
 - Prompt changes.
 
 Reconsider a fuller Worker/frontend validation alignment if another distinct completed-but-invalid contract class appears after this minimum gate is deployed.
+
+## Upstream Error Classification Follow-up
+
+The first Chinese 50-item smoke after the option contract gate deploy failed at 4/50 with:
+
+- Error code: `GEMINI_UPSTREAM_ERROR`
+- Batches: 1 completed / 1 failed_terminal / 11 queued
+- Finish reason: unavailable for the failed batch
+- Diagnostics: present for the completed batch only
+
+This indicates an upstream Gemini/API failure before normal model output was available. It did not exercise the option contract gate.
+
+Decision for the small follow-up:
+
+- Split upstream failures into safe error codes using HTTP status metadata:
+  - `GEMINI_RATE_LIMIT` for HTTP 429.
+  - `GEMINI_UPSTREAM_SERVER_ERROR` for HTTP 5xx.
+  - `GEMINI_NETWORK_ERROR` for fetch/network failures without an upstream status.
+  - `GEMINI_UPSTREAM_REQUEST_ERROR` for non-429 HTTP 4xx.
+- Store only safe `upstream_status` metadata for batch diagnostics.
+- Do not store raw Gemini response bodies, raw prompts, raw model output, API keys, tokens, headers, or stack traces.
+- Retry only transient upstream errors:
+  - HTTP 429 with backoff and jitter.
+  - HTTP 5xx with backoff and jitter.
+  - Network failure with backoff and jitter.
+- Keep the maximum batch retry count bounded.
+- Do not retry:
+  - timeout
+  - hard truncation
+  - JSON truncation from `finishReason: MAX_TOKENS`
+  - qualityMeta missing
+  - output contract invalid
+  - non-429 HTTP 4xx
+
+Backoff with jitter is required for upstream retry because immediate or synchronized retry may hit the same rate-limit window. This differs from malformed JSON retry, which can retry immediately because it depends on a new sampling path.
+
+## Partial Result Trigger Expansion
+
+Partial results remain out of scope for the upstream classification fix. They still require a result contract and frontend behavior change.
+
+The upstream failure adds another partial-result signal: a single transient failed batch can fail the entire 50-item job and leave later batches queued. Reconsider partial result support if either condition is met after transient retry is deployed:
+
+- job-level pass rate remains below 95% across at least 15 fresh 50-item observations; or
+- repeated parse failures or repeated upstream transient failures continue to fail otherwise usable jobs after bounded retry.
+
+## 50-item Reliability Meta Gate
+
+The 50-item path has now exposed several distinct failure modes: parse failure, diagnostics persistence gaps, observation script encoding, option contract drift, and upstream API failure.
+
+After upstream classification and transient retry are deployed, run fresh Chinese 50-item smoke observations before restarting the full baseline. If the next 3 Chinese 50-item observations each expose a new, previously unseen failure mode, pause the patch-by-patch loop and reassess the broader 50-item reliability strategy, including:
+
+- batch size
+- batch concurrency
+- partial result contract
+- dependency on Gemini single-call behavior per batch
+
+If the next observations converge without new failure classes, continue the baseline collection.

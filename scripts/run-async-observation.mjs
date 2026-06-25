@@ -125,6 +125,7 @@ function detectLeakage(items) {
 function summarizeBatches(batches = []) {
   const statusCounts = {};
   const finishReasonCounts = {};
+  const upstreamStatusCounts = {};
   let diagnosticsPresentCount = 0;
   let retryBatchCount = 0;
   let outputLengthTotal = 0;
@@ -142,6 +143,10 @@ function summarizeBatches(batches = []) {
     if (diagnostics.finishReason) {
       finishReasonCounts[diagnostics.finishReason] = (finishReasonCounts[diagnostics.finishReason] || 0) + 1;
     }
+    if (diagnostics.upstreamStatus !== undefined && diagnostics.upstreamStatus !== null) {
+      const upstreamStatus = String(diagnostics.upstreamStatus);
+      upstreamStatusCounts[upstreamStatus] = (upstreamStatusCounts[upstreamStatus] || 0) + 1;
+    }
 
     const outputLength = Number(diagnostics.outputLength || 0);
     const jsonCandidateLength = Number(diagnostics.jsonCandidateLength || 0);
@@ -156,6 +161,7 @@ function summarizeBatches(batches = []) {
     diagnosticsPresentCount,
     retryBatchCount,
     finishReasonCounts,
+    upstreamStatusCounts,
     outputLengthTotal,
     jsonCandidateLengthTotal,
     maxOutputLength,

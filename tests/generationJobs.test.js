@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import worker, { GenerationWorkflow } from "../worker/src/index.js";
+import worker, { GenerationWorkflow, resolveUpstreamRetryDelayMs } from "../worker/src/index.js";
 import {
   cleanupExpiredGenerationJobs,
   createGenerationJobPlan,
@@ -103,6 +103,59 @@ function mockGeminiTextResponses(responses) {
   }));
 }
 
+function mockGeminiHttpThenItems(status, items) {
+  let callCount = 0;
+  vi.stubGlobal("fetch", vi.fn(async () => {
+    callCount += 1;
+    if (callCount === 1) {
+      return new Response(JSON.stringify({
+        error: "raw output with token and headers should not leak",
+      }), {
+        status,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    return new Response(JSON.stringify({
+      candidates: [
+        {
+          finishReason: "STOP",
+          content: {
+            parts: [{ text: JSON.stringify({ items }) }],
+          },
+        },
+      ],
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }));
+}
+
+function mockGeminiNetworkThenItems(items) {
+  let callCount = 0;
+  vi.stubGlobal("fetch", vi.fn(async () => {
+    callCount += 1;
+    if (callCount === 1) {
+      throw new TypeError("network failed with raw prompt and token");
+    }
+
+    return new Response(JSON.stringify({
+      candidates: [
+        {
+          finishReason: "STOP",
+          content: {
+            parts: [{ text: JSON.stringify({ items }) }],
+          },
+        },
+      ],
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }));
+}
+
 function mockConcurrentGeminiItemBatches(itemBatches) {
   const batches = [...itemBatches];
   let inFlight = 0;
@@ -178,6 +231,7 @@ function createFakeJobsDb() {
         output_length: null,
         json_candidate_length: null,
         json_classification_source: null,
+        upstream_status: null,
         ...batch,
       });
     },
@@ -213,6 +267,7 @@ function createFakeJobsDb() {
                   output_length: null,
                   json_candidate_length: null,
                   json_classification_source: null,
+                  upstream_status: null,
                 });
                 return { success: true };
               }
@@ -283,6 +338,7 @@ function createFakeJobsDb() {
                   batch.output_length = values[5];
                   batch.json_candidate_length = values[6];
                   batch.json_classification_source = values[7];
+                  batch.upstream_status = values[8];
                   return { success: true, meta: { changes: 1 } };
                 }
 
@@ -298,6 +354,7 @@ function createFakeJobsDb() {
                     batch.output_length = values[5];
                     batch.json_candidate_length = values[6];
                     batch.json_classification_source = values[7];
+                    batch.upstream_status = values[8];
                   }
                   if (/error_code\s*=\s*NULL/i.test(sql)) {
                     batch.error_code = null;
@@ -386,6 +443,15 @@ describe("async generation job skeleton", () => {
     expect(resolveAsyncGenerationMaxConcurrentBatches({ ASYNC_GENERATION_MAX_CONCURRENT_BATCHES: "2" })).toBe(2);
     expect(resolveAsyncGenerationMaxConcurrentBatches({ ASYNC_GENERATION_MAX_CONCURRENT_BATCHES: "20" })).toBe(3);
     expect(resolveAsyncGenerationMaxConcurrentBatches({ ASYNC_GENERATION_MAX_CONCURRENT_BATCHES: "bad" })).toBe(1);
+  });
+
+  it("resolves bounded upstream retry backoff delays", () => {
+    expect(resolveUpstreamRetryDelayMs({}, 0, 0.5)).toBe(2000);
+    expect(resolveUpstreamRetryDelayMs({}, 1, 0.5)).toBe(4000);
+    expect(resolveUpstreamRetryDelayMs({}, 0, 0)).toBe(1500);
+    expect(resolveUpstreamRetryDelayMs({}, 0, 1)).toBe(2500);
+    expect(resolveUpstreamRetryDelayMs({ ASYNC_GENERATION_UPSTREAM_RETRY_BASE_DELAY_MS: "0" }, 0, 0.5)).toBe(0);
+    expect(resolveUpstreamRetryDelayMs({ ASYNC_GENERATION_UPSTREAM_RETRY_BASE_DELAY_MS: "9000" }, 2, 0.5)).toBe(10000);
   });
 
   it("rejects requests above the 50-item MVP cap", () => {
@@ -976,6 +1042,211 @@ describe("async generation job skeleton", () => {
     expect(statusText).not.toContain("raw prompt");
     expect(statusText).not.toContain("raw output");
     expect(statusText).not.toContain("token");
+  });
+
+  it("retries a rate-limited upstream batch with backoff and stores safe upstream status metadata", async () => {
+    const db = createFakeJobsDb();
+    const jobId = "gen_workflow_retry_rate_limit_12345678";
+    const data = payload(4);
+    const plan = createGenerationJobPlan(data);
+    mockGeminiHttpThenItems(429, Array.from({ length: 4 }, (_, index) => generatedItem(index + 1)));
+    db.seedJob({
+      job_id: jobId,
+      requested_item_count: 4,
+      batch_count: 1,
+      expires_at: "2026-06-25T00:00:00.000Z",
+    });
+    db.seedBatch({ job_id: jobId, batch_number: 1, expected_item_count: 4 });
+
+    const workflow = new GenerationWorkflow();
+    workflow.env = {
+      ASYNC_GENERATION_UPSTREAM_RETRY_BASE_DELAY_MS: "0",
+      GENERATION_JOBS_DB: db,
+      GEMINI_API_KEY: "test-key",
+    };
+    const step = {
+      async do(_name, callback) {
+        return callback();
+      },
+    };
+
+    const result = await workflow.run({
+      payload: {
+        jobId,
+        request: plan.request,
+        batches: plan.batches,
+        progress: plan.progress,
+      },
+    }, step);
+
+    expect(result).toMatchObject({ ok: true, status: "completed", completedItemCount: 4 });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(db.state.batches[0].status).toBe("completed");
+    expect(db.state.batches[0].retry_count).toBe(1);
+    expect(db.state.batches[0].error_code).toBeNull();
+    expect(db.state.batches[0].finish_reason).toBe("STOP");
+    expect(db.state.batches[0].upstream_status).toBe(429);
+
+    const statusResponse = await worker.fetch(new Request(`https://worker.test/generation-jobs/${jobId}`), {
+      ALLOWED_ORIGIN: "*",
+      GENERATION_JOBS_DB: db,
+    });
+    const statusBody = await readJson(statusResponse);
+    const statusText = JSON.stringify(statusBody).toLowerCase();
+
+    expect(statusBody.batches[0]).toMatchObject({
+      batchNumber: 1,
+      status: "completed",
+      retryCount: 1,
+      diagnostics: {
+        finishReason: "STOP",
+        jsonClassificationSource: "none",
+        upstreamStatus: 429,
+      },
+    });
+    expect(statusText).not.toContain("raw prompt");
+    expect(statusText).not.toContain("raw output");
+    expect(statusText).not.toContain("token");
+    expect(statusText).not.toContain("headers");
+  });
+
+  it("retries a transient upstream 5xx batch once", async () => {
+    const db = createFakeJobsDb();
+    const jobId = "gen_workflow_retry_5xx_12345678";
+    const data = payload(4);
+    const plan = createGenerationJobPlan(data);
+    mockGeminiHttpThenItems(503, Array.from({ length: 4 }, (_, index) => generatedItem(index + 1)));
+    db.seedJob({
+      job_id: jobId,
+      requested_item_count: 4,
+      batch_count: 1,
+      expires_at: "2026-06-25T00:00:00.000Z",
+    });
+    db.seedBatch({ job_id: jobId, batch_number: 1, expected_item_count: 4 });
+
+    const workflow = new GenerationWorkflow();
+    workflow.env = {
+      ASYNC_GENERATION_UPSTREAM_RETRY_BASE_DELAY_MS: "0",
+      GENERATION_JOBS_DB: db,
+      GEMINI_API_KEY: "test-key",
+    };
+    const step = {
+      async do(_name, callback) {
+        return callback();
+      },
+    };
+
+    const result = await workflow.run({
+      payload: {
+        jobId,
+        request: plan.request,
+        batches: plan.batches,
+        progress: plan.progress,
+      },
+    }, step);
+
+    expect(result).toMatchObject({ ok: true, status: "completed", completedItemCount: 4 });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(db.state.batches[0].retry_count).toBe(1);
+    expect(db.state.batches[0].upstream_status).toBe(503);
+  });
+
+  it("retries a transient network error batch once without storing unsafe details", async () => {
+    const db = createFakeJobsDb();
+    const jobId = "gen_workflow_retry_network_12345678";
+    const data = payload(4);
+    const plan = createGenerationJobPlan(data);
+    mockGeminiNetworkThenItems(Array.from({ length: 4 }, (_, index) => generatedItem(index + 1)));
+    db.seedJob({
+      job_id: jobId,
+      requested_item_count: 4,
+      batch_count: 1,
+      expires_at: "2026-06-25T00:00:00.000Z",
+    });
+    db.seedBatch({ job_id: jobId, batch_number: 1, expected_item_count: 4 });
+
+    const workflow = new GenerationWorkflow();
+    workflow.env = {
+      ASYNC_GENERATION_UPSTREAM_RETRY_BASE_DELAY_MS: "0",
+      GENERATION_JOBS_DB: db,
+      GEMINI_API_KEY: "test-key",
+    };
+    const step = {
+      async do(_name, callback) {
+        return callback();
+      },
+    };
+
+    const result = await workflow.run({
+      payload: {
+        jobId,
+        request: plan.request,
+        batches: plan.batches,
+        progress: plan.progress,
+      },
+    }, step);
+
+    const stateText = JSON.stringify(db.state).toLowerCase();
+    expect(result).toMatchObject({ ok: true, status: "completed", completedItemCount: 4 });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(db.state.batches[0].retry_count).toBe(1);
+    expect(db.state.batches[0].upstream_status).toBeNull();
+    expect(stateText).not.toContain("raw prompt");
+    expect(stateText).not.toContain("token");
+    expect(stateText).not.toContain("headers");
+  });
+
+  it("does not retry non-rate-limit upstream 4xx errors", async () => {
+    const db = createFakeJobsDb();
+    const jobId = "gen_workflow_non_retry_4xx_12345678";
+    const data = payload(4);
+    const plan = createGenerationJobPlan(data);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      error: "raw output with token and headers should not leak",
+    }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    })));
+    db.seedJob({
+      job_id: jobId,
+      requested_item_count: 4,
+      batch_count: 1,
+      expires_at: "2026-06-25T00:00:00.000Z",
+    });
+    db.seedBatch({ job_id: jobId, batch_number: 1, expected_item_count: 4 });
+
+    const workflow = new GenerationWorkflow();
+    workflow.env = {
+      ASYNC_GENERATION_UPSTREAM_RETRY_BASE_DELAY_MS: "0",
+      GENERATION_JOBS_DB: db,
+      GEMINI_API_KEY: "test-key",
+    };
+    const step = {
+      async do(_name, callback) {
+        return callback();
+      },
+    };
+
+    const result = await workflow.run({
+      payload: {
+        jobId,
+        request: plan.request,
+        batches: plan.batches,
+        progress: plan.progress,
+      },
+    }, step);
+
+    const stateText = JSON.stringify(db.state).toLowerCase();
+    expect(result).toMatchObject({ ok: false, errorCode: ERROR_CODES.GEMINI_UPSTREAM_REQUEST_ERROR });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(db.state.jobs[0].status).toBe("failed");
+    expect(db.state.batches[0].status).toBe("failed_terminal");
+    expect(db.state.batches[0].retry_count).toBe(0);
+    expect(db.state.batches[0].error_code).toBe(ERROR_CODES.GEMINI_UPSTREAM_REQUEST_ERROR);
+    expect(db.state.batches[0].upstream_status).toBe(400);
+    expect(stateText).not.toContain("raw output");
+    expect(stateText).not.toContain("token");
+    expect(stateText).not.toContain("headers");
   });
 
   it("does not retry hard JSON truncation reported by Gemini finishReason", async () => {

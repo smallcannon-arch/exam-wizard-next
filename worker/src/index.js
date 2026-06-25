@@ -28,18 +28,67 @@ function errorResponse(request, env, result, status) {
 }
 
 const ASYNC_BATCH_MAX_RETRY_COUNT = 1;
+const DEFAULT_UPSTREAM_RETRY_BASE_DELAY_MS = 2000;
+const MAX_UPSTREAM_RETRY_DELAY_MS = 10000;
+const UPSTREAM_RETRY_JITTER_RATIO = 0.25;
 const RETRYABLE_BATCH_ERROR_CODES = new Set([
+  ERROR_CODES.GEMINI_RATE_LIMIT,
+  ERROR_CODES.GEMINI_UPSTREAM_SERVER_ERROR,
+  ERROR_CODES.GEMINI_NETWORK_ERROR,
   ERROR_CODES.AI_JSON_NO_OBJECT,
   ERROR_CODES.AI_JSON_PARSE_FAILED,
+]);
+const TRANSIENT_UPSTREAM_BATCH_ERROR_CODES = new Set([
+  ERROR_CODES.GEMINI_RATE_LIMIT,
+  ERROR_CODES.GEMINI_UPSTREAM_SERVER_ERROR,
+  ERROR_CODES.GEMINI_NETWORK_ERROR,
 ]);
 
 function isRetryableBatchGenerationResult(result) {
   return !!result && !result.ok && RETRYABLE_BATCH_ERROR_CODES.has(result.errorCode);
 }
 
+function isTransientUpstreamBatchGenerationResult(result) {
+  return !!result && !result.ok && TRANSIENT_UPSTREAM_BATCH_ERROR_CODES.has(result.errorCode);
+}
+
+export function resolveUpstreamRetryDelayMs(env = {}, attempt = 0, randomValue = Math.random()) {
+  const configuredBase = Number(env?.ASYNC_GENERATION_UPSTREAM_RETRY_BASE_DELAY_MS);
+  const baseDelayMs = Number.isFinite(configuredBase) && configuredBase >= 0
+    ? Math.floor(configuredBase)
+    : DEFAULT_UPSTREAM_RETRY_BASE_DELAY_MS;
+  const exponent = Math.max(0, Math.floor(Number(attempt) || 0));
+  const cappedDelayMs = Math.min(baseDelayMs * (2 ** exponent), MAX_UPSTREAM_RETRY_DELAY_MS);
+  if (cappedDelayMs <= 0) return 0;
+
+  const normalizedRandom = Number.isFinite(Number(randomValue))
+    ? Math.min(Math.max(Number(randomValue), 0), 1)
+    : 0.5;
+  const jitterSpanMs = cappedDelayMs * UPSTREAM_RETRY_JITTER_RATIO;
+  const jitteredDelayMs = cappedDelayMs - jitterSpanMs + (normalizedRandom * jitterSpanMs * 2);
+  return Math.min(Math.max(Math.round(jitteredDelayMs), 0), MAX_UPSTREAM_RETRY_DELAY_MS);
+}
+
+async function waitForUpstreamRetryBackoff(env, attempt) {
+  const delayMs = resolveUpstreamRetryDelayMs(env, attempt);
+  if (delayMs <= 0) return;
+  await new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+function mergeUpstreamDiagnostics(diagnostics = {}, upstreamStatus = null) {
+  if (upstreamStatus === null || upstreamStatus === undefined || upstreamStatus === "") {
+    return diagnostics;
+  }
+  return {
+    ...diagnostics,
+    upstreamStatus,
+  };
+}
+
 async function generateAndValidateBatch({ env, request, batch, batchNumber }) {
   const startedAt = Date.now();
   let lastResult = null;
+  let latestUpstreamStatus = null;
 
   for (let attempt = 0; attempt <= ASYNC_BATCH_MAX_RETRY_COUNT; attempt += 1) {
     const prompt = buildGenerateItemsPrompt({
@@ -53,12 +102,16 @@ async function generateAndValidateBatch({ env, request, batch, batchNumber }) {
     const ai = await callGemini({ env, prompt });
     const latencyMs = Date.now() - startedAt;
     if (!ai.ok) {
+      if (ai.upstreamStatus !== null && ai.upstreamStatus !== undefined) {
+        latestUpstreamStatus = ai.upstreamStatus;
+      }
       lastResult = {
         ok: false,
         batchNumber,
         errorCode: ai.errorCode || ERROR_CODES.GEMINI_UPSTREAM_ERROR,
         latencyMs,
         retryCount: attempt,
+        diagnostics: mergeUpstreamDiagnostics({}, latestUpstreamStatus),
       };
     } else {
       const parsed = extractJsonObject(ai.text, { finishReason: ai.finishReason });
@@ -69,7 +122,7 @@ async function generateAndValidateBatch({ env, request, batch, batchNumber }) {
           errorCode: parsed.errorCode,
           latencyMs,
           retryCount: attempt,
-          diagnostics: parsed.diagnostics,
+          diagnostics: mergeUpstreamDiagnostics(parsed.diagnostics, latestUpstreamStatus),
         };
       } else {
         const payload = assertItemsPayload(parsed.data, batch.expectedItemCount);
@@ -80,7 +133,7 @@ async function generateAndValidateBatch({ env, request, batch, batchNumber }) {
             errorCode: payload.errorCode,
             latencyMs,
             retryCount: attempt,
-            diagnostics: parsed.diagnostics,
+            diagnostics: mergeUpstreamDiagnostics(parsed.diagnostics, latestUpstreamStatus),
           };
         } else {
           return {
@@ -90,7 +143,7 @@ async function generateAndValidateBatch({ env, request, batch, batchNumber }) {
             itemCount: payload.items.length,
             latencyMs,
             retryCount: attempt,
-            diagnostics: parsed.diagnostics,
+            diagnostics: mergeUpstreamDiagnostics(parsed.diagnostics, latestUpstreamStatus),
           };
         }
       }
@@ -98,6 +151,9 @@ async function generateAndValidateBatch({ env, request, batch, batchNumber }) {
 
     if (!isRetryableBatchGenerationResult(lastResult) || attempt >= ASYNC_BATCH_MAX_RETRY_COUNT) {
       return lastResult;
+    }
+    if (isTransientUpstreamBatchGenerationResult(lastResult)) {
+      await waitForUpstreamRetryBackoff(env, attempt);
     }
   }
 
