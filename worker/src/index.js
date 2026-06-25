@@ -6,9 +6,10 @@ import {
   completeGenerationJob,
   markGenerationBatchCompleted,
   markGenerationBatchFailed,
-  markGenerationBatchRunning,
+  markGenerationBatchesRunning,
   markGenerationJobFailed,
   markGenerationJobRunning,
+  resolveAsyncGenerationMaxConcurrentBatches,
   routeGenerationJobRequest,
 } from "./generationJobs.js";
 
@@ -55,74 +56,92 @@ export class GenerationWorkflow extends WorkflowEntrypointBase {
       return { ok: false, errorCode: ERROR_CODES.ASYNC_JOB_STATUS_INVALID };
     }
 
+    const maxConcurrentBatches = resolveAsyncGenerationMaxConcurrentBatches(this.env);
     const completedBatches = [];
-    for (let index = 0; index < batches.length; index += 1) {
-      const batch = batches[index];
-      const batchNumber = Number.isFinite(Number(batch?.batchNumber))
-        ? Number(batch.batchNumber)
-        : index + 1;
+    for (let index = 0; index < batches.length; index += maxConcurrentBatches) {
+      const batchWindow = batches.slice(index, index + maxConcurrentBatches).map((batch, offset) => ({
+        batch,
+        batchNumber: Number.isFinite(Number(batch?.batchNumber))
+          ? Number(batch.batchNumber)
+          : index + offset + 1,
+      }));
+      const batchNumbers = batchWindow.map((entry) => entry.batchNumber);
 
-      const running = await step.do(`mark batch ${batchNumber} running`, async () => (
-        markGenerationBatchRunning(this.env?.GENERATION_JOBS_DB, jobId, batchNumber)
+      const running = await step.do(`mark batches ${batchNumbers.join(",")} running`, async () => (
+        markGenerationBatchesRunning(this.env?.GENERATION_JOBS_DB, jobId, batchNumbers)
       ));
       if (!running.ok) return running;
 
-      const generated = await step.do(`generate and validate batch ${batchNumber}`, async () => {
-        const start = Date.now();
-        const prompt = buildGenerateItemsPrompt({
-          project: request.project,
-          materialText: request.materialText,
-          objectives: request.objectives,
-          intents: batch.intents,
-          checkedChineseSubcategories: request.checkedChineseSubcategories,
-        });
+      const generatedResults = await Promise.all(batchWindow.map(({ batch, batchNumber }) => (
+        step.do(`generate and validate batch ${batchNumber}`, async () => {
+          const start = Date.now();
+          const prompt = buildGenerateItemsPrompt({
+            project: request.project,
+            materialText: request.materialText,
+            objectives: request.objectives,
+            intents: batch.intents,
+            checkedChineseSubcategories: request.checkedChineseSubcategories,
+          });
 
-        const ai = await callGemini({ env: this.env, prompt });
-        const latencyMs = Date.now() - start;
-        if (!ai.ok) {
-          return { ok: false, errorCode: ai.errorCode || ERROR_CODES.GEMINI_UPSTREAM_ERROR, latencyMs };
-        }
+          const ai = await callGemini({ env: this.env, prompt });
+          const latencyMs = Date.now() - start;
+          if (!ai.ok) {
+            return { ok: false, batchNumber, errorCode: ai.errorCode || ERROR_CODES.GEMINI_UPSTREAM_ERROR, latencyMs };
+          }
 
-        const parsed = extractJsonObject(ai.text);
-        if (!parsed.ok) {
-          return { ok: false, errorCode: parsed.errorCode, latencyMs };
-        }
+          const parsed = extractJsonObject(ai.text);
+          if (!parsed.ok) {
+            return { ok: false, batchNumber, errorCode: parsed.errorCode, latencyMs };
+          }
 
-        const payload = assertItemsPayload(parsed.data, batch.expectedItemCount);
-        if (!payload.ok) {
-          return { ok: false, errorCode: payload.errorCode, latencyMs };
-        }
+          const payload = assertItemsPayload(parsed.data, batch.expectedItemCount);
+          if (!payload.ok) {
+            return { ok: false, batchNumber, errorCode: payload.errorCode, latencyMs };
+          }
 
-        return {
-          ok: true,
-          batchNumber,
-          items: payload.items,
-          itemCount: payload.items.length,
-          latencyMs,
-        };
-      });
+          return {
+            ok: true,
+            batchNumber,
+            items: payload.items,
+            itemCount: payload.items.length,
+            latencyMs,
+          };
+        })
+      )));
 
-      if (!generated.ok) {
-        await step.do(`mark batch ${batchNumber} failed`, async () => (
-          markGenerationBatchFailed(this.env?.GENERATION_JOBS_DB, jobId, batchNumber, generated.errorCode)
+      const successfulBatches = generatedResults
+        .filter((generated) => generated.ok)
+        .sort((a, b) => a.batchNumber - b.batchNumber);
+      for (const generated of successfulBatches) {
+        completedBatches.push(generated);
+        const completedItemCount = completedBatches.reduce((sum, entry) => sum + entry.itemCount, 0);
+        const batchCompleted = await step.do(`mark batch ${generated.batchNumber} completed`, async () => (
+          markGenerationBatchCompleted(this.env?.GENERATION_JOBS_DB, jobId, generated.batchNumber, generated.itemCount, generated.latencyMs, {
+            requestedItemCount: progress.requestedItemCount,
+            batchCount: progress.batchCount || batches.length,
+            completedBatchCount: completedBatches.length,
+            completedItemCount,
+          })
         ));
-        return generated;
+        if (!batchCompleted.ok) return batchCompleted;
       }
 
-      completedBatches.push(generated);
-      const completedItemCount = completedBatches.reduce((sum, entry) => sum + entry.itemCount, 0);
-      const batchCompleted = await step.do(`mark batch ${batchNumber} completed`, async () => (
-        markGenerationBatchCompleted(this.env?.GENERATION_JOBS_DB, jobId, batchNumber, generated.itemCount, generated.latencyMs, {
-          requestedItemCount: progress.requestedItemCount,
-          batchCount: progress.batchCount || batches.length,
-          completedBatchCount: completedBatches.length,
-          completedItemCount,
-        })
-      ));
-      if (!batchCompleted.ok) return batchCompleted;
+      const failedBatches = generatedResults
+        .filter((generated) => !generated.ok)
+        .sort((a, b) => a.batchNumber - b.batchNumber);
+      if (failedBatches.length) {
+        for (const generated of failedBatches) {
+          await step.do(`mark batch ${generated.batchNumber} failed`, async () => (
+            markGenerationBatchFailed(this.env?.GENERATION_JOBS_DB, jobId, generated.batchNumber, generated.errorCode)
+          ));
+        }
+        return failedBatches[0];
+      }
     }
 
-    const items = completedBatches.flatMap((batch) => batch.items);
+    const items = completedBatches
+      .sort((a, b) => a.batchNumber - b.batchNumber)
+      .flatMap((batch) => batch.items);
     const expectedItemCount = Number(progress.requestedItemCount);
     if (Number.isFinite(expectedItemCount) && items.length !== expectedItemCount) {
       await step.do("mark job failed after final item count check", async () => (
