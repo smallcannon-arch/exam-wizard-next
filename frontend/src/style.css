@@ -158,6 +158,11 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 button.secondary {
   background: var(--blue-soft);
   color: var(--blue);

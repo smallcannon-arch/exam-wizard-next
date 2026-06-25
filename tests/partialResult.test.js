@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   buildPartialSlotView,
   getMissingItemTeacherMessage,
+  getPartialExportBlockMessage,
   getPartialResultSummary,
   getSlotsForGeneratedItems,
   isPartialGenerationResult,
   normalizePartialResult,
+  shouldBlockPartialExport,
 } from "../frontend/src/core/partialResult.js";
 
 const slots = Array.from({ length: 4 }, (_, index) => ({
@@ -69,6 +71,14 @@ describe("partial result helpers", () => {
     }).title).toBe("已完成 47 / 50 題，3 題待補");
   });
 
+  it("keeps lower-bound partial summary explicit", () => {
+    expect(getPartialResultSummary({
+      requestedItemCount: 50,
+      completedItemCount: 40,
+      missingCount: 10,
+    }).title).toBe("已完成 40 / 50 題，10 題待補");
+  });
+
   it("uses one teacher-facing message instead of classifying internal error codes", () => {
     expect(getMissingItemTeacherMessage({ errorCode: "AI_OUTPUT_CONTRACT_INVALID" })).toBe("此題未能生成，可於後續補齊。");
     expect(getMissingItemTeacherMessage({ errorCode: "AI_STIMULUS_MISSING" })).toBe("此題未能生成，可於後續補齊。");
@@ -97,6 +107,33 @@ describe("partial result helpers", () => {
     });
   });
 
+  it("preserves first, last, consecutive, and scattered missing positions", () => {
+    const widerSlots = Array.from({ length: 6 }, (_, index) => ({
+      itemId: `Q-${String(index + 1).padStart(3, "0")}`,
+      questionType: "選擇題",
+    }));
+
+    const view = buildPartialSlotView({
+      slots: widerSlots,
+      items: [item(2), item(4)],
+      missingItems: [
+        { itemIndex: 1, errorCode: "AI_OUTPUT_CONTRACT_INVALID" },
+        { itemIndex: 3, errorCode: "AI_STIMULUS_MISSING" },
+        { itemIndex: 5, errorCode: "AI_JSON_PARSE_FAILED" },
+        { itemIndex: 6, errorCode: "GEMINI_UPSTREAM_ERROR" },
+      ],
+    });
+
+    expect(view.map((entry) => `${entry.type}:${entry.itemIndex}`)).toEqual([
+      "missing:1",
+      "item:2",
+      "missing:3",
+      "item:4",
+      "missing:5",
+      "missing:6",
+    ]);
+  });
+
   it("does not convert missing slots into generated items", () => {
     const view = buildPartialSlotView({
       slots,
@@ -119,5 +156,13 @@ describe("partial result helpers", () => {
     });
 
     expect(validationSlots.map((slot) => slot.itemId)).toEqual(["Q-001", "Q-004"]);
+  });
+
+  it("blocks final export while missing slots remain", () => {
+    expect(shouldBlockPartialExport({ partial: true })).toBe(true);
+    expect(shouldBlockPartialExport({ status: "partial" })).toBe(true);
+    expect(shouldBlockPartialExport(null)).toBe(false);
+    expect(shouldBlockPartialExport({ status: "completed" })).toBe(false);
+    expect(getPartialExportBlockMessage()).toBe("這份試卷仍有待補題位，暫不匯出正式卷。請先補齊後再輸出。");
   });
 });

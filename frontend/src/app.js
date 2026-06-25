@@ -24,9 +24,11 @@ import { ASYNC_GENERATION_DEFAULTS, createAsyncInitialProgress, isAsyncGeneratio
 import { shouldRetryGeneration } from "./core/generationRetry.js";
 import {
   buildPartialSlotView,
+  getPartialExportBlockMessage,
   getPartialResultSummary,
   getSlotsForGeneratedItems,
   normalizePartialResult,
+  shouldBlockPartialExport,
 } from "./core/partialResult.js";
 
 // 目標提取 Gem（沿用現有連結）；教材提取 Gem 建立後，把網址填到 GEM_MATERIAL_URL。
@@ -1749,8 +1751,20 @@ function renderOutput() {
     planRows: state.planRows,
     sections: state.sections,
   });
+  const partialExportBlocked = shouldBlockPartialExport(state.partialResult);
+  const partialExportBlockMessage = getPartialExportBlockMessage();
+  const exportButtonDisabledAttrs = partialExportBlocked
+    ? `disabled aria-disabled="true" title="${escapeHtml(partialExportBlockMessage)}"`
+    : "";
+  const printActionAttr = partialExportBlocked ? "" : `onclick="window.print()"`;
+  const wordActionAttr = partialExportBlocked ? "" : `onclick="window.downloadWordAudit()"`;
+  const excelActionAttr = partialExportBlocked ? "" : `onclick="window.downloadExcelAudit()"`;
 
   window.downloadWordAudit = () => {
+    if (partialExportBlocked) {
+      console.warn(partialExportBlockMessage);
+      return;
+    }
     const isChinese = (state.project.subject === "國語");
     const cleanHtmlForExport = (html) => {
       let cleaned = html;
@@ -1818,6 +1832,10 @@ function renderOutput() {
   };
 
   window.downloadExcelAudit = () => {
+    if (partialExportBlocked) {
+      console.warn(partialExportBlockMessage);
+      return;
+    }
     const excelXml = generateExcelXml({
       project,
       objectives: state.objectives,
@@ -1837,11 +1855,12 @@ function renderOutput() {
   return `<section class="panel">
     <h2>⑥ 輸出</h2>
     ${renderPartialResultNotice()}
+    ${partialExportBlocked ? `<div class="notice error" role="alert">${escapeHtml(partialExportBlockMessage)}</div>` : ""}
     
     <div class="actions" style="margin-bottom: 24px; display: flex; gap: 12px; flex-wrap: wrap;">
-      <button onclick="window.print()" style="font-weight:600; padding:12px 24px; font-size:16px;">🖨️ 列印審核表 (A4 自動排版)</button>
-      <button onclick="window.downloadWordAudit()" style="font-weight:600; padding:12px 24px; font-size:16px; background-color:#2b579a; color:white; border-color:#2b579a;">📝 匯出 Word 檔</button>
-      <button onclick="window.downloadExcelAudit()" style="font-weight:600; padding:12px 24px; font-size:16px; background-color:#217346; color:white; border-color:#217346;">📊 匯出 Excel 檔</button>
+      <button ${printActionAttr} ${exportButtonDisabledAttrs} style="font-weight:600; padding:12px 24px; font-size:16px;">🖨️ 列印審核表 (A4 自動排版)</button>
+      <button ${wordActionAttr} ${exportButtonDisabledAttrs} style="font-weight:600; padding:12px 24px; font-size:16px; background-color:#2b579a; color:white; border-color:#2b579a;">📝 匯出 Word 檔</button>
+      <button ${excelActionAttr} ${exportButtonDisabledAttrs} style="font-weight:600; padding:12px 24px; font-size:16px; background-color:#217346; color:white; border-color:#217346;">📊 匯出 Excel 檔</button>
     </div>
 
     <div id="auditTablePrintArea" class="audit-table-container" style="background:#fff; border:1px solid var(--line); border-radius:18px; padding:32px; box-shadow:0 10px 30px rgba(0,0,0,0.04); margin-bottom:32px; overflow-x:auto;">

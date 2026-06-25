@@ -177,9 +177,11 @@ Recommended MVP behavior:
 - Review screen: show generated items plus missing-slot placeholders.
 - Audit screen: show a partial-result notice before the existing validation summary.
 - Student and teacher output preview: include a clear notice if missing slots remain.
-- Export/download: require an explicit teacher acknowledgement before exporting a partial result, or keep export disabled until missing slots are resolved.
+- Export/download/print: keep final output disabled while missing slots remain.
 
-The first implementation should choose one conservative policy and test it. The important invariant is that placeholders must never appear as fake generated questions.
+MVP policy: when a partial result still has missing slots, keep the output preview visible but disable print, Word export, and Excel export. Show a clear message such as `這份試卷仍有待補題位，暫不匯出正式卷。請先補齊後再輸出。`
+
+The important invariant is that placeholders must never appear as fake generated questions, and the UI must not silently export a shorter paper as if it were final.
 
 ## 10. Frontend Implementation Targets
 

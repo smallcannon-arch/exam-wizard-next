@@ -1,6 +1,7 @@
 const PARTIAL_STATUSES = new Set(["partial"]);
 
 export const MISSING_SLOT_MESSAGE = "此題未能生成，可於後續補齊。";
+export const PARTIAL_EXPORT_BLOCK_MESSAGE = "這份試卷仍有待補題位，暫不匯出正式卷。請先補齊後再輸出。";
 
 function safePositiveInteger(value) {
   const number = Math.floor(Number(value));
@@ -22,6 +23,14 @@ export function isPartialGenerationResult(result = {}) {
 
 export function getMissingItemTeacherMessage() {
   return MISSING_SLOT_MESSAGE;
+}
+
+export function getPartialExportBlockMessage() {
+  return PARTIAL_EXPORT_BLOCK_MESSAGE;
+}
+
+export function shouldBlockPartialExport(partialResult = null) {
+  return isPartialGenerationResult(partialResult);
 }
 
 export function normalizeMissingItems(missingItems = [], { requestedItemCount = 0 } = {}) {
