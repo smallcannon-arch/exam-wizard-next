@@ -1,5 +1,6 @@
 // 統一配題表：每列 = { questionType, count, score }。
 // 由配題表直接導出整卷的題型序列與配分序列。純函式，不依賴 DOM。
+import { CHOICE_ONLY_STOPGAP_MESSAGE, isSupportedGenerationQuestionType } from "./questionTypes.js";
 
 function asText(value, fallback = "") {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : fallback;
@@ -65,6 +66,11 @@ export function validatePlan(rows, totalScore = null) {
 
   if (normalized.length === 0) {
     return { ok: false, error: "請至少新增一列有效配題（題型、題數、配分都要填）。" };
+  }
+
+  const unsupportedRow = normalized.find((row) => !isSupportedGenerationQuestionType(row.questionType) || row.isGroup);
+  if (unsupportedRow) {
+    return { ok: false, error: `${CHOICE_ONLY_STOPGAP_MESSAGE} 請將配題表調整為「選擇題」單題後再建立藍圖。` };
   }
 
   const { totalItems, totalScore: planScore } = getPlanTotals(normalized);
