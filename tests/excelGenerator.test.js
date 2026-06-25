@@ -34,7 +34,21 @@ describe("excelGenerator", () => {
     expect(xml).toContain('ss:Name="第一單元"');
     expect(xml).toContain('ss:Name="第二單元"');
     expect(xml).toContain("江志宏");
-    expect(xml).toContain("新竹市香山區內湖國小");
+    expect(xml).toContain("學校名稱");
+    expect(xml).not.toContain("新竹市香山區內湖國小");
+  });
+
+  it("uses the entered school name in the Excel title", () => {
+    const xml = generateExcelXml({
+      project: { schoolName: "測試國小", subject: "自然", grade: "五年級", schoolYear: "114", semester: "第2學期", examType: "定期評量", teacherName: "江志宏", range: "第一至二單元", version: "翰林版" },
+      objectives,
+      items,
+      sections,
+    });
+
+    expect(xml).toContain("測試國小");
+    expect(xml).not.toContain("學校名稱");
+    expect(xml).not.toContain("新竹市香山區內湖國小");
   });
 
   it("國語科生成單一評量向度分析表工作表", () => {

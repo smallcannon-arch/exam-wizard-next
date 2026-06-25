@@ -25,11 +25,25 @@ describe("renderAuditTable", () => {
       items,
       sections,
     });
-    expect(html).toContain("新竹市香山區內湖國小");
+    expect(html).toContain("學校名稱");
+    expect(html).not.toContain("新竹市香山區內湖國小");
     expect(html).toContain("114學年度");
     expect(html).toContain("五年級／自然科學");
     // Should contain cell mapping like "第 1(1)、1(2) 題"
     expect(html).toContain("第 1(1)、1(2) 題");
+  });
+
+  it("uses the entered school name in the audit title", () => {
+    const html = renderAuditTable({
+      project: { schoolName: "測試國小", subject: "數學", grade: "五年級", schoolYear: "114", semester: "第2學期", examType: "定期評量", teacherName: "江老師", range: "第一單元", version: "翰林版" },
+      objectives,
+      items,
+      sections,
+    });
+
+    expect(html).toContain("測試國小");
+    expect(html).not.toContain("學校名稱");
+    expect(html).not.toContain("新竹市香山區內湖國小");
   });
 
   it("國語科輸出評量向度分析表", () => {
