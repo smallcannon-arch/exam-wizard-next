@@ -18,6 +18,18 @@ const mathIntent = {
   score: 2,
   primaryObjectiveId: "O-001",
 };
+const trueFalseIntent = {
+  itemId: "Q-TF001",
+  questionType: "是非題",
+  score: 2,
+  primaryObjectiveId: "O-001",
+};
+const fillIntent = {
+  itemId: "Q-F001",
+  questionType: "填充題",
+  score: 2,
+  primaryObjectiveId: "O-001",
+};
 
 const promptReadyFewShot = {
   exampleId: "PROMPT-READY-001",
@@ -235,6 +247,46 @@ describe("worker prompts", () => {
     expect(prompt).toContain("teacherExplanation 請控制在 40-80 字且只寫一句話");
     expect(prompt).not.toContain("teacherExplanation 請控制在 80-120 字");
     expect(prompt).toContain("qualityMeta.teacherExplanation 是必填欄位，不得省略");
+  });
+
+  it("是非題 prompt 使用 O/X contract 且不殘留全域選擇題規則", () => {
+    const prompt = buildGenerateItemsPrompt({
+      project: mathProject,
+      materialText: "自然或數學敘述判斷素材",
+      objectives,
+      intents: [trueFalseIntent],
+    });
+
+    expect(prompt).toContain("## 2. 是非題");
+    expect(prompt).toContain("答案限制為單一字元，僅能是 \"O\"");
+    expect(prompt).toContain("是非題的 answer 必須是 \"O\" 或 \"X\"");
+    expect(prompt).toContain("是非題的 options 必須省略");
+    expect(prompt).toContain("不得輸出空陣列、2 個選項陣列或 A/B/C/D 選項");
+    expect(prompt).not.toContain("選擇題形式 JSON contract");
+    expect(prompt).not.toContain("options 必須是 JSON array");
+    expect(prompt).not.toContain("answer 必須是 \"A\"、\"B\"、\"C\"、\"D\" 其中之一");
+    expect(prompt).not.toContain("選擇題形式題目的 answer 必須是正確選項代號");
+    expect(prompt).not.toContain("錯誤選項與迷思標籤規格");
+  });
+
+  it("填充題 prompt 使用文字答案 contract 且不殘留全域選擇題規則", () => {
+    const prompt = buildGenerateItemsPrompt({
+      project: mathProject,
+      materialText: "概念詞彙與核心名詞素材",
+      objectives,
+      intents: [fillIntent],
+    });
+
+    expect(prompt).toContain("## 3. 填充題");
+    expect(prompt).toContain("填充題的 answer 必須是非空文字答案");
+    expect(prompt).toContain("填充題的 options 必須省略");
+    expect(prompt).toContain("若填充題有多個可接受答案，可輸出 acceptedAnswers");
+    expect(prompt).toContain("填充題的 qualityMeta.distractorDesign 若沒有選項誘答，必須使用空物件");
+    expect(prompt).not.toContain("選擇題形式 JSON contract");
+    expect(prompt).not.toContain("options 必須是 JSON array");
+    expect(prompt).not.toContain("answer 必須是 \"A\"、\"B\"、\"C\"、\"D\" 其中之一");
+    expect(prompt).not.toContain("選擇題形式題目的 answer 必須是正確選項代號");
+    expect(prompt).not.toContain("錯誤選項與迷思標籤規格");
   });
 
   it("明確要求無 stimulus 的題幹不得引用未提供文本", () => {
