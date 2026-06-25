@@ -49,6 +49,10 @@ Partial results remain out of scope for this small fix because they would change
 
 Reconsider partial result support if, after this retry fix is deployed and re-observed, the 50-item job-level pass rate remains below 95% across at least 15 fresh 50-item observations, or if repeated single-batch failures still cause otherwise usable 46-49 item jobs to fail.
 
+Status update 2026-06-26: this gate has been answered. Later 50-item observations exposed repeated single-batch and content-contract failures that made all-or-nothing output unsuitable for the 50-item target. Partial result support was implemented through the 10E/10F MVP and deployed with Worker + Pages on main commit `a950d2dac115b3a2846d827d0944126d26511ed6`.
+
+The post-release 50-item production smoke completed 50/50 without triggering a partial result. Therefore the normal 50-item path is verified after the release, but the first real production partial result remains a required observation item.
+
 ## Validation Plan
 
 - Parser regression tests for fenced and prose-wrapped JSON.
@@ -150,6 +154,8 @@ After upstream classification and transient retry are deployed, run fresh Chines
 - dependency on Gemini single-call behavior per batch
 
 If the next observations converge without new failure classes, continue the baseline collection.
+
+Status update 2026-06-26: the patch-by-patch loop was paused after another distinct content-contract failure class (`AI_STIMULUS_MISSING`) appeared. The product decision was to keep the 50-item target and move to partial-result architecture instead of lowering the target to 30 or continuing only with more gates. The gate is considered closed by the 10E/10F partial-result release.
 
 ## Contract Violation Diagnostics Follow-up
 

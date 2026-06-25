@@ -2,7 +2,23 @@
 
 Date: 2026-06-26
 
-Status: design proposal. This document changes no product code, prompt, schema, Worker API, deployment workflow, `tmp/`, or stash.
+Status: design proposal, not started. This document changes no product code, prompt, schema, Worker API, deployment workflow, `tmp/`, or stash.
+
+## Start Gate
+
+Do not start 10G only because the design exists.
+
+Start targeted regeneration after the partial-result MVP has produced real production feedback. The minimum observation points are:
+
+- first real production `partial` job has been inspected end to end;
+- teacher handling of gaps is understood:
+  - do they use the partial preview;
+  - do they restart the whole generation;
+  - do they complain that a partial paper cannot be printed/exported;
+  - do they manually copy usable items;
+- the need for selected-item regeneration is confirmed by observed use, not only by engineering preference.
+
+If teachers mostly restart the whole generation after a partial result, 10G should become high priority because the MVP's partial preview is not closing the workflow. If teachers can work with the preview and gaps without friction, 10G can remain a planned enhancement.
 
 ## 1. Core Principle
 

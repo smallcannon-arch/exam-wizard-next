@@ -2,7 +2,20 @@
 
 Date: 2026-06-26
 
-Status: design proposal. This document changes no product code, prompt, schema, Worker API, deployment workflow, `tmp/`, or stash.
+Status: implemented and deployed as part of the partial-result MVP on 2026-06-26. This document remains the frontend presentation contract and release note; it does not itself change product code, prompt, schema, Worker API, deployment workflow, `tmp/`, or stash.
+
+## Release Status Update
+
+PR #37 implemented this presentation layer and was deployed together with backend partial-result support. The production release used main commit `a950d2dac115b3a2846d827d0944126d26511ed6`, Worker version `9fe372c9-0219-4de0-bcff-e54a0e409066`, and GitHub Pages workflow run `28196911672`.
+
+Post-release checks confirmed:
+
+- the production page loads with HTTP 200 and title `命題系統`;
+- the main UI can switch steps without fatal console errors;
+- deployed frontend JS contains the partial final-output block;
+- normal 50-item generation still completes successfully.
+
+The release smoke did not naturally trigger a real `partial` job. The first real production partial should be inspected end to end: missing cards in original positions, success framing, no raw `errorCode` or enum in teacher copy, consistent review/audit/output summaries, and disabled print/Word/Excel output while gaps remain.
 
 ## 1. Background
 

@@ -2,7 +2,26 @@
 
 Date: 2026-06-25
 
-Status: design proposal. No product code, prompt, schema, Worker API, frontend UI, deployment workflow, `tmp/`, or stash is changed by this document.
+Status: implemented and deployed as the partial-result MVP on 2026-06-26. This document is kept as the backend contract decision record; it does not itself change product code, prompt, schema, deployment workflow, `tmp/`, or stash.
+
+## Release Status Update
+
+The backend partial-result contract and frontend presentation were released together after PR #35 and PR #37 were merged. The coordinated release deployed:
+
+- Worker version `9fe372c9-0219-4de0-bcff-e54a0e409066`;
+- GitHub Pages workflow run `28196911672`;
+- main commit `a950d2dac115b3a2846d827d0944126d26511ed6`.
+
+Production smoke after the release:
+
+- normal 50-item Chinese generation completed 50/50;
+- latency was 274.74 seconds;
+- v2 validation passed;
+- diagnostics were present for 13/13 batches;
+- `finishReason` was `STOP` for all batches;
+- leakage finding was none.
+
+The smoke did not naturally trigger a `partial` job. The first real production `partial` remains a required follow-up observation before treating the partial UI as fully field-verified.
 
 ## 1. Background
 
