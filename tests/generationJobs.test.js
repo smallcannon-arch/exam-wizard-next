@@ -5,13 +5,35 @@ import {
   createGenerationJobPlan,
   resolveAsyncGenerationMaxConcurrentBatches,
 } from "../worker/src/generationJobs.js";
-import { CONTRACT_VIOLATION_TYPES, ERROR_CODES } from "../worker/src/json.js";
+import { expandExpectedGenerationSlots, getExpectedGeneratedItemCount } from "../worker/src/groupSlots.js";
+import { CONTRACT_VIOLATION_TYPES, ERROR_CODES, assertItemsPayload } from "../worker/src/json.js";
 
 function intent(index) {
   return {
     itemId: `Q-${index}`,
     questionType: "choice",
     score: 1,
+  };
+}
+
+function payloadFromIntents(intents) {
+  return {
+    ...payload(intents.length),
+    intents,
+  };
+}
+
+function groupIntent(index, overrides = {}) {
+  return {
+    itemId: `Q-${String(index).padStart(3, "0")}`,
+    questionType: "proficiency",
+    score: 5,
+    primaryObjectiveId: index % 2 === 0 ? "O-2" : "O-1",
+    objectiveIds: [index % 2 === 0 ? "O-2" : "O-1"],
+    isGroup: true,
+    subCount: 2,
+    subScores: [2, 3],
+    ...overrides,
   };
 }
 
@@ -49,6 +71,89 @@ function generatedItem(index = 1) {
 
 function generatedBatch(startIndex, count = 4) {
   return Array.from({ length: count }, (_, index) => generatedItem(startIndex + index));
+}
+
+function generatedTypedItemForSlot(slot, fallbackIndex = 1) {
+  const itemId = slot?.itemId || `Q-${fallbackIndex}`;
+  const baseQualityMeta = {
+    teacherExplanation: "Teacher explanation",
+    correctReason: "Correct reason",
+    distractorDesign: {},
+    selfCheck: {
+      passed: true,
+    },
+  };
+  if (slot?.isGroupChild || String(slot?.questionType || "").toLowerCase().includes("proficiency")) {
+    const childIndex = Number(slot?.childIndex || 1);
+    return {
+      itemId,
+      questionType: "proficiency",
+      groupId: slot?.groupId || "G-1",
+      stimulus: childIndex === 1 ? "Shared reading stimulus" : "",
+      question: `Group question ${itemId}`,
+      options: ["A", "B", "C", "D"],
+      answer: "A",
+      score: Number(slot?.score || slot?.subScore || 1),
+      qualityMeta: {
+        ...baseQualityMeta,
+        distractorDesign: {
+          B: generatedDistractor("B"),
+          C: generatedDistractor("C"),
+          D: generatedDistractor("D"),
+        },
+      },
+    };
+  }
+  if (String(slot?.questionType || "").toLowerCase().includes("true")) {
+    return {
+      itemId,
+      questionType: "true_false",
+      question: `True false question ${itemId}`,
+      answer: "O",
+      correctAnswer: "O",
+      score: Number(slot?.score || 1),
+      qualityMeta: baseQualityMeta,
+    };
+  }
+  if (String(slot?.questionType || "").toLowerCase().includes("fill")) {
+    return {
+      itemId,
+      questionType: "fill",
+      question: `Fill question ${itemId}: ______`,
+      answer: "answer text",
+      acceptedAnswers: ["answer text"],
+      score: Number(slot?.score || 1),
+      qualityMeta: baseQualityMeta,
+    };
+  }
+  return {
+    ...generatedItem(fallbackIndex),
+    itemId,
+    questionType: "choice",
+    score: Number(slot?.score || 1),
+  };
+}
+
+function generatedItemsForExpectedSlots(slots = []) {
+  return slots.map((slot, index) => generatedTypedItemForSlot(slot, index + 1));
+}
+
+function mixed44UiShapePayload() {
+  const intents = [
+    ...Array.from({ length: 20 }, (_, index) => intent(index + 1)),
+    ...Array.from({ length: 10 }, (_, index) => ({
+      itemId: `Q-${index + 21}`,
+      questionType: "true_false",
+      score: 1,
+    })),
+    ...Array.from({ length: 10 }, (_, index) => ({
+      itemId: `Q-${index + 31}`,
+      questionType: "fill",
+      score: 1,
+    })),
+    ...Array.from({ length: 4 }, (_, index) => groupIntent(index + 41)),
+  ];
+  return payloadFromIntents(intents);
 }
 
 function generatedDistractor(option) {
@@ -454,6 +559,143 @@ describe("async generation job skeleton", () => {
     expect(plan.progress.batchCount).toBe(3);
     expect(plan.batches.map((batch) => batch.expectedItemCount)).toEqual([4, 4, 2]);
     expect(plan.batches[0].expectedItemIds).toEqual(["Q-1", "Q-2", "Q-3", "Q-4"]);
+  });
+
+  it("expands group parent slots into child expected slots without changing normal items", () => {
+    const expandedNormal = expandExpectedGenerationSlots([intent(1)]);
+    const expandedGroup = expandExpectedGenerationSlots([groupIntent(1)]);
+    const expandedFourGroups = expandExpectedGenerationSlots(Array.from({ length: 4 }, (_, index) => groupIntent(index + 1)));
+
+    expect(expandedNormal.ok).toBe(true);
+    expect(expandedNormal.expectedItemCount).toBe(1);
+    expect(expandedNormal.expectedSlots[0]).toMatchObject({
+      itemId: "Q-1",
+      expectedItemIndex: 1,
+    });
+    expect(expandedGroup.ok).toBe(true);
+    expect(expandedGroup.expectedItemCount).toBe(2);
+    expect(expandedGroup.groupChildCount).toBe(2);
+    expect(expandedGroup.expectedSlots.map((slot) => ({
+      itemId: slot.itemId,
+      parentItemId: slot.parentItemId,
+      childIndex: slot.childIndex,
+      subScore: slot.subScore,
+      expectedItemIndex: slot.expectedItemIndex,
+    }))).toEqual([
+      { itemId: "Q-001-1", parentItemId: "Q-001", childIndex: 1, subScore: 2, expectedItemIndex: 1 },
+      { itemId: "Q-001-2", parentItemId: "Q-001", childIndex: 2, subScore: 3, expectedItemIndex: 2 },
+    ]);
+    expect(expandedFourGroups.ok).toBe(true);
+    expect(expandedFourGroups.parentSlotCount).toBe(4);
+    expect(expandedFourGroups.expectedItemCount).toBe(8);
+    expect(getExpectedGeneratedItemCount(Array.from({ length: 4 }, (_, index) => groupIntent(index + 1)))).toBe(8);
+  });
+
+  it("rejects invalid group metadata instead of falling back to normal slots", () => {
+    const missingSubCount = expandExpectedGenerationSlots([groupIntent(1, { subCount: undefined, subScores: [2, 3] })]);
+    const invalidSubCount = expandExpectedGenerationSlots([groupIntent(1, { subCount: 0, subScores: [] })]);
+    const fractionalSubCount = expandExpectedGenerationSlots([groupIntent(1, { subCount: 1.5, subScores: [] })]);
+    const invalidSubScores = expandExpectedGenerationSlots([groupIntent(1, { subCount: 2, subScores: [2] })]);
+    const invalidQuestionType = expandExpectedGenerationSlots([{ ...groupIntent(1), questionType: "choice" }]);
+
+    expect(missingSubCount.ok).toBe(false);
+    expect(missingSubCount.error).toContain("subCount");
+    expect(invalidSubCount.ok).toBe(false);
+    expect(fractionalSubCount.ok).toBe(false);
+    expect(invalidSubScores.ok).toBe(false);
+    expect(invalidQuestionType.ok).toBe(false);
+  });
+
+  it("plans production UI group shape with child expected item counts", () => {
+    const data = payloadFromIntents(Array.from({ length: 4 }, (_, index) => groupIntent(index + 1)));
+    const plan = createGenerationJobPlan(data);
+
+    expect(plan.ok).toBe(true);
+    expect(plan.progress.requestedItemCount).toBe(8);
+    expect(plan.batches).toHaveLength(1);
+    expect(plan.batches[0]).toMatchObject({
+      parentSlotCount: 4,
+      expectedItemCount: 8,
+      groupChildCount: 8,
+    });
+    expect(plan.batches[0].expectedItemIds).toEqual([
+      "Q-001-1",
+      "Q-001-2",
+      "Q-002-1",
+      "Q-002-2",
+      "Q-003-1",
+      "Q-003-2",
+      "Q-004-1",
+      "Q-004-2",
+    ]);
+
+    const accepted = assertItemsPayload({
+      items: generatedItemsForExpectedSlots(plan.batches[0].expectedSlots),
+    }, plan.batches[0].expectedItemCount, {
+      expectedSlots: plan.batches[0].intents,
+    });
+
+    expect(accepted.ok).toBe(true);
+  });
+
+  it("returns safe count mismatch diagnostics for group payload drift", () => {
+    const data = payloadFromIntents(Array.from({ length: 4 }, (_, index) => groupIntent(index + 1)));
+    const plan = createGenerationJobPlan(data);
+    const items = generatedItemsForExpectedSlots(plan.batches[0].expectedSlots);
+    const expected8Actual4 = assertItemsPayload({ items: items.slice(0, 4) }, 8, {
+      expectedSlots: plan.batches[0].intents,
+    });
+    const expected8Actual7 = assertItemsPayload({ items: items.slice(0, 7) }, 8, {
+      expectedSlots: plan.batches[0].intents,
+    });
+
+    expect(expected8Actual4.ok).toBe(false);
+    expect(expected8Actual4.errorCode).toBe(ERROR_CODES.AI_ITEMS_PAYLOAD_INVALID);
+    expect(expected8Actual4.diagnostics).toEqual({
+      errorCode: "ITEMS_COUNT_MISMATCH",
+      expectedItemCount: 8,
+      actualItemCount: 4,
+      parentSlotCount: 4,
+      groupChildCount: 8,
+    });
+    expect(expected8Actual7.diagnostics).toMatchObject({
+      errorCode: "ITEMS_COUNT_MISMATCH",
+      expectedItemCount: 8,
+      actualItemCount: 7,
+      parentSlotCount: 4,
+      groupChildCount: 8,
+    });
+    const text = JSON.stringify(expected8Actual4).toLowerCase();
+    expect(text).not.toContain("shared reading stimulus");
+    expect(text).not.toContain("raw output");
+    expect(text).not.toContain("token");
+  });
+
+  it("plans mixed44 UI group shape as 44 parent slots and 48 expected generated items", () => {
+    const plan = createGenerationJobPlan(mixed44UiShapePayload());
+
+    expect(plan.ok).toBe(true);
+    expect(plan.request.intents).toHaveLength(44);
+    expect(plan.progress.requestedItemCount).toBe(48);
+    expect(plan.progress.batchCount).toBe(11);
+    expect(plan.batches.map((batch) => batch.expectedItemCount)).toEqual([
+      4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 8,
+    ]);
+    expect(plan.batches[10]).toMatchObject({
+      parentSlotCount: 4,
+      expectedItemCount: 8,
+      groupChildCount: 8,
+    });
+    expect(plan.batches[10].expectedItemIds).toEqual([
+      "Q-041-1",
+      "Q-041-2",
+      "Q-042-1",
+      "Q-042-2",
+      "Q-043-1",
+      "Q-043-2",
+      "Q-044-1",
+      "Q-044-2",
+    ]);
   });
 
   it("resolves bounded batch concurrency with conservative defaults", () => {
@@ -1089,6 +1331,101 @@ describe("async generation job skeleton", () => {
       batchNumber: 11,
       errorCode: ERROR_CODES.AI_ITEMS_PAYLOAD_INVALID,
     })));
+    expect(fetch).toHaveBeenCalledTimes(11);
+  });
+
+  it("finalizes a mixed44 UI group-shape job as partial with child missing slots", async () => {
+    const db = createFakeJobsDb();
+    const jobId = "gen_workflow_mixed44_group_partial_12345678";
+    const data = mixed44UiShapePayload();
+    const plan = createGenerationJobPlan(data);
+    mockGeminiItemBatches([
+      ...plan.batches.slice(0, 10).map((batch) => generatedItemsForExpectedSlots(batch.expectedSlots)),
+      generatedItemsForExpectedSlots(plan.batches[10].expectedSlots).slice(0, 7),
+    ]);
+    db.seedJob({
+      job_id: jobId,
+      requested_item_count: plan.progress.requestedItemCount,
+      batch_count: plan.progress.batchCount,
+      expires_at: "2026-06-25T00:00:00.000Z",
+    });
+    for (const batch of plan.batches) {
+      db.seedBatch({ job_id: jobId, batch_number: batch.batchNumber, expected_item_count: batch.expectedItemCount });
+    }
+
+    const workflow = new GenerationWorkflow();
+    workflow.env = {
+      GENERATION_JOBS_DB: db,
+      GEMINI_API_KEY: "test-key",
+    };
+    const step = {
+      async do(_name, callback) {
+        return callback();
+      },
+    };
+
+    const result = await workflow.run({
+      payload: {
+        jobId,
+        request: plan.request,
+        batches: plan.batches,
+        progress: plan.progress,
+      },
+    }, step);
+
+    expect(result).toMatchObject({
+      ok: true,
+      status: "partial",
+      requestedItemCount: 48,
+      batchCount: 11,
+      completedBatchCount: 10,
+      completedItemCount: 40,
+      missingItemCount: 8,
+    });
+    expect(db.state.jobs[0].status).toBe("partial");
+    expect(db.state.jobs[0].completed_item_count).toBe(40);
+    expect(db.state.jobs[0].result_item_count).toBe(40);
+    expect(db.state.batches.map((batch) => batch.expected_item_count)).toEqual([
+      4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 8,
+    ]);
+    expect(db.state.batches[10].status).toBe("failed_terminal");
+    expect(db.state.batches[10].error_code).toBe(ERROR_CODES.AI_ITEMS_PAYLOAD_INVALID);
+
+    const resultResponse = await worker.fetch(new Request(`https://worker.test/generation-jobs/${jobId}/result`), {
+      ALLOWED_ORIGIN: "*",
+      GENERATION_JOBS_DB: db,
+    });
+    const body = await readJson(resultResponse);
+
+    expect(resultResponse.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.status).toBe("partial");
+    expect(body.requestedItemCount).toBe(48);
+    expect(body.completedItemCount).toBe(40);
+    expect(body.items).toHaveLength(40);
+    expect(body.items.map((item) => item.itemIndex)).toEqual(Array.from({ length: 40 }, (_, index) => index + 1));
+    expect(body.missingItems.map((item) => item.itemIndex)).toEqual([41, 42, 43, 44, 45, 46, 47, 48]);
+    expect(body.missingItems.map((item) => item.itemId)).toEqual([
+      "Q-041-1",
+      "Q-041-2",
+      "Q-042-1",
+      "Q-042-2",
+      "Q-043-1",
+      "Q-043-2",
+      "Q-044-1",
+      "Q-044-2",
+    ]);
+    expect(body.missingItems.map((item) => item.parentItemId)).toEqual([
+      "Q-041",
+      "Q-041",
+      "Q-042",
+      "Q-042",
+      "Q-043",
+      "Q-043",
+      "Q-044",
+      "Q-044",
+    ]);
+    expect(body.missingItems.map((item) => item.childIndex)).toEqual([1, 2, 1, 2, 1, 2, 1, 2]);
     expect(fetch).toHaveBeenCalledTimes(11);
   });
 

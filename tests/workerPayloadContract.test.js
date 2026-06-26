@@ -501,41 +501,62 @@ describe("Worker items payload contract", () => {
     });
   });
 
-  it("accepts requested group slots with stimulus and rejects missing stimulus", () => {
-    const groupSlot = slot("proficiency", { isGroup: true });
+  it("accepts requested group slots expanded as child items with stimulus and rejects missing stimulus", () => {
+    const groupSlot = slot("proficiency", { isGroup: true, subCount: 2, subScores: [2, 3] });
     const accepted = assertItemsPayload({
-      items: [item({
-        questionType: "proficiency",
-        groupId: "G-1",
-        stimulus: "Shared reading text",
-      })],
-    }, 1, {
+      items: [
+        item({
+          itemId: "Q-001-1",
+          questionType: "proficiency",
+          groupId: "G-001",
+          stimulus: "Shared reading text",
+          score: 2,
+        }),
+        item({
+          itemId: "Q-001-2",
+          questionType: "proficiency",
+          groupId: "G-001",
+          stimulus: "",
+          score: 3,
+        }),
+      ],
+    }, 2, {
       expectedSlots: [groupSlot],
     });
     const inheritedStimulus = assertItemsPayload({
       items: [
         item({
+          itemId: "Q-001-1",
           questionType: "proficiency",
-          groupId: "G-1",
+          groupId: "G-001",
           stimulus: "Shared reading text",
         }),
         item({
-          itemId: "Q-002",
+          itemId: "Q-001-2",
           questionType: "proficiency",
-          groupId: "G-1",
+          groupId: "G-001",
           stimulus: "",
         }),
       ],
     }, 2, {
-      expectedSlots: [groupSlot, { ...groupSlot, itemId: "Q-002" }],
+      expectedSlots: [groupSlot],
     });
     const missingStimulus = assertItemsPayload({
-      items: [item({
-        questionType: "proficiency",
-        groupId: "G-1",
-        stimulus: "",
-      })],
-    }, 1, {
+      items: [
+        item({
+          itemId: "Q-001-1",
+          questionType: "proficiency",
+          groupId: "G-001",
+          stimulus: "",
+        }),
+        item({
+          itemId: "Q-001-2",
+          questionType: "proficiency",
+          groupId: "G-001",
+          stimulus: "",
+        }),
+      ],
+    }, 2, {
       expectedSlots: [groupSlot],
     });
 

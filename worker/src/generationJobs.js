@@ -1,5 +1,6 @@
 import { handleOptions, jsonResponse } from "./cors.js";
 import { CONTRACT_VIOLATION_TYPES, ERROR_CODES, assertItemsPayload, readJson, safeErrorPayload } from "./json.js";
+import { expandExpectedGenerationSlots } from "./groupSlots.js";
 
 export const ASYNC_GENERATION_MAX_ITEM_COUNT = 50;
 export const ASYNC_GENERATION_BATCH_SIZE = 4;
@@ -133,6 +134,11 @@ function normalizeContractViolationItemIndex(value) {
   return Number.isInteger(count) && count > 0 ? count : null;
 }
 
+function normalizeSafeSlotIdentifier(value) {
+  const text = String(value || "").trim();
+  return /^[A-Za-z0-9_-]{1,80}$/.test(text) ? text : null;
+}
+
 function safeContractViolation(value = {}) {
   const detail = isPlainObject(value) ? value : {};
   const types = normalizeContractViolationTypes(detail.types);
@@ -226,13 +232,17 @@ function createBatchSlotPlan(batches = []) {
   return safeBatches.map((batch, index) => {
     const batchNumber = toSafeCount(batch?.batchNumber, index + 1);
     const expectedItemCount = toSafeCount(batch?.expectedItemCount);
-    const itemIndexes = Array.from({ length: expectedItemCount }, (_, offset) => nextItemIndex + offset);
+    const expectedSlots = Array.isArray(batch?.expectedSlots) ? batch.expectedSlots : [];
+    const itemIndexes = expectedSlots.length === expectedItemCount
+      ? expectedSlots.map((slot, offset) => toSafeCount(slot?.expectedItemIndex, nextItemIndex + offset))
+      : Array.from({ length: expectedItemCount }, (_, offset) => nextItemIndex + offset);
     nextItemIndex += expectedItemCount;
     return {
       batchNumber,
       expectedItemCount,
       itemIndexes,
       startItemIndex: itemIndexes[0] || null,
+      expectedSlots,
     };
   });
 }
@@ -258,12 +268,24 @@ function createMissingItemsFromFailedBatches(batches = [], failedBatches = []) {
       : null;
     const upstreamStatus = normalizeUpstreamStatus(failed?.diagnostics?.upstreamStatus);
 
-    for (const itemIndex of batch.itemIndexes) {
+    for (let slotIndex = 0; slotIndex < batch.itemIndexes.length; slotIndex += 1) {
+      const itemIndex = batch.itemIndexes[slotIndex];
+      const expectedSlot = batch.expectedSlots[slotIndex] || {};
       const missing = {
         itemIndex,
         batchNumber: batch.batchNumber,
         errorCode,
       };
+      if (expectedSlot.isGroupChild) {
+        const itemId = normalizeSafeSlotIdentifier(expectedSlot.itemId);
+        const parentItemId = normalizeSafeSlotIdentifier(expectedSlot.parentItemId);
+        const childIndex = normalizeContractViolationItemIndex(expectedSlot.childIndex);
+        const groupId = normalizeSafeSlotIdentifier(expectedSlot.groupId);
+        if (itemId) missing.itemId = itemId;
+        if (parentItemId) missing.parentItemId = parentItemId;
+        if (childIndex !== null) missing.childIndex = childIndex;
+        if (groupId) missing.groupId = groupId;
+      }
       if (failureItemIndex !== null) missing.failureItemIndex = failureItemIndex;
       if (violation.types.length > 0) missing.contractViolationTypes = violation.types;
       if (violation.field) missing.contractViolationField = violation.field;
@@ -284,6 +306,14 @@ function safeMissingItemPayload(value = {}) {
   if (itemIndex === null || batchNumber === null) return null;
 
   const missing = { itemIndex, batchNumber, errorCode };
+  const itemId = normalizeSafeSlotIdentifier(item.itemId);
+  if (itemId) missing.itemId = itemId;
+  const parentItemId = normalizeSafeSlotIdentifier(item.parentItemId);
+  if (parentItemId) missing.parentItemId = parentItemId;
+  const childIndex = normalizeContractViolationItemIndex(item.childIndex);
+  if (childIndex !== null) missing.childIndex = childIndex;
+  const groupId = normalizeSafeSlotIdentifier(item.groupId);
+  if (groupId) missing.groupId = groupId;
   const failureItemIndex = normalizeContractViolationItemIndex(item.failureItemIndex);
   if (failureItemIndex !== null) missing.failureItemIndex = failureItemIndex;
   const contractViolationTypes = normalizeContractViolationTypes(item.contractViolationTypes);
@@ -351,17 +381,38 @@ function isValidJobId(jobId) {
 
 function createBatches(intents, batchSize = ASYNC_GENERATION_BATCH_SIZE) {
   const batches = [];
+  let nextExpectedItemIndex = 1;
+  let groupChildCount = 0;
   for (let index = 0; index < intents.length; index += batchSize) {
     const entries = intents.slice(index, index + batchSize);
+    const expanded = expandExpectedGenerationSlots(entries, { startItemIndex: nextExpectedItemIndex });
+    if (!expanded.ok) {
+      return {
+        ok: false,
+        error: expanded.error,
+        errorCode: ERROR_CODES.REQUEST_INVALID,
+      };
+    }
+    nextExpectedItemIndex += expanded.expectedItemCount;
+    groupChildCount += expanded.groupChildCount;
     batches.push({
       batchNumber: batches.length + 1,
       status: "queued",
-      expectedItemCount: entries.length,
-      expectedItemIds: entries.map((intent, itemIndex) => String(intent?.itemId || `item-${index + itemIndex + 1}`)),
+      parentSlotCount: entries.length,
+      expectedItemCount: expanded.expectedItemCount,
+      groupChildCount: expanded.groupChildCount,
+      expectedItemIds: expanded.expectedSlots.map((slot) => String(slot.itemId)),
+      expectedSlots: expanded.expectedSlots,
       intents: entries,
     });
   }
-  return batches;
+  return {
+    ok: true,
+    batches,
+    parentSlotCount: intents.length,
+    expectedItemCount: nextExpectedItemIndex - 1,
+    groupChildCount,
+  };
 }
 
 export function createGenerationJobPlan(data = {}) {
@@ -393,7 +444,9 @@ export function createGenerationJobPlan(data = {}) {
     };
   }
 
-  const batches = createBatches(intents);
+  const batchPlan = createBatches(intents);
+  if (!batchPlan.ok) return batchPlan;
+  const { batches } = batchPlan;
   return {
     ok: true,
     request: {
@@ -405,7 +458,7 @@ export function createGenerationJobPlan(data = {}) {
     },
     progress: {
       status: JOB_STATUS.QUEUED,
-      requestedItemCount: intents.length,
+      requestedItemCount: batchPlan.expectedItemCount,
       batchSize: ASYNC_GENERATION_BATCH_SIZE,
       batchCount: batches.length,
       completedBatchCount: 0,

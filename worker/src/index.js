@@ -153,7 +153,9 @@ async function generateAndValidateBatch({ env, request, batch, batchNumber }) {
           diagnostics: mergeUpstreamDiagnostics(parsed.diagnostics, latestUpstreamStatus),
         };
       } else {
-        const payload = assertItemsPayload(parsed.data, batch.expectedItemCount, { expectedSlots: batch.intents });
+        const payload = assertItemsPayload(parsed.data, batch.expectedItemCount, {
+          expectedSlots: batch.expectedSlots || batch.intents,
+        });
         if (!payload.ok) {
           lastResult = {
             ok: false,
