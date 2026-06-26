@@ -1210,7 +1210,7 @@ function renderPlanTable() {
         ? '題型清單目前已收斂為「<span style="color:#d32f2f; font-weight:bold;">標準四選一選擇題</span>」。'
         : '題型清單目前開放「<span style="color:#d32f2f; font-weight:bold;">選擇題、是非題、填充題、學力檢測題／情境題組</span>」。'}<br>
       ${CHOICE_ONLY_STOPGAP_ENABLED
-        ? `<strong>目前限制</strong>：${escapeHtml(CHOICE_ONLY_STOPGAP_MESSAGE)}題組、是非、填充與情境題組待題型契約分流完成後再開放。`
+        ? `<strong>安全模式</strong>：${escapeHtml(CHOICE_ONLY_STOPGAP_MESSAGE)}`
         : "<strong>目前開放</strong>：標準四選一選擇題、是非題、填充題、學力檢測題／情境題組；其他舊題型仍未開放。"}
     </p>
     <div class="table-wrap"><table style="font-size:16px;">
@@ -1470,7 +1470,7 @@ function renderStep3Or4() {
   return `<section class="panel">
     <h2>③ 配題與藍圖</h2>
     <p class="notice">${isChinese ? "藍圖鎖定每題題型、配分與評量向度；AI 生成時將嚴格遵循指定的向度命題，以確保向度佔分精準。" : "藍圖只鎖定每題的題型與配分；各題對應哪個學習目標、認知層次與出題順序，交由 AI 依下列節數比例與整卷整體性編排。"}</p>
-    ${CHOICE_ONLY_STOPGAP_ENABLED ? `<p class="notice">${escapeHtml(CHOICE_ONLY_STOPGAP_MESSAGE)}本輪題位固定為單題，不開放題組設定。</p>` : ""}
+    ${CHOICE_ONLY_STOPGAP_ENABLED ? `<p class="notice">${escapeHtml(CHOICE_ONLY_STOPGAP_MESSAGE)}本輪題位固定為單題。</p>` : ""}
 
     ${targetsSectionHtml}
 
@@ -1500,7 +1500,7 @@ function renderStep3Or4() {
     </table></div>
 
     <h3>題位（共 ${intents.length} 題）</h3>
-    <p class="notice" style="margin-bottom:12px;">${CHOICE_ONLY_STOPGAP_ENABLED ? "本輪題位固定為標準四選一單題；題組與混合題型待題型契約分流完成後再開放。" : "您可以將學力檢測題／情境題組設定為題組，並設定其子題數量；其他題型維持單題。"}</p>
+    <p class="notice" style="margin-bottom:12px;">${CHOICE_ONLY_STOPGAP_ENABLED ? "本輪題位固定為標準四選一單題。" : "您可以將學力檢測題／情境題組設定為題組，並設定其子題數量；其他題型維持單題。"}</p>
     <div class="table-wrap"><table>
       <thead><tr><th>題號</th><th>題型</th><th>配分</th><th>題組與設定</th></tr></thead>
       <tbody>${intents.slice(0, 80).map((slot, index) => {
