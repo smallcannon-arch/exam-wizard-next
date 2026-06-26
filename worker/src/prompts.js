@@ -363,8 +363,8 @@ function getJsonOutputStabilityGuidelines(contractFlags) {
     parts.push(
       "# 填充題 JSON contract",
       "- 填充題的 answer 必須是非空文字答案；不得使用 A/B/C/D 或 O/X 代號作為答案。",
-      "- 填充題的 options 必須省略；不得輸出空陣列或選項陣列。",
-      "- 若填充題有多個可接受答案，可輸出 acceptedAnswers，其值必須是非空字串陣列。",
+      "- 填充題的 options 應省略；若模型意外輸出空陣列，會視同省略；不得輸出非空 options、A/B/C/D 選項或把填充題寫成選擇題。",
+      "- 若填充題有多個可接受答案，可輸出 acceptedAnswers，其值必須是非空字串陣列；answer 仍應使用主要文字答案。",
       "- 填充題的 qualityMeta.distractorDesign 若沒有選項誘答，必須使用空物件。"
     );
   }

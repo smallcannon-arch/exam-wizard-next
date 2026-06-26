@@ -290,8 +290,9 @@ describe("worker prompts", () => {
 
     expect(prompt).toContain("## 3. 填充題");
     expect(prompt).toContain("填充題的 answer 必須是非空文字答案");
-    expect(prompt).toContain("填充題的 options 必須省略");
-    expect(prompt).toContain("若填充題有多個可接受答案，可輸出 acceptedAnswers");
+    expect(prompt).toContain("填充題的 options 應省略");
+    expect(prompt).toContain("不得輸出非空 options、A/B/C/D 選項或把填充題寫成選擇題");
+    expect(prompt).toContain("answer 仍應使用主要文字答案");
     expect(prompt).toContain("填充題的 qualityMeta.distractorDesign 若沒有選項誘答，必須使用空物件");
     expect(prompt).not.toContain("選擇題形式 JSON contract");
     expect(prompt).not.toContain("options 必須是 JSON array");

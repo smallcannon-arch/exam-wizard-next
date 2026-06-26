@@ -603,14 +603,15 @@ describe("Worker items payload contract", () => {
     expect(result.ok).toBe(true);
   });
 
-  it("currently rejects requested fill-in slots with empty options arrays", () => {
+  it("accepts requested fill-in slots with empty options arrays and removes them", () => {
     const result = assertItemsPayload({
       items: [fillInItem({ options: [] })],
     }, 1, {
       expectedSlots: [slot(FILL_IN_TYPE)],
     });
 
-    expectContractViolation(result, CONTRACT_VIOLATION_TYPES.FILL_IN_OPTIONS_INVALID, "options");
+    expect(result.ok).toBe(true);
+    expect(hasOwnField(result.items[0], "options")).toBe(false);
   });
 
   it("rejects requested fill-in slots with empty answers", () => {
@@ -623,7 +624,17 @@ describe("Worker items payload contract", () => {
     expectContractViolation(result, CONTRACT_VIOLATION_TYPES.FILL_IN_ANSWER_INVALID, "answer");
   });
 
-  it.each(["A", "B", "C", "D", "O", "X"])(
+  it("rejects requested fill-in slots with empty answer arrays", () => {
+    const result = assertItemsPayload({
+      items: [fillInItem({ answer: [] })],
+    }, 1, {
+      expectedSlots: [slot(FILL_IN_TYPE)],
+    });
+
+    expectContractViolation(result, CONTRACT_VIOLATION_TYPES.FILL_IN_ANSWER_INVALID, "answer");
+  });
+
+  it.each(["A", "B", "C", "D", "O", "X", "a", "b", "c", "d", "o", "x"])(
     "currently rejects requested fill-in slots with answer code %s",
     (answer) => {
       const result = assertItemsPayload({
@@ -635,6 +646,16 @@ describe("Worker items payload contract", () => {
       expectContractViolation(result, CONTRACT_VIOLATION_TYPES.FILL_IN_ANSWER_INVALID, "answer");
     },
   );
+
+  it("keeps code-prefixed fill-in answers fail-safe", () => {
+    const result = assertItemsPayload({
+      items: [fillInItem({ answer: "A. water" })],
+    }, 1, {
+      expectedSlots: [slot(FILL_IN_TYPE)],
+    });
+
+    expectContractViolation(result, CONTRACT_VIOLATION_TYPES.FILL_IN_ANSWER_INVALID, "answer");
+  });
 
   it("rejects requested fill-in slots that include choice options", () => {
     const result = assertItemsPayload({
@@ -689,14 +710,41 @@ describe("Worker items payload contract", () => {
     expectContractViolation(result, CONTRACT_VIOLATION_TYPES.QUESTION_TYPE_MISMATCH, "questionType");
   });
 
-  it("currently rejects requested fill-in slots with answer string arrays", () => {
+  it("accepts requested fill-in slots with answer string arrays and canonicalizes them", () => {
     const result = assertItemsPayload({
       items: [fillInItem({ answer: ["water", "Water"] })],
     }, 1, {
       expectedSlots: [slot(FILL_IN_TYPE)],
     });
 
+    expect(result.ok).toBe(true);
+    expect(result.items[0].answer).toBe("water");
+    expect(result.items[0].acceptedAnswers).toEqual(["water", "Water"]);
+  });
+
+  it.each([true, false])("rejects requested fill-in slots with boolean answer %s", (answer) => {
+    const result = assertItemsPayload({
+      items: [fillInItem({ answer })],
+    }, 1, {
+      expectedSlots: [slot(FILL_IN_TYPE)],
+    });
+
     expectContractViolation(result, CONTRACT_VIOLATION_TYPES.FILL_IN_ANSWER_INVALID, "answer");
+  });
+
+  it("does not expose raw item text in fill-in typed contract diagnostics", () => {
+    const rawMarker = "RAW_FILL_IN_FIXTURE_MARKER";
+    const result = assertItemsPayload({
+      items: [fillInItem({
+        question: rawMarker,
+        answer: "A",
+      })],
+    }, 1, {
+      expectedSlots: [slot(FILL_IN_TYPE)],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(JSON.stringify(result)).not.toContain(rawMarker);
   });
 
   it("does not expose raw item text in typed contract diagnostics", () => {
@@ -766,6 +814,28 @@ describe("Worker items payload contract", () => {
       itemIndex: 1,
       field: "questionType",
     });
+  });
+
+  it("uses requested slot questionType authority when model omits questionType", () => {
+    const trueFalse = assertItemsPayload({
+      items: [trueFalseItem({ questionType: undefined })],
+    }, 1, {
+      expectedSlots: [slot(TRUE_FALSE_TYPE)],
+    });
+    const fillIn = assertItemsPayload({
+      items: [fillInItem({ questionType: undefined })],
+    }, 1, {
+      expectedSlots: [slot(FILL_IN_TYPE)],
+    });
+    const choice = assertItemsPayload({
+      items: [item({ questionType: undefined })],
+    }, 1, {
+      expectedSlots: [slot(CHOICE_TYPE)],
+    });
+
+    expect(trueFalse.ok).toBe(true);
+    expect(fillIn.ok).toBe(true);
+    expect(choice.ok).toBe(true);
   });
 
   it("rejects typed validation slots that omit requested questionType", () => {

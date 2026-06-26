@@ -541,23 +541,52 @@ function assertTrueFalseContract(item, index) {
   return { ok: true };
 }
 
-function assertFillInContract(item, index) {
-  if (hasOwnField(item, "options")) {
-    return outputContractError(index, "fill-in items must omit options", contractViolation(
-      CONTRACT_VIOLATION_TYPES.FILL_IN_OPTIONS_INVALID,
-      index,
-      { field: "options" },
-    ));
+function isFillInAnswerCodeLike(value) {
+  if (typeof value !== "string") return false;
+  const text = value.trim();
+  if (!text) return false;
+  if (normalizeAnswerKey(text) || normalizeTrueFalseAnswer(text)) return true;
+  return /^[A-DOX][\s.)、．:：-]+/i.test(text);
+}
+
+function normalizeFillInAnswerValues(value) {
+  const values = Array.isArray(value) ? value : [value];
+  if (!values.every((entry) => typeof entry === "string")) return { ok: false, values: [] };
+
+  const trimmed = values.map((entry) => entry.trim()).filter(Boolean);
+  if (trimmed.length === 0) return { ok: false, values: [] };
+  if (trimmed.some((entry) => isFillInAnswerCodeLike(entry))) return { ok: false, values: [] };
+
+  return { ok: true, values: trimmed };
+}
+
+function assertFillInOptionsContract(item, index) {
+  if (!hasOwnField(item || {}, "options")) return { ok: true };
+  if (Array.isArray(item.options) && item.options.length === 0) {
+    delete item.options;
+    return { ok: true };
   }
 
-  const answerText = typeof item?.answer === "string" ? item.answer.trim() : "";
-  if (!answerText || normalizeAnswerKey(answerText) || normalizeTrueFalseAnswer(answerText)) {
+  return outputContractError(index, "fill-in options must be omitted or empty", contractViolation(
+    CONTRACT_VIOLATION_TYPES.FILL_IN_OPTIONS_INVALID,
+    index,
+    { field: "options" },
+  ));
+}
+
+function assertFillInContract(item, index) {
+  const options = assertFillInOptionsContract(item, index);
+  if (!options.ok) return options;
+
+  const normalizedAnswer = normalizeFillInAnswerValues(item?.answer);
+  if (!normalizedAnswer.ok) {
     return outputContractError(index, "fill-in answer must be non-empty text", contractViolation(
       CONTRACT_VIOLATION_TYPES.FILL_IN_ANSWER_INVALID,
       index,
-      { field: "answer", optionCode: safeOptionCode(answerText) },
+      { field: "answer", optionCode: safeOptionCode(item?.answer) },
     ));
   }
+  item.answer = normalizedAnswer.values[0];
 
   if (hasOwnField(item, "acceptedAnswers")) {
     if (!Array.isArray(item.acceptedAnswers) || item.acceptedAnswers.some((entry) => !hasText(entry))) {
@@ -567,6 +596,13 @@ function assertFillInContract(item, index) {
         { field: "acceptedAnswers" },
       ));
     }
+  }
+  const acceptedAnswers = [
+    ...normalizedAnswer.values,
+    ...(Array.isArray(item.acceptedAnswers) ? item.acceptedAnswers.map((entry) => entry.trim()) : []),
+  ].filter((entry, index, array) => entry && array.indexOf(entry) === index);
+  if (acceptedAnswers.length > 1 || Array.isArray(item.acceptedAnswers)) {
+    item.acceptedAnswers = acceptedAnswers;
   }
 
   return { ok: true };
