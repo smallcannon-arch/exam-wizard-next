@@ -1,4 +1,8 @@
 import { QUALITY_META_SCHEMA_VERSION } from "./schema.js";
+import {
+  isChoiceLikeQuestionType,
+  shouldDisplayOptionsForQuestionType,
+} from "./questionTypes.js";
 
 function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -185,17 +189,28 @@ export function normalizeGeneratedItem(item) {
     item.solution,
   );
 
+  const questionType = firstNonEmptyText(item.questionType, item.itemType);
+  const hasQuestionType = questionType !== "";
+  const rawOptionsProvided = Object.prototype.hasOwnProperty.call(item, "options");
   const options = normalizeOptions(item.options);
-  const answer = normalizeAnswerValue(firstNonEmptyText(item.answer, item.correctAnswer, item.key), options);
-  const correctAnswer = normalizeAnswerValue(item.correctAnswer, options);
+  const shouldNormalizeAsChoice = hasQuestionType ? isChoiceLikeQuestionType(questionType) : true;
+  const answer = shouldNormalizeAsChoice
+    ? normalizeAnswerValue(firstNonEmptyText(item.answer, item.correctAnswer, item.key), options)
+    : firstNonEmptyText(item.answer, item.correctAnswer, item.key);
+  const correctAnswer = shouldNormalizeAsChoice
+    ? normalizeAnswerValue(item.correctAnswer, options)
+    : firstNonEmptyText(item.correctAnswer);
   const normalizedItem = {
     ...canonicalItem,
     question,
-    options,
     answer,
     explanation,
     qualityMeta: normalizeQualityMeta(item, explanation, options, answer),
   };
+
+  if (!hasQuestionType || shouldDisplayOptionsForQuestionType(questionType) || (rawOptionsProvided && options.length > 0)) {
+    normalizedItem.options = options;
+  }
 
   if (firstNonEmptyText(item.correctAnswer)) {
     normalizedItem.correctAnswer = correctAnswer;

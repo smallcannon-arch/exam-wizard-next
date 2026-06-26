@@ -3,8 +3,91 @@
 
 export const LITERACY_ASSESSMENT_TYPE = "學力檢測題";
 export const STANDARD_CHOICE_QUESTION_TYPE = "選擇題";
+export const TRUE_FALSE_QUESTION_TYPE = "是非題";
+export const FILL_IN_QUESTION_TYPE = "填充題";
 export const CHOICE_ONLY_STOPGAP_ENABLED = true;
 export const CHOICE_ONLY_STOPGAP_MESSAGE = "混合題型支援開發中，目前暫限標準四選一選擇題。";
+
+export const QUESTION_TYPE_KINDS = Object.freeze({
+  CHOICE: "choice",
+  TRUE_FALSE: "true_false",
+  FILL_IN: "fill_in",
+  GROUP: "group",
+  UNKNOWN: "unknown",
+});
+
+const QUESTION_TYPE_ALIASES = new Map([
+  [STANDARD_CHOICE_QUESTION_TYPE, STANDARD_CHOICE_QUESTION_TYPE],
+  ["choice", STANDARD_CHOICE_QUESTION_TYPE],
+  ["single_choice", STANDARD_CHOICE_QUESTION_TYPE],
+  [TRUE_FALSE_QUESTION_TYPE, TRUE_FALSE_QUESTION_TYPE],
+  ["true_false", TRUE_FALSE_QUESTION_TYPE],
+  ["true/false", TRUE_FALSE_QUESTION_TYPE],
+  ["O/X", TRUE_FALSE_QUESTION_TYPE],
+  ["OX", TRUE_FALSE_QUESTION_TYPE],
+  [FILL_IN_QUESTION_TYPE, FILL_IN_QUESTION_TYPE],
+  ["fill_in", FILL_IN_QUESTION_TYPE],
+  ["fill-in", FILL_IN_QUESTION_TYPE],
+  [LITERACY_ASSESSMENT_TYPE, LITERACY_ASSESSMENT_TYPE],
+  ["學力檢測", LITERACY_ASSESSMENT_TYPE],
+  ["情境題組", LITERACY_ASSESSMENT_TYPE],
+  ["scenario_group", LITERACY_ASSESSMENT_TYPE],
+  ["proficiency", LITERACY_ASSESSMENT_TYPE],
+]);
+
+const QUESTION_TYPE_KIND_BY_NAME = new Map([
+  [STANDARD_CHOICE_QUESTION_TYPE, QUESTION_TYPE_KINDS.CHOICE],
+  [TRUE_FALSE_QUESTION_TYPE, QUESTION_TYPE_KINDS.TRUE_FALSE],
+  [FILL_IN_QUESTION_TYPE, QUESTION_TYPE_KINDS.FILL_IN],
+  [LITERACY_ASSESSMENT_TYPE, QUESTION_TYPE_KINDS.GROUP],
+]);
+
+export function normalizeQuestionType(questionType) {
+  const text = String(questionType || "").trim();
+  return QUESTION_TYPE_ALIASES.get(text) || text;
+}
+
+export function getQuestionTypeKind(questionType) {
+  return QUESTION_TYPE_KIND_BY_NAME.get(normalizeQuestionType(questionType)) || QUESTION_TYPE_KINDS.UNKNOWN;
+}
+
+export function isKnownQuestionType(questionType) {
+  return getQuestionTypeKind(questionType) !== QUESTION_TYPE_KINDS.UNKNOWN;
+}
+
+export function isChoiceQuestionType(questionType) {
+  return getQuestionTypeKind(questionType) === QUESTION_TYPE_KINDS.CHOICE;
+}
+
+export function isTrueFalseQuestionType(questionType) {
+  return getQuestionTypeKind(questionType) === QUESTION_TYPE_KINDS.TRUE_FALSE;
+}
+
+export function isFillInQuestionType(questionType) {
+  return getQuestionTypeKind(questionType) === QUESTION_TYPE_KINDS.FILL_IN;
+}
+
+export function isGroupQuestionType(questionType) {
+  return getQuestionTypeKind(questionType) === QUESTION_TYPE_KINDS.GROUP;
+}
+
+export function isChoiceLikeQuestionType(questionType) {
+  const kind = getQuestionTypeKind(questionType);
+  return kind === QUESTION_TYPE_KINDS.CHOICE || kind === QUESTION_TYPE_KINDS.GROUP;
+}
+
+export function usesAnswerBlank(questionType) {
+  return [
+    QUESTION_TYPE_KINDS.CHOICE,
+    QUESTION_TYPE_KINDS.TRUE_FALSE,
+    QUESTION_TYPE_KINDS.FILL_IN,
+    QUESTION_TYPE_KINDS.GROUP,
+  ].includes(getQuestionTypeKind(questionType));
+}
+
+export function shouldDisplayOptionsForQuestionType(questionType) {
+  return isChoiceLikeQuestionType(questionType);
+}
 
 const PRESETS = {
   國語文: ["選擇題", "填充題", "注音", "國字", "改錯", "照樣造句", "重組", "閱讀測驗", "圖表判讀題", "短文寫作"],

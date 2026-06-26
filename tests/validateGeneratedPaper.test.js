@@ -756,4 +756,143 @@ describe("validateGeneratedPaper", () => {
     expect(result.ok).toBe(false);
     expect(result.errors.some((e) => e.includes("distractorDesign key") && e.includes("不可使用選項文字"))).toBe(true);
   });
+
+  it("allows true/false items without four choice options", () => {
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-TF-001", questionType: "是非題", score: 2, primaryObjectiveId: "O-001" }],
+      objectives: [{ objectiveId: "O-001", text: "辨認水循環現象", periodCount: 1 }],
+      items: [{
+        itemId: "Q-TF-001",
+        questionType: "是非題",
+        score: 2,
+        primaryObjectiveId: "O-001",
+        objectiveIds: ["O-001"],
+        question: "水加熱後會蒸發。",
+        answer: "O",
+      }],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  it("allows fill-in items with text answers and no choice options", () => {
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-FI-001", questionType: "填充題", score: 2, primaryObjectiveId: "O-001" }],
+      objectives: [{ objectiveId: "O-001", text: "知道燃燒條件", periodCount: 1 }],
+      items: [{
+        itemId: "Q-FI-001",
+        questionType: "填充題",
+        score: 2,
+        primaryObjectiveId: "O-001",
+        objectiveIds: ["O-001"],
+        question: "燃燒需要的氣體是什麼？",
+        answer: "氧氣",
+      }],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  it("rejects fill-in items that are normalized into A-D answers", () => {
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-FI-002", questionType: "填充題", score: 2, primaryObjectiveId: "O-001" }],
+      objectives: [{ objectiveId: "O-001", text: "知道燃燒條件", periodCount: 1 }],
+      items: [{
+        itemId: "Q-FI-002",
+        questionType: "填充題",
+        score: 2,
+        primaryObjectiveId: "O-001",
+        objectiveIds: ["O-001"],
+        question: "燃燒需要的氣體是什麼？",
+        answer: "A",
+      }],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.includes("填充題") && error.includes("A/B/C/D"))).toBe(true);
+  });
+
+  it("validates literacy assessment groups without treating the parent as a single choice item", () => {
+    const result = validateGeneratedPaper({
+      slots: [{
+        itemId: "Q-LIT-001",
+        questionType: "學力檢測題",
+        score: 4,
+        primaryObjectiveId: "O-001",
+        isGroup: true,
+        subCount: 2,
+        subScores: [2, 2],
+      }],
+      objectives: [{ objectiveId: "O-001", text: "讀懂情境資料", periodCount: 1 }],
+      items: [
+        {
+          itemId: "Q-LIT-001-1",
+          groupId: "G-LIT-001",
+          questionType: "學力檢測題",
+          score: 2,
+          primaryObjectiveId: "O-001",
+          objectiveIds: ["O-001"],
+          stimulus: "閱讀下列校園節能資料。",
+          question: "哪一項做法最能節省用電？",
+          options: ["隨手關燈", "整天開燈", "冷氣開最低", "電腦不關機"],
+          answer: "A",
+        },
+        {
+          itemId: "Q-LIT-001-2",
+          groupId: "G-LIT-001",
+          questionType: "學力檢測題",
+          score: 2,
+          primaryObjectiveId: "O-001",
+          objectiveIds: ["O-001"],
+          question: "資料中的節能行動主要提醒我們什麼？",
+          options: ["節約能源", "增加耗電", "忽略環境", "只看標題"],
+          answer: "A",
+        },
+      ],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
+  it("uses requested slot questionType as authority instead of model self-report", () => {
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-FI-003", questionType: "填充題", score: 2, primaryObjectiveId: "O-001" }],
+      objectives: [{ objectiveId: "O-001", text: "知道燃燒條件", periodCount: 1 }],
+      items: [{
+        itemId: "Q-FI-003",
+        questionType: "選擇題",
+        score: 2,
+        primaryObjectiveId: "O-001",
+        objectiveIds: ["O-001"],
+        question: "燃燒需要的氣體是什麼？",
+        options: ["氧氣", "氮氣", "二氧化碳", "氫氣"],
+        answer: "A",
+      }],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.includes("題型應為") && error.includes("填充題"))).toBe(true);
+  });
+
+  it("fails safely for unknown questionType instead of falling back to choice", () => {
+    const result = validateGeneratedPaper({
+      slots: [{ itemId: "Q-UNK-001", questionType: "短答題", score: 2, primaryObjectiveId: "O-001" }],
+      objectives: [{ objectiveId: "O-001", text: "描述自然現象", periodCount: 1 }],
+      items: [{
+        itemId: "Q-UNK-001",
+        questionType: "短答題",
+        score: 2,
+        primaryObjectiveId: "O-001",
+        objectiveIds: ["O-001"],
+        question: "請說明水蒸發的原因。",
+        answer: "受熱後變成水蒸氣",
+      }],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((error) => error.includes("未知題型"))).toBe(true);
+  });
 });

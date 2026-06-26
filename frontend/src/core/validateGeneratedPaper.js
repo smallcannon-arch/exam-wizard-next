@@ -6,6 +6,15 @@ import {
   QUALITY_META_REQUIRED_FIELDS,
   QUALITY_META_SELF_CHECK_FIELDS,
 } from "./schema.js";
+import {
+  FILL_IN_QUESTION_TYPE,
+  QUESTION_TYPE_KINDS,
+  TRUE_FALSE_QUESTION_TYPE,
+  getQuestionTypeKind,
+  isChoiceLikeQuestionType,
+  isGroupQuestionType,
+  normalizeQuestionType,
+} from "./questionTypes.js";
 
 function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -52,7 +61,8 @@ function referencesExternalText(value) {
 }
 
 function needsStimulus(item) {
-  return normalizeId(item?.questionType) === "閱讀測驗" || referencesExternalText(item?.question);
+  return normalizeId(item?.questionType) === "閱讀測驗"
+    || referencesExternalText(item?.question);
 }
 
 function getPrimaryObjective(item) {
@@ -89,8 +99,6 @@ function isGroupItem(itemId) {
   const id = normalizeId(itemId);
   return /-[1-9]\d*$/.test(id) && (id.match(/-/g) || []).length > 1;
 }
-
-const CHOICE_LIKE_TYPES = ["選擇題", "圖表判讀題", "實驗探究題", "學力檢測題", "閱讀測驗"];
 
 function optionKey(index) {
   return String.fromCharCode(65 + index);
@@ -158,10 +166,9 @@ function hasChoiceSignals(item) {
     || hasChoiceTypeSignal(item);
 }
 
-function shouldValidateChoiceForm(item) {
-  const questionType = normalizeId(item?.questionType);
-  if (!CHOICE_LIKE_TYPES.includes(questionType)) return false;
-  if (questionType !== "學力檢測題") return true;
+function shouldValidateChoiceForm(item, questionType = item?.questionType) {
+  if (!isChoiceLikeQuestionType(questionType)) return false;
+  if (!isGroupQuestionType(questionType)) return true;
   return hasChoiceSignals(item);
 }
 
@@ -184,7 +191,7 @@ function optionLengthWarning(item) {
   return "";
 }
 
-function validateQualityMeta(item, { requireQualityMeta = false } = {}) {
+function validateQualityMeta(item, { requireQualityMeta = false, questionType = item?.questionType } = {}) {
   const errors = [];
   const warnings = [];
   const id = normalizeId(item?.itemId) || "未知題號";
@@ -221,10 +228,8 @@ function validateQualityMeta(item, { requireQualityMeta = false } = {}) {
     warnings.push(`${id}：teacherExplanation 偏短，審題資訊可能不足。`);
   }
 
-  const questionType = normalizeId(item?.questionType);
-  const isChoiceLike = CHOICE_LIKE_TYPES.includes(questionType);
-  if (!isChoiceLike) return { errors, warnings };
-  if (!shouldValidateChoiceForm(item)) return { errors, warnings };
+  if (!isChoiceLikeQuestionType(questionType)) return { errors, warnings };
+  if (!shouldValidateChoiceForm(item, questionType)) return { errors, warnings };
 
   const options = Array.isArray(item?.options) ? item.options : [];
   const answerKey = normalizeAnswerKey(item?.answer);
@@ -278,10 +283,9 @@ function validateQualityMeta(item, { requireQualityMeta = false } = {}) {
   return { errors, warnings };
 }
 
-function validateChoiceAnswer(item, errors) {
+function validateChoiceAnswer(item, errors, questionType = item?.questionType) {
   const id = normalizeId(item?.itemId) || "未知題號";
-  const questionType = normalizeId(item?.questionType);
-  if (!shouldValidateChoiceForm(item)) return;
+  if (!shouldValidateChoiceForm(item, questionType)) return;
   if (!hasChoiceOptions(item)) return;
   if (!answerIsSingleChoiceKey(item)) {
     errors.push(`${id}：answer 必須是 A/B/C/D 選項代號，不可使用選項文字。`);
@@ -301,13 +305,111 @@ function validateChoiceAnswer(item, errors) {
   }
 }
 
-function validateChoiceOptionsArray(item, errors) {
+function validateChoiceOptionsArray(item, errors, questionType = item?.questionType) {
   const id = normalizeId(item?.itemId) || "未知題號";
-  const questionType = normalizeId(item?.questionType);
-  if (!shouldValidateChoiceForm(item)) return;
+  if (!shouldValidateChoiceForm(item, questionType)) return;
   if (item?.options !== undefined && !Array.isArray(item.options)) {
     errors.push(`${id}：options 必須是陣列，不可使用物件形式。`);
   }
+}
+
+function hasNonEmptyOptions(item) {
+  if (Array.isArray(item?.options)) return item.options.length > 0;
+  return item?.options !== undefined;
+}
+
+function normalizeTrueFalseAnswer(value) {
+  const text = normalizeId(value).toUpperCase().replace(/[()（）\s.。]/g, "");
+  return text === "O" || text === "X" ? text : "";
+}
+
+function validateKnownQuestionType(slot, item, errors) {
+  const id = normalizeId(item?.itemId) || normalizeId(slot?.itemId) || "未知題號";
+  const expectedType = normalizeQuestionType(slot?.questionType);
+  const actualType = normalizeQuestionType(item?.questionType);
+  const kind = getQuestionTypeKind(expectedType);
+
+  if (kind === QUESTION_TYPE_KINDS.UNKNOWN) {
+    errors.push(`${id}：未知題型「${slot?.questionType || "未提供"}」，前端無法安全驗證。`);
+  }
+  if (actualType && actualType !== expectedType) {
+    errors.push(`${id}：題型應為「${expectedType}」，不可更動。`);
+  }
+
+  return { expectedType, kind };
+}
+
+function validateTrueFalseForm(item, errors) {
+  const id = normalizeId(item?.itemId) || "未知題號";
+  if (hasNonEmptyOptions(item)) {
+    errors.push(`${id}：${TRUE_FALSE_QUESTION_TYPE}不可提供 options，答案必須為 O 或 X。`);
+  }
+
+  const answer = normalizeTrueFalseAnswer(item?.answer);
+  if (!answer) {
+    errors.push(`${id}：${TRUE_FALSE_QUESTION_TYPE} answer 必須是 O 或 X。`);
+  }
+
+  if (hasText(item?.correctAnswer)) {
+    const correctAnswer = normalizeTrueFalseAnswer(item.correctAnswer);
+    if (!correctAnswer) {
+      errors.push(`${id}：${TRUE_FALSE_QUESTION_TYPE} correctAnswer 必須是 O 或 X。`);
+    } else if (answer && correctAnswer !== answer) {
+      errors.push(`${id}：answer 與 correctAnswer 不一致。`);
+    }
+  }
+}
+
+function validateFillInForm(item, errors) {
+  const id = normalizeId(item?.itemId) || "未知題號";
+  if (hasNonEmptyOptions(item)) {
+    errors.push(`${id}：${FILL_IN_QUESTION_TYPE}不可提供 options，答案必須為文字。`);
+  }
+
+  const answer = normalizeId(item?.answer);
+  if (!answer) {
+    errors.push(`${id}：${FILL_IN_QUESTION_TYPE} answer 必須是非空白文字。`);
+  } else if (normalizeAnswerKey(answer) || normalizeTrueFalseAnswer(answer)) {
+    errors.push(`${id}：${FILL_IN_QUESTION_TYPE} answer 必須是文字答案，不可使用 A/B/C/D 或 O/X。`);
+  }
+
+  if (item?.acceptedAnswers !== undefined) {
+    if (!Array.isArray(item.acceptedAnswers) || item.acceptedAnswers.some((value) => !hasText(value))) {
+      errors.push(`${id}：acceptedAnswers 必須是非空白文字陣列。`);
+    }
+  }
+}
+
+function validateTypeSpecificContract(item, slot, errors, warnings, { requireQualityMeta = false } = {}) {
+  const { expectedType, kind } = validateKnownQuestionType(slot, item, errors);
+  const id = normalizeId(item?.itemId) || normalizeId(slot?.itemId) || "未知題號";
+
+  if (!hasText(item?.answer)) {
+    errors.push(`${id}：缺少 answer。`);
+  }
+
+  if (kind === QUESTION_TYPE_KINDS.CHOICE || kind === QUESTION_TYPE_KINDS.GROUP) {
+    validateChoiceOptionsArray(item, errors, expectedType);
+    if (shouldValidateChoiceForm(item, expectedType)) {
+      const optionCount = Array.isArray(item.options) ? item.options.length : 0;
+      if (optionCount < 2) {
+        errors.push(`${id}：${expectedType}採選擇題形式，缺少選項。`);
+      } else if (optionCount < 4) {
+        warnings.push(`提醒：${id}（${expectedType}）只有 ${optionCount} 個選項（建議 4 個）。`);
+      }
+      validateChoiceAnswer(item, errors, expectedType);
+    }
+  } else if (kind === QUESTION_TYPE_KINDS.TRUE_FALSE) {
+    validateTrueFalseForm(item, errors);
+  } else if (kind === QUESTION_TYPE_KINDS.FILL_IN) {
+    validateFillInForm(item, errors);
+  }
+
+  const qualityCheck = validateQualityMeta(item, { requireQualityMeta, questionType: expectedType });
+  errors.push(...qualityCheck.errors);
+  warnings.push(...qualityCheck.warnings);
+
+  return { expectedType, kind };
 }
 
 export function validateGeneratedPaper({ slots = [], objectives = [], items = [], qualityMode = "basic" } = {}) {
@@ -407,24 +509,7 @@ export function validateGeneratedPaper({ slots = [], objectives = [], items = []
         if (!hasText(item.question)) {
           errors.push(`${subId}：缺少 question。`);
         }
-        if (!hasText(item.answer)) {
-          errors.push(`${subId}：缺少 answer。`);
-        }
-
-        if (shouldValidateChoiceForm(item)) {
-          validateChoiceOptionsArray(item, errors);
-          const optionCount = Array.isArray(item.options) ? item.options.length : 0;
-          if (optionCount < 2) {
-            errors.push(`${subId}：${item.questionType}子題採選擇題形式，缺少選項。`);
-          } else if (optionCount < 4) {
-            warnings.push(`提醒：${subId}（${item.questionType}子題）只有 ${optionCount} 個選項（建議 4 個）。`);
-          }
-          validateChoiceAnswer(item, errors);
-        }
-
-        const qualityCheck = validateQualityMeta(item, { requireQualityMeta });
-        errors.push(...qualityCheck.errors);
-        warnings.push(...qualityCheck.warnings);
+        validateTypeSpecificContract(item, slot, errors, warnings, { requireQualityMeta });
 
         const primary = getPrimaryObjective(item);
         if (!primary) {
@@ -487,40 +572,23 @@ export function validateGeneratedPaper({ slots = [], objectives = [], items = []
       const item = groupItems[0];
       const id = normalizeId(item.itemId);
 
-      if (normalizeId(item.questionType) !== normalizeId(slot.questionType)) {
-        errors.push(`${id}：題型應為「${slot.questionType}」，不可更動。`);
-      }
       if (Number(item.score) !== Number(slot.score)) {
         errors.push(`${id}：配分應為 ${slot.score} 分，不可更動。`);
       }
       if (!hasText(item.question)) {
         errors.push(`${id}：缺少 question。`);
       }
-      if (!hasText(item.answer)) {
-        errors.push(`${id}：缺少 answer。`);
-      }
-      if (!hasText(item.stimulus) && needsStimulus(item)) {
-        if (normalizeId(item.questionType) === "閱讀測驗") {
+      if (!hasText(item.stimulus) && needsStimulus(item, slot.questionType)) {
+        if (isGroupQuestionType(slot.questionType)) {
+          errors.push(`${id}：學力檢測題／情境題組必須提供 stimulus（共同情境）。`);
+        } else if (normalizeId(item.questionType) === "閱讀測驗") {
           errors.push(`${id}：閱讀測驗必須提供 stimulus（閱讀文本），不可只有題目與選項。`);
         } else {
           errors.push(`${id}：題目文字提到上文／本文／這段文字，但缺少 stimulus（閱讀文本）。`);
         }
       }
 
-      if (shouldValidateChoiceForm(item)) {
-        validateChoiceOptionsArray(item, errors);
-        const optionCount = Array.isArray(item.options) ? item.options.length : 0;
-        if (optionCount < 2) {
-          errors.push(`${id}：${item.questionType}採選擇題形式，缺少選項。`);
-        } else if (optionCount < 4) {
-          warnings.push(`提醒：${id}（${item.questionType}）只有 ${optionCount} 個選項（建議 4 個）。`);
-        }
-        validateChoiceAnswer(item, errors);
-      }
-
-      const qualityCheck = validateQualityMeta(item, { requireQualityMeta });
-      errors.push(...qualityCheck.errors);
-      warnings.push(...qualityCheck.warnings);
+      validateTypeSpecificContract(item, slot, errors, warnings, { requireQualityMeta });
 
       const primary = getPrimaryObjective(item);
       if (!primary) {

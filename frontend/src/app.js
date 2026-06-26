@@ -3,7 +3,7 @@ import { makeObjectiveId } from "./core/ids.js";
 import { summarizeScoreByObjective } from "./core/scoring.js";
 import { buildItemSlots, buildSectionsByQuestionType, distributeObjectivesToSlots } from "./core/blueprint.js";
 import { buildPlanSequences, getPlanTotals, validatePlan } from "./core/plan.js";
-import { CHOICE_ONLY_STOPGAP_ENABLED, CHOICE_ONLY_STOPGAP_MESSAGE, getQuestionTypeOptions, SUBJECT_OPTIONS, CHINESE_AUDIT_STRUCTURE, getChineseDimension, getChineseSubcategory, getChineseDimensionBySubcategory } from "./core/questionTypes.js";
+import { CHOICE_ONLY_STOPGAP_ENABLED, CHOICE_ONLY_STOPGAP_MESSAGE, getQuestionTypeOptions, SUBJECT_OPTIONS, CHINESE_AUDIT_STRUCTURE, getChineseDimension, getChineseSubcategory, getChineseDimensionBySubcategory, shouldDisplayOptionsForQuestionType } from "./core/questionTypes.js";
 import { generateExcelXml } from "./core/excelGenerator.js";
 import { validateExam } from "./core/validation.js";
 import { replaceItemById } from "./core/replaceItem.js";
@@ -1619,7 +1619,7 @@ function renderItems() {
             })()} ｜ 層次：${escapeHtml(subItem.cognitiveLevel || "未標示")}
           </div>
           <label>子題幹<textarea data-item-field="question" data-item-id="${escapeHtml(subId)}">${escapeHtml(subItem.question)}</textarea></label>
-          ${Array.isArray(subItem.options) && subItem.options.length > 0 ? `<div class="options-edit"><span class="options-label">選項</span>${subItem.options.map((option, optionIndex) => `<label class="option-row">(${String.fromCharCode(65 + optionIndex)})<input data-item-field="option" data-item-id="${escapeHtml(subId)}" data-option-index="${optionIndex}" value="${escapeHtml(option)}"></label>`).join("")}</div>` : ""}
+          ${shouldDisplayOptionsForQuestionType(subItem.questionType) && Array.isArray(subItem.options) && subItem.options.length > 0 ? `<div class="options-edit"><span class="options-label">選項</span>${subItem.options.map((option, optionIndex) => `<label class="option-row">(${String.fromCharCode(65 + optionIndex)})<input data-item-field="option" data-item-id="${escapeHtml(subId)}" data-option-index="${optionIndex}" value="${escapeHtml(option)}"></label>`).join("")}</div>` : ""}
           <label>答案<input data-item-field="answer" data-item-id="${escapeHtml(subId)}" value="${escapeHtml(subItem.answer)}"></label>
           <label>解析<textarea data-item-field="explanation" data-item-id="${escapeHtml(subId)}">${escapeHtml(subItem.explanation)}</textarea></label>
           ${renderQualityMetaPanel(subItem)}
@@ -1657,7 +1657,7 @@ function renderItems() {
           </div>
         `}
         <label>題幹<textarea data-item-field="question" data-item-id="${escapeHtml(item.itemId)}">${escapeHtml(item.question)}</textarea></label>
-        ${Array.isArray(item.options) && item.options.length > 0 ? `<div class="options-edit"><span class="options-label">選項</span>${item.options.map((option, optionIndex) => `<label class="option-row">(${String.fromCharCode(65 + optionIndex)})<input data-item-field="option" data-item-id="${escapeHtml(item.itemId)}" data-option-index="${optionIndex}" value="${escapeHtml(option)}"></label>`).join("")}</div>` : ""}
+        ${shouldDisplayOptionsForQuestionType(item.questionType) && Array.isArray(item.options) && item.options.length > 0 ? `<div class="options-edit"><span class="options-label">選項</span>${item.options.map((option, optionIndex) => `<label class="option-row">(${String.fromCharCode(65 + optionIndex)})<input data-item-field="option" data-item-id="${escapeHtml(item.itemId)}" data-option-index="${optionIndex}" value="${escapeHtml(option)}"></label>`).join("")}</div>` : ""}
         <label>答案<input data-item-field="answer" data-item-id="${escapeHtml(item.itemId)}" value="${escapeHtml(item.answer)}"></label>
         <label>解析<textarea data-item-field="explanation" data-item-id="${escapeHtml(item.itemId)}">${escapeHtml(item.explanation)}</textarea></label>
         ${renderQualityMetaPanel(item)}
