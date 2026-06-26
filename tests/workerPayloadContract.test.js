@@ -52,6 +52,70 @@ function slot(questionType, overrides = {}) {
   };
 }
 
+const CHOICE_TYPE = "\u9078\u64c7\u984c";
+const TRUE_FALSE_TYPE = "\u662f\u975e\u984c";
+const FILL_IN_TYPE = "\u586b\u5145\u984c";
+
+function uiSlot(questionType, index, overrides = {}) {
+  return slot(questionType, {
+    itemId: `Q-${String(index).padStart(3, "0")}`,
+    isGroup: false,
+    subCount: 0,
+    subScores: [],
+    ...overrides,
+  });
+}
+
+function trueFalseQualityMeta(answer = "O") {
+  const wrong = answer === "X" ? "O" : "X";
+  return qualityMeta({
+    distractorDesign: {
+      [wrong]: distractor(wrong),
+    },
+  });
+}
+
+function trueFalseItem(overrides = {}) {
+  const answer = overrides.answer === "X" ? "X" : "O";
+  const next = item({
+    questionType: "true_false",
+    answer,
+    correctAnswer: answer,
+    qualityMeta: trueFalseQualityMeta(answer),
+  });
+  delete next.options;
+  return {
+    ...next,
+    ...overrides,
+  };
+}
+
+function fillInItem(overrides = {}) {
+  const next = item({
+    questionType: "fill_in",
+    answer: "water",
+    acceptedAnswers: ["water", "Water"],
+    qualityMeta: qualityMeta({
+      distractorDesign: {},
+    }),
+  });
+  delete next.options;
+  return {
+    ...next,
+    ...overrides,
+  };
+}
+
+function expectContractViolation(result, type, field) {
+  expect(result.ok).toBe(false);
+  expect(result.errorCode).toBe(ERROR_CODES.AI_OUTPUT_CONTRACT_INVALID);
+  expect(result.contractViolation).toMatchObject({
+    type,
+    itemIndex: 1,
+    field,
+  });
+}
+
 describe("Worker items payload contract", () => {
   it("rejects payloads missing items", () => {
     const result = assertItemsPayload({});
@@ -328,7 +392,7 @@ describe("Worker items payload contract", () => {
     const result = assertItemsPayload({
       items: [itemWithoutOptions({ questionType: "choice" })],
     }, 1, {
-      expectedSlots: [slot("\u9078\u64c7\u984c")],
+      expectedSlots: [slot(CHOICE_TYPE)],
     });
 
     expect(result.ok).toBe(false);
@@ -354,10 +418,49 @@ describe("Worker items payload contract", () => {
         }),
       })],
     }, 1, {
-      expectedSlots: [slot("\u662f\u975e\u984c")],
+      expectedSlots: [slot(TRUE_FALSE_TYPE)],
     });
 
     expect(result.ok).toBe(true);
+  });
+
+  it("accepts requested true/false slots with X answers", () => {
+    const result = assertItemsPayload({
+      items: [trueFalseItem({
+        answer: "X",
+        correctAnswer: "X",
+        qualityMeta: trueFalseQualityMeta("X"),
+      })],
+    }, 1, {
+      expectedSlots: [slot(TRUE_FALSE_TYPE)],
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("currently rejects requested true/false slots with empty options arrays", () => {
+    const result = assertItemsPayload({
+      items: [trueFalseItem({ options: [] })],
+    }, 1, {
+      expectedSlots: [slot(TRUE_FALSE_TYPE)],
+    });
+
+    expectContractViolation(result, CONTRACT_VIOLATION_TYPES.TRUE_FALSE_OPTIONS_INVALID, "options");
+  });
+
+  it.each([
+    ["yes text", "\u662f"],
+    ["no text", "\u5426"],
+    ["boolean true", true],
+    ["boolean false", false],
+  ])("currently rejects requested true/false slots with %s answers", (_label, answer) => {
+    const result = assertItemsPayload({
+      items: [trueFalseItem({ answer })],
+    }, 1, {
+      expectedSlots: [slot(TRUE_FALSE_TYPE)],
+    });
+
+    expectContractViolation(result, CONTRACT_VIOLATION_TYPES.TRUE_FALSE_ANSWER_INVALID, "answer");
   });
 
   it("rejects requested true/false slots that include choice options", () => {
@@ -372,7 +475,7 @@ describe("Worker items payload contract", () => {
         }),
       })],
     }, 1, {
-      expectedSlots: [slot("\u662f\u975e\u984c")],
+      expectedSlots: [slot(TRUE_FALSE_TYPE)],
     });
 
     expect(result.ok).toBe(false);
@@ -395,7 +498,7 @@ describe("Worker items payload contract", () => {
         }),
       })],
     }, 1, {
-      expectedSlots: [slot("\u662f\u975e\u984c")],
+      expectedSlots: [slot(TRUE_FALSE_TYPE)],
     });
 
     expect(result.ok).toBe(false);
@@ -405,6 +508,16 @@ describe("Worker items payload contract", () => {
       field: "answer",
       optionCode: "A",
     });
+  });
+
+  it("rejects requested true/false slots when model self-reports choice", () => {
+    const result = assertItemsPayload({
+      items: [trueFalseItem({ questionType: "choice" })],
+    }, 1, {
+      expectedSlots: [slot(TRUE_FALSE_TYPE)],
+    });
+
+    expectContractViolation(result, CONTRACT_VIOLATION_TYPES.QUESTION_TYPE_MISMATCH, "questionType");
   });
 
   it("accepts requested fill-in slots without choice options", () => {
@@ -418,11 +531,44 @@ describe("Worker items payload contract", () => {
         }),
       })],
     }, 1, {
-      expectedSlots: [slot("\u586b\u5145\u984c")],
+      expectedSlots: [slot(FILL_IN_TYPE)],
     });
 
     expect(result.ok).toBe(true);
   });
+
+  it("currently rejects requested fill-in slots with empty options arrays", () => {
+    const result = assertItemsPayload({
+      items: [fillInItem({ options: [] })],
+    }, 1, {
+      expectedSlots: [slot(FILL_IN_TYPE)],
+    });
+
+    expectContractViolation(result, CONTRACT_VIOLATION_TYPES.FILL_IN_OPTIONS_INVALID, "options");
+  });
+
+  it("rejects requested fill-in slots with empty answers", () => {
+    const result = assertItemsPayload({
+      items: [fillInItem({ answer: " " })],
+    }, 1, {
+      expectedSlots: [slot(FILL_IN_TYPE)],
+    });
+
+    expectContractViolation(result, CONTRACT_VIOLATION_TYPES.FILL_IN_ANSWER_INVALID, "answer");
+  });
+
+  it.each(["A", "B", "C", "D", "O", "X"])(
+    "currently rejects requested fill-in slots with answer code %s",
+    (answer) => {
+      const result = assertItemsPayload({
+        items: [fillInItem({ answer })],
+      }, 1, {
+        expectedSlots: [slot(FILL_IN_TYPE)],
+      });
+
+      expectContractViolation(result, CONTRACT_VIOLATION_TYPES.FILL_IN_ANSWER_INVALID, "answer");
+    },
+  );
 
   it("rejects requested fill-in slots that include choice options", () => {
     const result = assertItemsPayload({
@@ -434,7 +580,7 @@ describe("Worker items payload contract", () => {
         }),
       })],
     }, 1, {
-      expectedSlots: [slot("\u586b\u5145\u984c")],
+      expectedSlots: [slot(FILL_IN_TYPE)],
     });
 
     expect(result.ok).toBe(false);
@@ -455,7 +601,7 @@ describe("Worker items payload contract", () => {
         }),
       })],
     }, 1, {
-      expectedSlots: [slot("\u586b\u5145\u984c")],
+      expectedSlots: [slot(FILL_IN_TYPE)],
     });
 
     expect(result.ok).toBe(false);
@@ -467,13 +613,85 @@ describe("Worker items payload contract", () => {
     });
   });
 
+  it("rejects requested fill-in slots when model self-reports choice", () => {
+    const result = assertItemsPayload({
+      items: [fillInItem({ questionType: "choice" })],
+    }, 1, {
+      expectedSlots: [slot(FILL_IN_TYPE)],
+    });
+
+    expectContractViolation(result, CONTRACT_VIOLATION_TYPES.QUESTION_TYPE_MISMATCH, "questionType");
+  });
+
+  it("currently rejects requested fill-in slots with answer string arrays", () => {
+    const result = assertItemsPayload({
+      items: [fillInItem({ answer: ["water", "Water"] })],
+    }, 1, {
+      expectedSlots: [slot(FILL_IN_TYPE)],
+    });
+
+    expectContractViolation(result, CONTRACT_VIOLATION_TYPES.FILL_IN_ANSWER_INVALID, "answer");
+  });
+
+  it("does not expose raw item text in typed contract diagnostics", () => {
+    const rawMarker = "RAW_TRUE_FALSE_FIXTURE_MARKER";
+    const result = assertItemsPayload({
+      items: [trueFalseItem({
+        question: rawMarker,
+        answer: "A",
+      })],
+    }, 1, {
+      expectedSlots: [slot(TRUE_FALSE_TYPE)],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(JSON.stringify(result)).not.toContain(rawMarker);
+  });
+
+  it("accepts true/false UI-shaped payload fixtures", () => {
+    const expectedSlots = [1, 2, 3, 4].map((index) => uiSlot(TRUE_FALSE_TYPE, index));
+    const items = [1, 2, 3, 4].map((index) => trueFalseItem({
+      itemId: `Q-${String(index).padStart(3, "0")}`,
+      answer: index % 2 === 0 ? "X" : "O",
+      correctAnswer: index % 2 === 0 ? "X" : "O",
+      qualityMeta: trueFalseQualityMeta(index % 2 === 0 ? "X" : "O"),
+    }));
+
+    const result = assertItemsPayload({ items }, 4, { expectedSlots });
+
+    expect(expectedSlots).toHaveLength(4);
+    expect(expectedSlots.every((entry) => entry.questionType === TRUE_FALSE_TYPE)).toBe(true);
+    expect(expectedSlots.every((entry) => entry.isGroup === false)).toBe(true);
+    expect(expectedSlots.every((entry) => entry.subCount === 0)).toBe(true);
+    expect(expectedSlots.every((entry) => Array.isArray(entry.subScores) && entry.subScores.length === 0)).toBe(true);
+    expect(result.ok).toBe(true);
+  });
+
+  it("accepts fill-in UI-shaped payload fixtures", () => {
+    const expectedSlots = [1, 2, 3, 4].map((index) => uiSlot(FILL_IN_TYPE, index));
+    const items = [1, 2, 3, 4].map((index) => fillInItem({
+      itemId: `Q-${String(index).padStart(3, "0")}`,
+      answer: `answer ${index}`,
+      acceptedAnswers: [`answer ${index}`],
+    }));
+
+    const result = assertItemsPayload({ items }, 4, { expectedSlots });
+
+    expect(expectedSlots).toHaveLength(4);
+    expect(expectedSlots.every((entry) => entry.questionType === FILL_IN_TYPE)).toBe(true);
+    expect(expectedSlots.every((entry) => entry.isGroup === false)).toBe(true);
+    expect(expectedSlots.every((entry) => entry.subCount === 0)).toBe(true);
+    expect(expectedSlots.every((entry) => Array.isArray(entry.subScores) && entry.subScores.length === 0)).toBe(true);
+    expect(result.ok).toBe(true);
+  });
+
   it("uses requested slot questionType as authority instead of model self-report", () => {
     const result = assertItemsPayload({
       items: [item({
         questionType: "choice",
       })],
     }, 1, {
-      expectedSlots: [slot("\u586b\u5145\u984c")],
+      expectedSlots: [slot(FILL_IN_TYPE)],
     });
 
     expect(result.ok).toBe(false);
