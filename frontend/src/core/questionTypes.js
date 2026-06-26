@@ -6,6 +6,7 @@ export const STANDARD_CHOICE_QUESTION_TYPE = "選擇題";
 export const TRUE_FALSE_QUESTION_TYPE = "是非題";
 export const FILL_IN_QUESTION_TYPE = "填充題";
 export const CHOICE_ONLY_STOPGAP_ENABLED = true;
+export const MIXED_TYPES_ENABLED = false;
 export const CHOICE_ONLY_STOPGAP_MESSAGE = "混合題型支援開發中，目前暫限標準四選一選擇題。";
 
 export const QUESTION_TYPE_KINDS = Object.freeze({
@@ -89,6 +90,47 @@ export function shouldDisplayOptionsForQuestionType(questionType) {
   return isChoiceLikeQuestionType(questionType);
 }
 
+export const PUBLIC_SUPPORTED_GENERATION_QUESTION_TYPES = Object.freeze([
+  STANDARD_CHOICE_QUESTION_TYPE,
+  TRUE_FALSE_QUESTION_TYPE,
+  FILL_IN_QUESTION_TYPE,
+  LITERACY_ASSESSMENT_TYPE,
+]);
+
+export const PUBLIC_MIXED_QUESTION_TYPE_OPTIONS = PUBLIC_SUPPORTED_GENERATION_QUESTION_TYPES;
+
+function hasOwn(object, key) {
+  return Object.prototype.hasOwnProperty.call(object || {}, key);
+}
+
+export function getQuestionTypeReleaseConfig(overrides = {}) {
+  const hasChoiceOnlyOverride = hasOwn(overrides, "choiceOnlyStopgapEnabled");
+  const hasMixedOverride = hasOwn(overrides, "mixedTypesEnabled");
+  const mixedTypesEnabled = Boolean(hasMixedOverride ? overrides.mixedTypesEnabled : MIXED_TYPES_ENABLED);
+  const choiceOnlyStopgapEnabled = hasChoiceOnlyOverride
+    ? Boolean(overrides.choiceOnlyStopgapEnabled)
+    : (hasMixedOverride ? !mixedTypesEnabled : CHOICE_ONLY_STOPGAP_ENABLED);
+
+  return {
+    choiceOnlyStopgapEnabled,
+    mixedTypesEnabled: !choiceOnlyStopgapEnabled && mixedTypesEnabled,
+  };
+}
+
+export function isPublicSupportedGenerationQuestionType(questionType, releaseConfig = {}) {
+  const config = getQuestionTypeReleaseConfig(releaseConfig);
+  const normalized = normalizeQuestionType(questionType);
+  if (!config.mixedTypesEnabled) {
+    return normalized === STANDARD_CHOICE_QUESTION_TYPE;
+  }
+  return PUBLIC_SUPPORTED_GENERATION_QUESTION_TYPES.includes(normalized);
+}
+
+export function canConfigureQuestionTypeGroup(questionType, releaseConfig = {}) {
+  const config = getQuestionTypeReleaseConfig(releaseConfig);
+  return config.mixedTypesEnabled && isGroupQuestionType(questionType);
+}
+
 const PRESETS = {
   國語文: ["選擇題", "填充題", "注音", "國字", "改錯", "照樣造句", "重組", "閱讀測驗", "圖表判讀題", "短文寫作"],
   數學: ["選擇題", "填充題", "計算題", "應用題", "作圖題", "圖表判讀題"],
@@ -111,16 +153,14 @@ export function matchSubject(subject) {
   return null;
 }
 
-export function getQuestionTypeOptions(subject) {
-  if (CHOICE_ONLY_STOPGAP_ENABLED) return [STANDARD_CHOICE_QUESTION_TYPE];
-  const key = matchSubject(subject);
-  const base = key ? PRESETS[key] : DEFAULT_TYPES;
-  return [...base, LITERACY_ASSESSMENT_TYPE];
+export function getQuestionTypeOptions(subject, releaseConfig = {}) {
+  const config = getQuestionTypeReleaseConfig(releaseConfig);
+  if (!config.mixedTypesEnabled) return [STANDARD_CHOICE_QUESTION_TYPE];
+  return [...PUBLIC_MIXED_QUESTION_TYPE_OPTIONS];
 }
 
-export function isSupportedGenerationQuestionType(questionType) {
-  if (!CHOICE_ONLY_STOPGAP_ENABLED) return true;
-  return String(questionType || "").trim() === STANDARD_CHOICE_QUESTION_TYPE;
+export function isSupportedGenerationQuestionType(questionType, releaseConfig = {}) {
+  return isPublicSupportedGenerationQuestionType(questionType, releaseConfig);
 }
 
 // 國語科專屬：根據題型預估預設評量向度

@@ -1,6 +1,11 @@
 // 統一配題表：每列 = { questionType, count, score }。
 // 由配題表直接導出整卷的題型序列與配分序列。純函式，不依賴 DOM。
-import { CHOICE_ONLY_STOPGAP_MESSAGE, isSupportedGenerationQuestionType } from "./questionTypes.js";
+import {
+  CHOICE_ONLY_STOPGAP_MESSAGE,
+  canConfigureQuestionTypeGroup,
+  getQuestionTypeReleaseConfig,
+  isSupportedGenerationQuestionType,
+} from "./questionTypes.js";
 
 function asText(value, fallback = "") {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : fallback;
@@ -61,16 +66,33 @@ export function getPlanTotals(rows) {
   return { totalItems, totalScore };
 }
 
-export function validatePlan(rows, totalScore = null) {
+export function validatePlan(rows, totalScore = null, releaseConfig = {}) {
+  const config = getQuestionTypeReleaseConfig(releaseConfig);
   const normalized = normalizePlanRows(rows);
 
   if (normalized.length === 0) {
     return { ok: false, error: "請至少新增一列有效配題（題型、題數、配分都要填）。" };
   }
 
-  const unsupportedRow = normalized.find((row) => !isSupportedGenerationQuestionType(row.questionType) || row.isGroup);
+  const unsupportedRow = normalized.find((row) => !isSupportedGenerationQuestionType(row.questionType, config));
   if (unsupportedRow) {
-    return { ok: false, error: `${CHOICE_ONLY_STOPGAP_MESSAGE} 請將配題表調整為「選擇題」單題後再建立藍圖。` };
+    const message = config.mixedTypesEnabled
+      ? `「${unsupportedRow.questionType}」尚未在目前混合題型契約中開放。請改用選擇題、是非題、填充題或學力檢測題。`
+      : `${CHOICE_ONLY_STOPGAP_MESSAGE} 請將配題表調整為「選擇題」單題後再建立藍圖。`;
+    return { ok: false, error: message };
+  }
+
+  const unsupportedGroupRow = normalized.find((row) => row.isGroup && !canConfigureQuestionTypeGroup(row.questionType, config));
+  if (unsupportedGroupRow) {
+    const message = config.mixedTypesEnabled
+      ? "目前只有學力檢測題／情境題組可設定為題組。"
+      : `${CHOICE_ONLY_STOPGAP_MESSAGE} 請將配題表調整為「選擇題」單題後再建立藍圖。`;
+    return { ok: false, error: message };
+  }
+
+  const invalidGroupRow = normalized.find((row) => row.isGroup && (row.groupCount <= 0 || row.subScores.length < 2));
+  if (invalidGroupRow) {
+    return { ok: false, error: "題組設定需包含至少 2 個子題配分。" };
   }
 
   const { totalItems, totalScore: planScore } = getPlanTotals(normalized);
