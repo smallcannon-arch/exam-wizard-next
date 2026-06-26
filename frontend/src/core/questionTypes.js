@@ -5,9 +5,9 @@ export const LITERACY_ASSESSMENT_TYPE = "學力檢測題";
 export const STANDARD_CHOICE_QUESTION_TYPE = "選擇題";
 export const TRUE_FALSE_QUESTION_TYPE = "是非題";
 export const FILL_IN_QUESTION_TYPE = "填充題";
-export const CHOICE_ONLY_STOPGAP_ENABLED = true;
-export const MIXED_TYPES_ENABLED = false;
-export const CHOICE_ONLY_STOPGAP_MESSAGE = "混合題型支援開發中，目前暫限標準四選一選擇題。";
+export const CHOICE_ONLY_STOPGAP_ENABLED = false;
+export const MIXED_TYPES_ENABLED = true;
+export const CHOICE_ONLY_STOPGAP_MESSAGE = "目前已啟用選擇題安全模式，暫限標準四選一選擇題。";
 
 export const QUESTION_TYPE_KINDS = Object.freeze({
   CHOICE: "choice",
