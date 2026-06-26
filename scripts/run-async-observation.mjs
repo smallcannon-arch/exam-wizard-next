@@ -71,6 +71,11 @@ function getArgValue(name, fallback = "") {
   return arg ? arg.slice(prefix.length) : fallback;
 }
 
+function hasArgValue(name) {
+  const prefix = `${name}=`;
+  return process.argv.some((value) => value.startsWith(prefix));
+}
+
 function hasFlag(name) {
   return process.argv.includes(name);
 }
@@ -163,6 +168,91 @@ function summarizeExpectedSlots(intents = []) {
     expectedItemCount: expanded.expectedItemCount,
     groupChildCount: expanded.groupChildCount,
   };
+}
+
+function summarizeIntentTypes(intents = []) {
+  const counts = {};
+  for (const intent of intents) {
+    const type = intent?.questionType || "unknown";
+    counts[type] = (counts[type] || 0) + 1;
+  }
+  return counts;
+}
+
+function buildObservationPlan({ payload, caseName, itemCount, expectedSlotSummary }) {
+  return {
+    caseName,
+    cases: [caseName],
+    plannedJobs: 1,
+    requestedParentItemCount: itemCount,
+    parentSlotCount: expectedSlotSummary.parentSlotCount,
+    expectedItemCount: expectedSlotSummary.expectedItemCount,
+    groupChildCount: expectedSlotSummary.groupChildCount,
+    questionTypeCounts: summarizeIntentTypes(payload.intents),
+  };
+}
+
+function isNonInteractiveEnvironment(env = process.env) {
+  return Boolean(env.CI) || process.stdin.isTTY !== true;
+}
+
+function createPaidApiGuardResult({
+  dryRun,
+  caseName,
+  maxJobsProvided,
+  maxJobs,
+  plannedJobs,
+  env = process.env,
+} = {}) {
+  if (dryRun) return { ok: true };
+
+  if (!hasFlag("--allow-paid-api")) {
+    return {
+      ok: false,
+      error: "Refusing to call production API without --allow-paid-api.",
+      missing: ["--allow-paid-api"],
+    };
+  }
+
+  if (!maxJobsProvided) {
+    return {
+      ok: false,
+      error: "Refusing to call production API without --max-jobs=<number>.",
+      missing: ["--max-jobs"],
+    };
+  }
+
+  if (!Number.isInteger(maxJobs) || maxJobs < 1) {
+    return {
+      ok: false,
+      error: "--max-jobs must be a positive integer.",
+    };
+  }
+
+  if (plannedJobs > maxJobs) {
+    return {
+      ok: false,
+      error: `Planned job count ${plannedJobs} exceeds --max-jobs=${maxJobs}.`,
+    };
+  }
+
+  if (caseName === "mixed44-ui" && !hasFlag("--allow-large-smoke")) {
+    return {
+      ok: false,
+      error: "Refusing to run mixed44-ui without --allow-large-smoke.",
+      missing: ["--allow-large-smoke"],
+    };
+  }
+
+  if (isNonInteractiveEnvironment(env) && env.ALLOW_PAID_API !== "1") {
+    return {
+      ok: false,
+      error: "Refusing paid API call in CI/non-interactive mode without ALLOW_PAID_API=1.",
+      missing: ["ALLOW_PAID_API=1"],
+    };
+  }
+
+  return { ok: true };
 }
 
 function sleep(ms) {
@@ -304,16 +394,14 @@ function summarizeProgress(data) {
 }
 
 async function main() {
-  if (!hasFlag("--confirm-api-call")) {
-    console.error("Refusing to call production API without --confirm-api-call.");
-    process.exit(2);
-  }
-
   const itemCount = Math.min(MAX_ITEM_COUNT, Math.max(1, safeNumber(getArgValue("--count", "25"), 25)));
   const pollIntervalMs = Math.max(1000, safeNumber(getArgValue("--poll-ms", "5000"), 5000));
   const timeoutMs = Math.max(60000, safeNumber(getArgValue("--timeout-ms", "900000"), 900000));
   const apiBaseUrl = getArgValue("--api-base-url", DEFAULT_API_BASE_URL);
   const caseName = getArgValue("--case", "choice");
+  const dryRun = hasFlag("--dry-run");
+  const maxJobsProvided = hasArgValue("--max-jobs");
+  const maxJobs = safeNumber(getArgValue("--max-jobs", ""), NaN);
   const preset = resolveSubjectPreset(getArgValue("--subject", "chinese"));
   if (!preset) {
     console.log(JSON.stringify({
@@ -338,6 +426,56 @@ async function main() {
 
   const payload = buildPayload(itemCount, preset, grade, caseName);
   const expectedSlotSummary = summarizeExpectedSlots(payload.intents);
+  const observationPlan = buildObservationPlan({
+    payload,
+    caseName,
+    itemCount,
+    expectedSlotSummary,
+  });
+
+  if (dryRun) {
+    console.log(JSON.stringify({
+      ok: true,
+      dryRun: true,
+      paidApiCall: false,
+      warning: "Dry run only. No production API or Gemini API call was made.",
+      inputCheck,
+      ...observationPlan,
+      apiBaseUrl,
+    }, null, 2));
+    return;
+  }
+
+  const guard = createPaidApiGuardResult({
+    dryRun,
+    caseName,
+    maxJobsProvided,
+    maxJobs,
+    plannedJobs: observationPlan.plannedJobs,
+  });
+  if (!guard.ok) {
+    console.error(JSON.stringify({
+      ok: false,
+      stage: "paid_api_guard",
+      error: guard.error,
+      missing: guard.missing || [],
+      paidApiCall: false,
+      warning: "This observation script can create production generation jobs and incur Gemini API costs.",
+      inputCheck,
+      ...observationPlan,
+    }, null, 2));
+    process.exit(2);
+  }
+
+  console.error(JSON.stringify({
+    event: "paid_api_warning",
+    warning: "This operation will create production generation job(s) and incur Gemini API costs.",
+    requiredFlags: ["--allow-paid-api", "--max-jobs"],
+    ...(caseName === "mixed44-ui" ? { largeSmokeConfirmed: true } : {}),
+    ...observationPlan,
+    apiBaseUrl,
+  }, null, 2));
+
   const reportedRequestedItemCount = expectedSlotSummary.expectedItemCount || itemCount;
   const started = Date.now();
 
