@@ -5,6 +5,7 @@ import { expandExpectedGenerationSlots } from "../worker/src/groupSlots.js";
 
 const DEFAULT_API_BASE_URL = "https://exam-wizard-next-proxy.smallcannon.workers.dev";
 const MAX_ITEM_COUNT = 50;
+const LARGE_SMOKE_ITEM_THRESHOLD = 10;
 const TERMINAL_STATUSES = new Set(["completed", "partial", "failed"]);
 const SUCCESS_LIKE_TERMINAL_STATUSES = new Set(["completed", "partial"]);
 
@@ -196,9 +197,17 @@ function isNonInteractiveEnvironment(env = process.env) {
   return Boolean(env.CI) || process.stdin.isTTY !== true;
 }
 
+function isLargeSmokeRun({ caseName, requestedParentItemCount, expectedItemCount } = {}) {
+  return caseName === "mixed44-ui"
+    || Number(requestedParentItemCount || 0) > LARGE_SMOKE_ITEM_THRESHOLD
+    || Number(expectedItemCount || 0) > LARGE_SMOKE_ITEM_THRESHOLD;
+}
+
 function createPaidApiGuardResult({
   dryRun,
   caseName,
+  requestedParentItemCount,
+  expectedItemCount,
   maxJobsProvided,
   maxJobs,
   plannedJobs,
@@ -236,11 +245,13 @@ function createPaidApiGuardResult({
     };
   }
 
-  if (caseName === "mixed44-ui" && !hasFlag("--allow-large-smoke")) {
+  const largeSmoke = isLargeSmokeRun({ caseName, requestedParentItemCount, expectedItemCount });
+  if (largeSmoke && !hasFlag("--allow-large-smoke")) {
     return {
       ok: false,
-      error: "Refusing to run mixed44-ui without --allow-large-smoke.",
+      error: "Refusing large smoke / high-cost run without --allow-large-smoke. This still also requires --allow-paid-api, --max-jobs=<number>, and ALLOW_PAID_API=1 in CI/non-interactive environments.",
       missing: ["--allow-large-smoke"],
+      largeSmoke: true,
     };
   }
 
@@ -449,6 +460,8 @@ async function main() {
   const guard = createPaidApiGuardResult({
     dryRun,
     caseName,
+    requestedParentItemCount: observationPlan.requestedParentItemCount,
+    expectedItemCount: observationPlan.expectedItemCount,
     maxJobsProvided,
     maxJobs,
     plannedJobs: observationPlan.plannedJobs,
@@ -459,8 +472,9 @@ async function main() {
       stage: "paid_api_guard",
       error: guard.error,
       missing: guard.missing || [],
+      ...(guard.largeSmoke ? { largeSmoke: true } : {}),
       paidApiCall: false,
-      warning: "This observation script can create production generation jobs and incur Gemini API costs.",
+      warning: "This observation script can create production generation jobs and incur Gemini / Google AI API costs.",
       inputCheck,
       ...observationPlan,
     }, null, 2));
@@ -469,9 +483,13 @@ async function main() {
 
   console.error(JSON.stringify({
     event: "paid_api_warning",
-    warning: "This operation will create production generation job(s) and incur Gemini API costs.",
+    warning: "This operation will create production generation job(s) and incur Gemini / Google AI API costs.",
     requiredFlags: ["--allow-paid-api", "--max-jobs"],
-    ...(caseName === "mixed44-ui" ? { largeSmokeConfirmed: true } : {}),
+    ...(isLargeSmokeRun({
+      caseName,
+      requestedParentItemCount: observationPlan.requestedParentItemCount,
+      expectedItemCount: observationPlan.expectedItemCount,
+    }) ? { largeSmokeConfirmed: true } : {}),
     ...observationPlan,
     apiBaseUrl,
   }, null, 2));
