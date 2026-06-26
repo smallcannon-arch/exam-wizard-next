@@ -115,8 +115,12 @@ function normalizeAnswerKey(value) {
 }
 
 function normalizeTrueFalseAnswer(value) {
-  const text = String(value || "").trim().toUpperCase().replace(/[()\s.]/g, "");
-  if (["O", "X"].includes(text)) return text;
+  if (value === true) return "O";
+  if (value === false) return "X";
+
+  const text = String(value ?? "").trim().toUpperCase().replace(/[()\s.]/g, "");
+  if (["O", "○", "TRUE", "是", "對", "对"].includes(text)) return "O";
+  if (["X", "×", "FALSE", "否", "錯", "错"].includes(text)) return "X";
   return "";
 }
 
@@ -359,6 +363,11 @@ function assertRequestedQuestionType(item, slot, index) {
       { field: "questionType" },
     ));
   }
+
+  if (!hasOwnField(item || {}, "questionType") || !hasText(item?.questionType)) {
+    return { ok: true };
+  }
+
   const actual = normalizeQuestionTypeContract(item?.questionType);
   if (!actual || actual !== expected) {
     return outputContractError(index, "questionType must match the requested slot", contractViolation(
@@ -367,6 +376,39 @@ function assertRequestedQuestionType(item, slot, index) {
       { field: "questionType" },
     ));
   }
+  return { ok: true };
+}
+
+function assertTrueFalseOptionsContract(item, index) {
+  if (!hasOwnField(item || {}, "options")) return { ok: true };
+  if (!Array.isArray(item.options)) {
+    return outputContractError(index, "true/false options must be omitted or be an O/X pair", contractViolation(
+      CONTRACT_VIOLATION_TYPES.TRUE_FALSE_OPTIONS_INVALID,
+      index,
+      { field: "options" },
+    ));
+  }
+
+  if (item.options.length === 0) {
+    delete item.options;
+    return { ok: true };
+  }
+
+  const normalizedOptions = item.options.map((option) => normalizeTrueFalseAnswer(option));
+  const hasCanonicalPair = normalizedOptions.length === 2
+    && new Set(normalizedOptions).size === 2
+    && normalizedOptions.includes("O")
+    && normalizedOptions.includes("X");
+
+  if (!hasCanonicalPair) {
+    return outputContractError(index, "true/false options must be omitted or contain only O/X choices", contractViolation(
+      CONTRACT_VIOLATION_TYPES.TRUE_FALSE_OPTIONS_INVALID,
+      index,
+      { field: "options", optionCode: optionCodeForCountDrift(item.options.length) },
+    ));
+  }
+
+  delete item.options;
   return { ok: true };
 }
 
@@ -455,13 +497,8 @@ function assertChoiceOptionContract(item, index, { requireOptions = false } = {}
 }
 
 function assertTrueFalseContract(item, index) {
-  if (hasOwnField(item, "options")) {
-    return outputContractError(index, "true/false items must omit options", contractViolation(
-      CONTRACT_VIOLATION_TYPES.TRUE_FALSE_OPTIONS_INVALID,
-      index,
-      { field: "options" },
-    ));
-  }
+  const options = assertTrueFalseOptionsContract(item, index);
+  if (!options.ok) return options;
 
   const answerKey = normalizeTrueFalseAnswer(item.answer);
   if (!answerKey) {
@@ -471,6 +508,7 @@ function assertTrueFalseContract(item, index) {
       { field: "answer", optionCode: safeOptionCode(item.answer) },
     ));
   }
+  item.answer = answerKey;
 
   if (hasOwnField(item, "correctAnswer")) {
     const correctAnswerKey = normalizeTrueFalseAnswer(item.correctAnswer);
@@ -481,6 +519,7 @@ function assertTrueFalseContract(item, index) {
         { field: "correctAnswer", optionCode: safeOptionCode(item.correctAnswer) },
       ));
     }
+    item.correctAnswer = correctAnswerKey;
   }
 
   const distractorDesign = isPlainObject(item?.qualityMeta?.distractorDesign)
