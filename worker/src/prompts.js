@@ -3,6 +3,7 @@ import {
   renderFewShotExamples,
   selectFewShotExamples,
 } from "./fewshotExamples.js";
+import { expandExpectedGenerationSlots } from "./groupSlots.js";
 
 function text(value, fallback = "未提供") {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
@@ -423,6 +424,10 @@ export function buildGenerateItemsPrompt({ project = {}, materialText = "", obje
   const isChinese = normalizedSubject === "國語";
   const qualityMetaCompactGuidelines = getQualityMetaCompactGuidelines(project.subject);
   const intentList = Array.isArray(intents) ? intents : [];
+  const expandedSlots = expandExpectedGenerationSlots(intentList);
+  const parentSlotCount = intentList.length;
+  const expectedItemCount = expandedSlots.ok ? expandedSlots.expectedItemCount : parentSlotCount;
+  const groupChildCount = expandedSlots.ok ? expandedSlots.groupChildCount : 0;
 
   const slots = intentList.map((slot) => {
     const base = {
@@ -472,6 +477,13 @@ export function buildGenerateItemsPrompt({ project = {}, materialText = "", obje
     "",
     "# 題位 JSON（itemId、questionType、score 請原樣保留，不可更動）",
     JSON.stringify(slots, null, 2),
+    "",
+    "# Output item count contract",
+    `parentSlotCount: ${parentSlotCount}`,
+    `expectedItemCount: ${expectedItemCount}`,
+    `groupChildCount: ${groupChildCount}`,
+    "If a slot has isGroup=true, do not output the parent slot as an item. Output exactly subCount child items for that parent slot.",
+    "The JSON items array length must equal expectedItemCount.",
     "",
     "# 教材重點（課本／習作摘要）",
     "以下是課本與習作的重點摘要（可能含國語的生字、語詞、句型、課文重點，或其他科的核心概念與重要詞彙）。命題請盡量依此實際內容出題（例如國語就用課本的生字與句型命題），不得假造課本沒有的專有名詞或內容。",

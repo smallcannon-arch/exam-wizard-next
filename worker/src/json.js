@@ -1,3 +1,5 @@
+import { expandExpectedGenerationSlots } from "./groupSlots.js";
+
 export const ERROR_CODES = Object.freeze({
   REQUEST_INVALID: "REQUEST_INVALID",
   NOT_FOUND: "NOT_FOUND",
@@ -638,21 +640,84 @@ function assertStimulusContract(item, index) {
   return { ok: true };
 }
 
+function createItemsCountMismatchDiagnostics(actualItemCount, expectedItemCount, options = {}) {
+  const parentSlotCount = Number.isFinite(Number(options.parentSlotCount))
+    ? Math.max(0, Math.floor(Number(options.parentSlotCount)))
+    : null;
+  const groupChildCount = Number.isFinite(Number(options.groupChildCount))
+    ? Math.max(0, Math.floor(Number(options.groupChildCount)))
+    : null;
+  return {
+    errorCode: "ITEMS_COUNT_MISMATCH",
+    expectedItemCount,
+    actualItemCount,
+    ...(parentSlotCount !== null ? { parentSlotCount } : {}),
+    ...(groupChildCount !== null ? { groupChildCount } : {}),
+  };
+}
+
+function resolveExpectedItemsContract(expectedCount, options = {}) {
+  if (!Array.isArray(options.expectedSlots)) {
+    return {
+      ok: true,
+      expectedCount,
+      expectedSlots: null,
+      parentSlotCount: null,
+      groupChildCount: null,
+    };
+  }
+
+  const expanded = expandExpectedGenerationSlots(options.expectedSlots);
+  if (!expanded.ok) {
+    return {
+      ok: false,
+      error: expanded.error,
+      diagnostics: {
+        errorCode: "EXPECTED_SLOTS_INVALID",
+        parentSlotIndex: expanded.parentSlotIndex || null,
+      },
+    };
+  }
+
+  return {
+    ok: true,
+    expectedCount: expanded.expectedItemCount,
+    expectedSlots: expanded.expectedSlots,
+    parentSlotCount: expanded.parentSlotCount,
+    groupChildCount: expanded.groupChildCount,
+  };
+}
+
 export function assertItemsPayload(payload, expectedCount = null, options = {}) {
   if (!payload || typeof payload !== "object" || !Array.isArray(payload.items)) {
     return { ok: false, error: "AI 回應缺少 items 陣列。", errorCode: ERROR_CODES.AI_ITEMS_PAYLOAD_INVALID };
   }
 
-  if (expectedCount !== null && payload.items.length !== expectedCount) {
+  const expectedContract = resolveExpectedItemsContract(expectedCount, options);
+  if (!expectedContract.ok) {
     return {
       ok: false,
-      error: `AI 回應題數 ${payload.items.length} 不等於預期 ${expectedCount}。`,
+      error: "Expected item slot metadata is invalid.",
       errorCode: ERROR_CODES.AI_ITEMS_PAYLOAD_INVALID,
+      diagnostics: expectedContract.diagnostics,
+    };
+  }
+
+  const resolvedExpectedCount = expectedContract.expectedCount;
+  if (resolvedExpectedCount !== null && payload.items.length !== resolvedExpectedCount) {
+    return {
+      ok: false,
+      error: `AI response item count ${payload.items.length} does not match expected ${resolvedExpectedCount}.`,
+      errorCode: ERROR_CODES.AI_ITEMS_PAYLOAD_INVALID,
+      diagnostics: createItemsCountMismatchDiagnostics(payload.items.length, resolvedExpectedCount, {
+        parentSlotCount: expectedContract.parentSlotCount,
+        groupChildCount: expectedContract.groupChildCount,
+      }),
     };
   }
 
   for (let index = 0; index < payload.items.length; index += 1) {
-    const expectedSlot = Array.isArray(options.expectedSlots) ? options.expectedSlots[index] : null;
+    const expectedSlot = Array.isArray(expectedContract.expectedSlots) ? expectedContract.expectedSlots[index] : null;
     const itemText = assertItemText(payload.items[index], index);
     if (!itemText.ok) return itemText;
 
@@ -672,7 +737,7 @@ export function assertItemsPayload(payload, expectedCount = null, options = {}) 
     }
   }
 
-  const groupStimulus = assertGroupStimulusContract(payload.items, options.expectedSlots);
+  const groupStimulus = assertGroupStimulusContract(payload.items, expectedContract.expectedSlots);
   if (!groupStimulus.ok) return groupStimulus;
 
   return { ok: true, items: payload.items };

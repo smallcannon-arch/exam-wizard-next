@@ -31,6 +31,16 @@ const fillIntent = {
   primaryObjectiveId: "O-001",
 };
 
+const groupIntents = Array.from({ length: 4 }, (_, index) => ({
+  itemId: `Q-${String(index + 1).padStart(3, "0")}`,
+  questionType: "proficiency",
+  score: 5,
+  primaryObjectiveId: "O-001",
+  isGroup: true,
+  subCount: 2,
+  subScores: [2, 3],
+}));
+
 const promptReadyFewShot = {
   exampleId: "PROMPT-READY-001",
   status: "teacher_reviewed",
@@ -305,6 +315,23 @@ describe("worker prompts", () => {
     expect(prompt).toContain("若沒有 stimulus");
     expect(prompt).toContain("本文、上文或這段文字");
     expect(prompt).toContain("AI_STIMULUS_MISSING");
+  });
+
+  it("題組 prompt 會明確標出 parent slot 與 expected child item count", () => {
+    const prompt = buildGenerateItemsPrompt({
+      project,
+      materialText: "隤脫???",
+      objectives,
+      intents: groupIntents,
+      checkedChineseSubcategories: ["??閮"],
+    });
+
+    expect(prompt).toContain("Output item count contract");
+    expect(prompt).toContain("parentSlotCount: 4");
+    expect(prompt).toContain("expectedItemCount: 8");
+    expect(prompt).toContain("groupChildCount: 8");
+    expect(prompt).toContain("do not output the parent slot as an item");
+    expect(prompt).toContain("items array length must equal expectedItemCount");
   });
 
   it("國語 prompt 要求可見文字避免不必要英文並鼓勵迷思標籤分化", () => {

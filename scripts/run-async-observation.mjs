@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { validateGeneratedPaper } from "../frontend/src/core/validateGeneratedPaper.js";
 import { normalizeGeneratedItems } from "../frontend/src/core/normalizeItem.js";
+import { expandExpectedGenerationSlots } from "../worker/src/groupSlots.js";
 
 const DEFAULT_API_BASE_URL = "https://exam-wizard-next-proxy.smallcannon.workers.dev";
 const MAX_ITEM_COUNT = 50;
@@ -9,6 +10,9 @@ const SUCCESS_LIKE_TERMINAL_STATUSES = new Set(["completed", "partial"]);
 
 const COMMON_TEXT = {
   choiceQuestion: "\u9078\u64c7\u984c",
+  trueFalseQuestion: "\u662f\u975e\u984c",
+  fillInQuestion: "\u586b\u5145\u984c",
+  literacyQuestion: "\u5b78\u529b\u6aa2\u6e2c\u984c",
   apply: "\u61c9\u7528",
   understand: "\u7406\u89e3",
   remember: "\u8a18\u61b6",
@@ -83,25 +87,57 @@ function resolveSubjectPreset(value = "") {
   )) || null;
 }
 
-function buildPayload(itemCount, preset, grade) {
-  const objectives = preset.objectives.map((text, index) => ({
-    objectiveId: `O-${String(index + 1).padStart(3, "0")}`,
-    text,
-    periodCount: 2,
-  }));
-  const intents = Array.from({ length: itemCount }, (_, index) => ({
-    itemId: `Q-${String(index + 1).padStart(3, "0")}`,
-    questionType: COMMON_TEXT.choiceQuestion,
+function createIntent(index, preset, type = COMMON_TEXT.choiceQuestion, overrides = {}) {
+  return {
+    itemId: `Q-${String(index).padStart(3, "0")}`,
+    questionType: type,
     score: 1,
-    primaryObjectiveId: index < Math.ceil(itemCount / 2) ? "O-001" : "O-002",
-    objectiveIds: [index < Math.ceil(itemCount / 2) ? "O-001" : "O-002"],
+    primaryObjectiveId: index < 25 ? "O-001" : "O-002",
+    objectiveIds: [index < 25 ? "O-001" : "O-002"],
     cognitiveLevel: index % 5 === 0
       ? COMMON_TEXT.apply
       : index % 3 === 0
         ? COMMON_TEXT.understand
         : COMMON_TEXT.remember,
     ...(preset.dimension ? { chineseDimension: preset.dimension(index) } : {}),
+    ...overrides,
+  };
+}
+
+function buildCaseIntents(itemCount, preset, caseName) {
+  if (caseName === "literacy-group4") {
+    return Array.from({ length: 4 }, (_, index) => createIntent(index + 1, preset, COMMON_TEXT.literacyQuestion, {
+      score: 5,
+      isGroup: true,
+      subCount: 2,
+      subScores: [2, 3],
+    }));
+  }
+
+  if (caseName === "mixed44-ui") {
+    return [
+      ...Array.from({ length: 20 }, (_, index) => createIntent(index + 1, preset, COMMON_TEXT.choiceQuestion)),
+      ...Array.from({ length: 10 }, (_, index) => createIntent(index + 21, preset, COMMON_TEXT.trueFalseQuestion)),
+      ...Array.from({ length: 10 }, (_, index) => createIntent(index + 31, preset, COMMON_TEXT.fillInQuestion)),
+      ...Array.from({ length: 4 }, (_, index) => createIntent(index + 41, preset, COMMON_TEXT.literacyQuestion, {
+        score: 5,
+        isGroup: true,
+        subCount: 2,
+        subScores: [2, 3],
+      })),
+    ];
+  }
+
+  return Array.from({ length: itemCount }, (_, index) => createIntent(index + 1, preset, COMMON_TEXT.choiceQuestion));
+}
+
+function buildPayload(itemCount, preset, grade, caseName = "choice") {
+  const objectives = preset.objectives.map((text, index) => ({
+    objectiveId: `O-${String(index + 1).padStart(3, "0")}`,
+    text,
+    periodCount: 2,
   }));
+  const intents = buildCaseIntents(itemCount, preset, caseName);
 
   return {
     project: { subject: preset.subject, grade },
@@ -109,6 +145,23 @@ function buildPayload(itemCount, preset, grade) {
     objectives,
     intents,
     checkedChineseSubcategories: preset.subcategories,
+  };
+}
+
+function summarizeExpectedSlots(intents = []) {
+  const expanded = expandExpectedGenerationSlots(intents);
+  if (!expanded.ok) {
+    return {
+      parentSlotCount: Array.isArray(intents) ? intents.length : 0,
+      expectedItemCount: null,
+      groupChildCount: null,
+      expansionError: expanded.error || "unknown",
+    };
+  }
+  return {
+    parentSlotCount: expanded.parentSlotCount,
+    expectedItemCount: expanded.expectedItemCount,
+    groupChildCount: expanded.groupChildCount,
   };
 }
 
@@ -130,11 +183,12 @@ function hasPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function assertObservationInputSafe(preset, grade) {
+function assertObservationInputSafe(preset, grade, caseName = "choice") {
+  const allowedCases = new Set(["choice", "literacy-group4", "mixed44-ui"]);
   const checks = [
     { field: "subject", expected: preset.subject, actual: preset.subject },
     { field: "grade", expected: grade, actual: grade },
-    { field: "questionType", expected: COMMON_TEXT.choiceQuestion, actual: COMMON_TEXT.choiceQuestion },
+    { field: "caseName", expected: caseName, actual: allowedCases.has(caseName) ? caseName : "" },
   ];
   const failures = checks.filter((check) => (
     check.actual !== check.expected || String(check.actual).includes("??")
@@ -259,6 +313,7 @@ async function main() {
   const pollIntervalMs = Math.max(1000, safeNumber(getArgValue("--poll-ms", "5000"), 5000));
   const timeoutMs = Math.max(60000, safeNumber(getArgValue("--timeout-ms", "900000"), 900000));
   const apiBaseUrl = getArgValue("--api-base-url", DEFAULT_API_BASE_URL);
+  const caseName = getArgValue("--case", "choice");
   const preset = resolveSubjectPreset(getArgValue("--subject", "chinese"));
   if (!preset) {
     console.log(JSON.stringify({
@@ -270,7 +325,7 @@ async function main() {
   }
 
   const grade = getArgValue("--grade", preset.grade);
-  const inputCheck = assertObservationInputSafe(preset, grade);
+  const inputCheck = assertObservationInputSafe(preset, grade, caseName);
   if (!inputCheck.ok) {
     console.log(JSON.stringify({
       ok: false,
@@ -281,7 +336,9 @@ async function main() {
     process.exit(2);
   }
 
-  const payload = buildPayload(itemCount, preset, grade);
+  const payload = buildPayload(itemCount, preset, grade, caseName);
+  const expectedSlotSummary = summarizeExpectedSlots(payload.intents);
+  const reportedRequestedItemCount = expectedSlotSummary.expectedItemCount || itemCount;
   const started = Date.now();
 
   const create = await requestJson(apiBaseUrl, "/generation-jobs", {
@@ -305,7 +362,9 @@ async function main() {
     event: "created",
     jobId,
     inputCheck,
-    requestedItemCount: itemCount,
+    caseName,
+    requestedItemCount: reportedRequestedItemCount,
+    ...expectedSlotSummary,
     batchSize: create.data.batchSize,
     batchCount: create.data.batchCount,
   }));
@@ -335,8 +394,9 @@ async function main() {
       jobId,
       latencySeconds,
       pollCount,
-      requestedItemCount: itemCount,
-      ...summarizeProgress(statusData),
+      requestedItemCount: reportedRequestedItemCount,
+      ...expectedSlotSummary,
+    ...summarizeProgress(statusData),
       snapshots,
     }, null, 2));
     return;
@@ -365,7 +425,8 @@ async function main() {
     terminalStatus: statusData.status,
     latencySeconds,
     pollCount,
-    requestedItemCount: itemCount,
+    requestedItemCount: reportedRequestedItemCount,
+    ...expectedSlotSummary,
     batchSize: statusData.batchSize ?? create.data.batchSize,
     batchCount: statusData.batchCount ?? create.data.batchCount,
     completedBatchCount: statusData.completedBatchCount,
