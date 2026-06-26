@@ -47,6 +47,10 @@ function generatedItem(index = 1) {
   };
 }
 
+function generatedBatch(startIndex, count = 4) {
+  return Array.from({ length: count }, (_, index) => generatedItem(startIndex + index));
+}
+
 function generatedDistractor(option) {
   return {
     misconceptionTag: `misconception_${option}`,
@@ -998,6 +1002,174 @@ describe("async generation job skeleton", () => {
     expect(stateText).not.toContain("raw output");
     expect(stateText).not.toContain("token");
     expect(fetch).toHaveBeenCalledTimes(5);
+  });
+
+  it("finalizes a 44-item job as partial when the final 4 planned slots fail terminally", async () => {
+    const db = createFakeJobsDb();
+    const jobId = "gen_workflow_mixed44_partial_12345678";
+    const data = payload(44);
+    const plan = createGenerationJobPlan(data);
+    mockGeminiItemBatches([
+      ...Array.from({ length: 10 }, (_, batchIndex) => generatedBatch((batchIndex * 4) + 1)),
+      generatedBatch(41, 3),
+    ]);
+    db.seedJob({
+      job_id: jobId,
+      requested_item_count: 44,
+      batch_count: 11,
+      expires_at: "2026-06-25T00:00:00.000Z",
+    });
+    for (let batchNumber = 1; batchNumber <= 11; batchNumber += 1) {
+      db.seedBatch({ job_id: jobId, batch_number: batchNumber, expected_item_count: 4 });
+    }
+
+    const workflow = new GenerationWorkflow();
+    workflow.env = {
+      GENERATION_JOBS_DB: db,
+      GEMINI_API_KEY: "test-key",
+    };
+    const step = {
+      async do(_name, callback) {
+        return callback();
+      },
+    };
+
+    const result = await workflow.run({
+      payload: {
+        jobId,
+        request: plan.request,
+        batches: plan.batches,
+        progress: plan.progress,
+      },
+    }, step);
+
+    expect(result).toMatchObject({
+      ok: true,
+      status: "partial",
+      requestedItemCount: 44,
+      batchCount: 11,
+      completedBatchCount: 10,
+      completedItemCount: 40,
+      missingItemCount: 4,
+    });
+    expect(db.state.jobs[0].status).toBe("partial");
+    expect(db.state.jobs[0].completed_item_count).toBe(40);
+    expect(db.state.jobs[0].result_item_count).toBe(40);
+    expect(db.state.jobs[0].error_code).toBeNull();
+    expect(db.state.batches.map((batch) => batch.status)).toEqual([
+      "completed",
+      "completed",
+      "completed",
+      "completed",
+      "completed",
+      "completed",
+      "completed",
+      "completed",
+      "completed",
+      "completed",
+      "failed_terminal",
+    ]);
+    expect(db.state.batches[10].error_code).toBe(ERROR_CODES.AI_ITEMS_PAYLOAD_INVALID);
+
+    const resultResponse = await worker.fetch(new Request(`https://worker.test/generation-jobs/${jobId}/result`), {
+      ALLOWED_ORIGIN: "*",
+      GENERATION_JOBS_DB: db,
+    });
+    const body = await readJson(resultResponse);
+
+    expect(resultResponse.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.status).toBe("partial");
+    expect(body.completedItemCount).toBe(40);
+    expect(body.items).toHaveLength(40);
+    expect(body.items.map((item) => item.itemIndex)).toEqual(Array.from({ length: 40 }, (_, index) => index + 1));
+    expect(body.missingItems.map((item) => item.itemIndex)).toEqual([41, 42, 43, 44]);
+    expect(body.missingItems).toEqual([41, 42, 43, 44].map((itemIndex) => ({
+      itemIndex,
+      batchNumber: 11,
+      errorCode: ERROR_CODES.AI_ITEMS_PAYLOAD_INVALID,
+    })));
+    expect(fetch).toHaveBeenCalledTimes(11);
+  });
+
+  it("marks a 44-item job failed instead of partial when terminal failures leave less than 80 percent usable", async () => {
+    const db = createFakeJobsDb();
+    const jobId = "gen_workflow_mixed44_below_partial_12345678";
+    const data = payload(44);
+    const plan = createGenerationJobPlan(data);
+    mockGeminiItemBatches([
+      ...Array.from({ length: 8 }, (_, batchIndex) => generatedBatch((batchIndex * 4) + 1)),
+      generatedBatch(33, 3),
+      generatedBatch(37, 3),
+      generatedBatch(41, 3),
+    ]);
+    db.seedJob({
+      job_id: jobId,
+      requested_item_count: 44,
+      batch_count: 11,
+      expires_at: "2026-06-25T00:00:00.000Z",
+    });
+    for (let batchNumber = 1; batchNumber <= 11; batchNumber += 1) {
+      db.seedBatch({ job_id: jobId, batch_number: batchNumber, expected_item_count: 4 });
+    }
+
+    const workflow = new GenerationWorkflow();
+    workflow.env = {
+      GENERATION_JOBS_DB: db,
+      GEMINI_API_KEY: "test-key",
+    };
+    const step = {
+      async do(_name, callback) {
+        return callback();
+      },
+    };
+
+    const result = await workflow.run({
+      payload: {
+        jobId,
+        request: plan.request,
+        batches: plan.batches,
+        progress: plan.progress,
+      },
+    }, step);
+
+    expect(result).toMatchObject({
+      ok: false,
+      status: "failed",
+      errorCode: ERROR_CODES.AI_ITEMS_PAYLOAD_INVALID,
+      requestedItemCount: 44,
+      batchCount: 11,
+      completedBatchCount: 8,
+      completedItemCount: 32,
+    });
+    expect(db.state.jobs[0].status).toBe("failed");
+    expect(db.state.jobs[0].status).not.toBe("running");
+    expect(db.state.jobs[0].error_code).toBe(ERROR_CODES.AI_ITEMS_PAYLOAD_INVALID);
+    expect(db.state.jobs[0].result_json).toBeUndefined();
+    expect(db.state.batches.map((batch) => batch.status)).toEqual([
+      "completed",
+      "completed",
+      "completed",
+      "completed",
+      "completed",
+      "completed",
+      "completed",
+      "completed",
+      "failed_terminal",
+      "failed_terminal",
+      "failed_terminal",
+    ]);
+
+    const resultResponse = await worker.fetch(new Request(`https://worker.test/generation-jobs/${jobId}/result`), {
+      ALLOWED_ORIGIN: "*",
+      GENERATION_JOBS_DB: db,
+    });
+    const body = await readJson(resultResponse);
+
+    expect(resultResponse.status).toBe(409);
+    expect(body.ok).toBe(false);
+    expect(body.errorCode).toBe(ERROR_CODES.ASYNC_JOB_RESULT_UNAVAILABLE);
+    expect(fetch).toHaveBeenCalledTimes(11);
   });
 
   it("marks the job failed when failed batches leave too few usable planned slots", async () => {
