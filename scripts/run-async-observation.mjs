@@ -4,6 +4,8 @@ import { normalizeGeneratedItems } from "../frontend/src/core/normalizeItem.js";
 
 const DEFAULT_API_BASE_URL = "https://exam-wizard-next-proxy.smallcannon.workers.dev";
 const MAX_ITEM_COUNT = 50;
+const TERMINAL_STATUSES = new Set(["completed", "partial", "failed"]);
+const SUCCESS_LIKE_TERMINAL_STATUSES = new Set(["completed", "partial"]);
 
 const COMMON_TEXT = {
   choiceQuestion: "\u9078\u64c7\u984c",
@@ -212,6 +214,28 @@ function summarizeBatches(batches = []) {
   };
 }
 
+function summarizePartialResult(resultData = {}, statusData = {}) {
+  const missingItems = Array.isArray(resultData?.missingItems) ? resultData.missingItems : [];
+  const failedBatches = Array.isArray(statusData?.batches)
+    ? statusData.batches.filter((batch) => batch?.status === "failed_terminal")
+    : [];
+  const missingErrorCodeCounts = {};
+  for (const missing of missingItems) {
+    const errorCode = missing?.errorCode || "unknown";
+    missingErrorCodeCounts[errorCode] = (missingErrorCodeCounts[errorCode] || 0) + 1;
+  }
+
+  return {
+    partial: Boolean(resultData?.partial || statusData?.status === "partial"),
+    missingItemCount: missingItems.length,
+    missingItemIndexes: missingItems
+      .map((item) => item?.itemIndex)
+      .filter((itemIndex) => itemIndex !== undefined && itemIndex !== null),
+    failedBatchNumbers: failedBatches.map((batch) => batch.batchNumber),
+    missingErrorCodeCounts,
+  };
+}
+
 function summarizeProgress(data) {
   return {
     status: data?.status || "unknown",
@@ -296,15 +320,15 @@ async function main() {
     statusData = status.data;
     const elapsedSeconds = Number(((Date.now() - started) / 1000).toFixed(2));
     const snapshot = { elapsedSeconds, ...summarizeProgress(statusData) };
-    if (pollCount % 5 === 0 || ["completed", "failed"].includes(statusData?.status)) {
+    if (pollCount % 5 === 0 || TERMINAL_STATUSES.has(statusData?.status)) {
       snapshots.push(snapshot);
       console.log(JSON.stringify({ event: "progress", ...snapshot }));
     }
-    if (["completed", "failed"].includes(statusData?.status)) break;
+    if (TERMINAL_STATUSES.has(statusData?.status)) break;
   }
 
   const latencySeconds = Number(((Date.now() - started) / 1000).toFixed(2));
-  if (statusData?.status !== "completed") {
+  if (!SUCCESS_LIKE_TERMINAL_STATUSES.has(statusData?.status)) {
     console.log(JSON.stringify({
       ok: false,
       terminalStatus: statusData?.status || "timeout_waiting_status",
@@ -321,6 +345,9 @@ async function main() {
   const result = await requestJson(apiBaseUrl, `/generation-jobs/${encodeURIComponent(jobId)}/result`);
   const resultOk = result.response.status === 200 && result.data?.ok && Array.isArray(result.data?.items);
   const items = normalizeGeneratedItems(resultOk ? result.data.items : []);
+  const partialSummary = statusData?.status === "partial"
+    ? summarizePartialResult(result.data, statusData)
+    : { partial: false };
   const validation = validateGeneratedPaper({
     slots: payload.intents,
     objectives: payload.objectives,
@@ -346,6 +373,13 @@ async function main() {
     resultHttpStatus: result.response.status,
     resultOk: Boolean(resultOk),
     generatedItemCount: items.length,
+    partial: partialSummary.partial,
+    ...(partialSummary.partial ? {
+      missingItemCount: partialSummary.missingItemCount,
+      missingItemIndexes: partialSummary.missingItemIndexes,
+      failedBatchNumbers: partialSummary.failedBatchNumbers,
+      missingErrorCodeCounts: partialSummary.missingErrorCodeCounts,
+    } : {}),
     parseResult: resultOk ? "success" : "fail",
     v2Validation: validation.ok ? "pass" : "fail",
     validationErrorCount: validation.errors.length,
