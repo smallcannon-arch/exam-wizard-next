@@ -353,7 +353,7 @@ function getJsonOutputStabilityGuidelines(contractFlags) {
     parts.push(
       "# 是非題 JSON contract",
       "- 是非題的 answer 必須是 \"O\" 或 \"X\" 其中之一；不得使用 A/B/C/D、完整句子、數字或選項內容。",
-      "- 是非題的 options 必須省略；不得輸出空陣列、2 個選項陣列或 A/B/C/D 選項。",
+      "- 是非題的 options 應省略；若模型意外輸出二選項，只能是 O/X、是/否或對/錯；不得輸出 A/B/C/D 選項或 3 個以上 options。",
       "- 若是非題輸出 correctAnswer，也必須與 answer 一樣使用 \"O\" 或 \"X\"，且必須與 answer 相同。",
       "- 是非題的 qualityMeta.distractorDesign 可以使用錯誤答案代號作為 key（例如 answer 為 \"O\" 時可填 \"X\"），也可在無誘答設計時使用空物件。"
     );

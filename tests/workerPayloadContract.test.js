@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { CONTRACT_VIOLATION_TYPES, ERROR_CODES, assertItemsPayload, safeErrorPayload } from "../worker/src/json.js";
 
+function hasOwnField(value, field) {
+  return Object.prototype.hasOwnProperty.call(value, field);
+}
+
 function qualityMeta(overrides = {}) {
   return {
     teacherExplanation: "本題檢核學生是否能理解題意並辨識正確解法。",
@@ -438,29 +442,59 @@ describe("Worker items payload contract", () => {
     expect(result.ok).toBe(true);
   });
 
-  it("currently rejects requested true/false slots with empty options arrays", () => {
+  it("accepts requested true/false slots with empty options arrays and removes them", () => {
     const result = assertItemsPayload({
       items: [trueFalseItem({ options: [] })],
     }, 1, {
       expectedSlots: [slot(TRUE_FALSE_TYPE)],
     });
 
-    expectContractViolation(result, CONTRACT_VIOLATION_TYPES.TRUE_FALSE_OPTIONS_INVALID, "options");
+    expect(result.ok).toBe(true);
+    expect(hasOwnField(result.items[0], "options")).toBe(false);
   });
 
   it.each([
-    ["yes text", "\u662f"],
-    ["no text", "\u5426"],
-    ["boolean true", true],
-    ["boolean false", false],
-  ])("currently rejects requested true/false slots with %s answers", (_label, answer) => {
+    ["lowercase o", "o", "O"],
+    ["lowercase x", "x", "X"],
+    ["circle mark", "\u25cb", "O"],
+    ["cross mark", "\u00d7", "X"],
+    ["yes text", "\u662f", "O"],
+    ["no text", "\u5426", "X"],
+    ["correct text", "\u5c0d", "O"],
+    ["wrong text", "\u932f", "X"],
+    ["boolean true", true, "O"],
+    ["boolean false", false, "X"],
+    ["true string", "true", "O"],
+    ["false string", "false", "X"],
+  ])("accepts requested true/false slots with %s answers", (_label, answer, expected) => {
     const result = assertItemsPayload({
-      items: [trueFalseItem({ answer })],
+      items: [trueFalseItem({
+        answer,
+        correctAnswer: answer,
+        qualityMeta: trueFalseQualityMeta(expected),
+      })],
     }, 1, {
       expectedSlots: [slot(TRUE_FALSE_TYPE)],
     });
 
-    expectContractViolation(result, CONTRACT_VIOLATION_TYPES.TRUE_FALSE_ANSWER_INVALID, "answer");
+    expect(result.ok).toBe(true);
+    expect(result.items[0].answer).toBe(expected);
+    expect(result.items[0].correctAnswer).toBe(expected);
+  });
+
+  it.each([
+    ["O/X", ["O", "X"]],
+    ["yes/no", ["\u662f", "\u5426"]],
+    ["correct/wrong", ["\u5c0d", "\u932f"]],
+  ])("accepts requested true/false slots with %s options and removes them", (_label, options) => {
+    const result = assertItemsPayload({
+      items: [trueFalseItem({ options })],
+    }, 1, {
+      expectedSlots: [slot(TRUE_FALSE_TYPE)],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(hasOwnField(result.items[0], "options")).toBe(false);
   });
 
   it("rejects requested true/false slots that include choice options", () => {
@@ -486,6 +520,18 @@ describe("Worker items payload contract", () => {
     });
   });
 
+  it("rejects requested true/false slots with three or more options", () => {
+    const result = assertItemsPayload({
+      items: [trueFalseItem({
+        options: ["O", "X", "\u7121\u6cd5\u5224\u65b7"],
+      })],
+    }, 1, {
+      expectedSlots: [slot(TRUE_FALSE_TYPE)],
+    });
+
+    expectContractViolation(result, CONTRACT_VIOLATION_TYPES.TRUE_FALSE_OPTIONS_INVALID, "options");
+  });
+
   it("rejects requested true/false slots with non O/X answers", () => {
     const result = assertItemsPayload({
       items: [itemWithoutOptions({
@@ -508,6 +554,26 @@ describe("Worker items payload contract", () => {
       field: "answer",
       optionCode: "A",
     });
+  });
+
+  it("accepts requested true/false slots when model omits questionType", () => {
+    const result = assertItemsPayload({
+      items: [trueFalseItem({ questionType: undefined })],
+    }, 1, {
+      expectedSlots: [slot(TRUE_FALSE_TYPE)],
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("accepts requested true/false slots when model self-reports canonical type", () => {
+    const result = assertItemsPayload({
+      items: [trueFalseItem({ questionType: TRUE_FALSE_TYPE })],
+    }, 1, {
+      expectedSlots: [slot(TRUE_FALSE_TYPE)],
+    });
+
+    expect(result.ok).toBe(true);
   });
 
   it("rejects requested true/false slots when model self-reports choice", () => {

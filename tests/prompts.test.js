@@ -270,8 +270,9 @@ describe("worker prompts", () => {
     expect(prompt).toContain("## 2. 是非題");
     expect(prompt).toContain("答案限制為單一字元，僅能是 \"O\"");
     expect(prompt).toContain("是非題的 answer 必須是 \"O\" 或 \"X\"");
-    expect(prompt).toContain("是非題的 options 必須省略");
-    expect(prompt).toContain("不得輸出空陣列、2 個選項陣列或 A/B/C/D 選項");
+    expect(prompt).toContain("是非題的 options 應省略");
+    expect(prompt).toContain("只能是 O/X、是/否或對/錯");
+    expect(prompt).toContain("不得輸出 A/B/C/D 選項或 3 個以上 options");
     expect(prompt).not.toContain("選擇題形式 JSON contract");
     expect(prompt).not.toContain("options 必須是 JSON array");
     expect(prompt).not.toContain("answer 必須是 \"A\"、\"B\"、\"C\"、\"D\" 其中之一");
