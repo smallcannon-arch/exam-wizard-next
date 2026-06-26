@@ -168,11 +168,11 @@ describe("buildPlanSequences 混合題組與單題", () => {
 
 describe("questionTypes", () => {
   it("production default 正式開放 public typed allowlist", () => {
-    expect(CHOICE_ONLY_STOPGAP_ENABLED).toBe(false);
-    expect(MIXED_TYPES_ENABLED).toBe(true);
+    expect(CHOICE_ONLY_STOPGAP_ENABLED).toBe(true);
+    expect(MIXED_TYPES_ENABLED).toBe(false);
     expect(getQuestionTypeReleaseConfig()).toEqual({
-      choiceOnlyStopgapEnabled: false,
-      mixedTypesEnabled: true,
+      choiceOnlyStopgapEnabled: true,
+      mixedTypesEnabled: false,
     });
   });
 
@@ -192,11 +192,11 @@ describe("questionTypes", () => {
 
   it("未知科目不影響 public typed allowlist", () => {
     expect(matchSubject("天文")).toBe(null);
-    expect(getQuestionTypeOptions("天文")).toEqual(PUBLIC_MIXED_QUESTION_TYPE_OPTIONS);
+    expect(getQuestionTypeOptions("天文", mixedEnabled)).toEqual(PUBLIC_MIXED_QUESTION_TYPE_OPTIONS);
   });
 
   it("mixed enabled default 只帶出 public typed allowlist", () => {
-    const options = getQuestionTypeOptions("國語");
+    const options = getQuestionTypeOptions("國語", mixedEnabled);
     expect(options).toEqual(PUBLIC_MIXED_QUESTION_TYPE_OPTIONS);
     expect(options).toEqual([
       STANDARD_CHOICE_QUESTION_TYPE,
@@ -211,23 +211,23 @@ describe("questionTypes", () => {
   });
 
   it("mixed enabled default only public allowlist 題型被視為可生成", () => {
-    expect(isSupportedGenerationQuestionType(STANDARD_CHOICE_QUESTION_TYPE)).toBe(true);
-    expect(isSupportedGenerationQuestionType(TRUE_FALSE_QUESTION_TYPE)).toBe(true);
-    expect(isSupportedGenerationQuestionType(FILL_IN_QUESTION_TYPE)).toBe(true);
-    expect(isSupportedGenerationQuestionType(LITERACY_ASSESSMENT_TYPE)).toBe(true);
-    expect(isSupportedGenerationQuestionType("情境題組")).toBe(true);
+    expect(isSupportedGenerationQuestionType(STANDARD_CHOICE_QUESTION_TYPE, mixedEnabled)).toBe(true);
+    expect(isSupportedGenerationQuestionType(TRUE_FALSE_QUESTION_TYPE, mixedEnabled)).toBe(true);
+    expect(isSupportedGenerationQuestionType(FILL_IN_QUESTION_TYPE, mixedEnabled)).toBe(true);
+    expect(isSupportedGenerationQuestionType(LITERACY_ASSESSMENT_TYPE, mixedEnabled)).toBe(true);
+    expect(isSupportedGenerationQuestionType("情境題組", mixedEnabled)).toBe(true);
 
     for (const unsupported of ["注音", "改錯", "應用題", "圖表判讀題", "短答題", ""]) {
-      expect(isSupportedGenerationQuestionType(unsupported)).toBe(false);
+      expect(isSupportedGenerationQuestionType(unsupported, mixedEnabled)).toBe(false);
     }
   });
 
   it("題組入口只在 mixed enabled 的學力檢測題開放", () => {
     expect(canConfigureQuestionTypeGroup(LITERACY_ASSESSMENT_TYPE, stopgapOn)).toBe(false);
-    expect(canConfigureQuestionTypeGroup(LITERACY_ASSESSMENT_TYPE)).toBe(true);
-    expect(canConfigureQuestionTypeGroup(STANDARD_CHOICE_QUESTION_TYPE)).toBe(false);
-    expect(canConfigureQuestionTypeGroup(TRUE_FALSE_QUESTION_TYPE)).toBe(false);
-    expect(canConfigureQuestionTypeGroup(FILL_IN_QUESTION_TYPE)).toBe(false);
+    expect(canConfigureQuestionTypeGroup(LITERACY_ASSESSMENT_TYPE, mixedEnabled)).toBe(true);
+    expect(canConfigureQuestionTypeGroup(STANDARD_CHOICE_QUESTION_TYPE, mixedEnabled)).toBe(false);
+    expect(canConfigureQuestionTypeGroup(TRUE_FALSE_QUESTION_TYPE, mixedEnabled)).toBe(false);
+    expect(canConfigureQuestionTypeGroup(FILL_IN_QUESTION_TYPE, mixedEnabled)).toBe(false);
   });
 });
 
