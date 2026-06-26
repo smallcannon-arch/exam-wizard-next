@@ -513,4 +513,29 @@ describe("normalizeGeneratedItem", () => {
 
     expect(items.map((item) => item.question)).toEqual(["題目一", "題目二"]);
   });
+
+  it("preserves true/false answer shape without adding choice options", () => {
+    const item = normalizeGeneratedItem({
+      itemId: "Q-TF-001",
+      questionType: "是非題",
+      question: "水加熱會蒸發。",
+      answer: "O",
+    });
+
+    expect(item.answer).toBe("O");
+    expect(Object.prototype.hasOwnProperty.call(item, "options")).toBe(false);
+  });
+
+  it("preserves fill-in answer text without normalizing to A-D", () => {
+    const item = normalizeGeneratedItem({
+      itemId: "Q-FI-001",
+      questionType: "填充題",
+      question: "燃燒需要什麼氣體？",
+      options: ["氮氣", "氧氣", "二氧化碳", "氫氣"],
+      answer: "氧氣",
+    });
+
+    expect(item.answer).toBe("氧氣");
+    expect(item.options).toEqual(["氮氣", "氧氣", "二氧化碳", "氫氣"]);
+  });
 });

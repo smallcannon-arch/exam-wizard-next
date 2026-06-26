@@ -73,4 +73,38 @@ describe("renderAuditTable", () => {
     expect(html).toContain("第 1 題");
     expect(html).toContain("第 1(1)、1(2) 題");
   });
+
+  it("does not export stray non-choice options into the Word audit table", () => {
+    const html = renderAuditTable({
+      project: { subject: "自然", grade: "五年級", schoolYear: "114", semester: "第2學期", examType: "定期評量", teacherName: "江老師", range: "第一單元", version: "翰林版" },
+      objectives,
+      items: [
+        {
+          itemId: "Q-TF-001",
+          questionType: "是非題",
+          score: 2,
+          primaryObjectiveId: "O-001",
+          objectiveIds: ["O-001"],
+          options: ["SHOULD_NOT_EXPORT_TRUE_FALSE_A", "SHOULD_NOT_EXPORT_TRUE_FALSE_B"],
+        },
+        {
+          itemId: "Q-FI-001",
+          questionType: "填充題",
+          score: 2,
+          primaryObjectiveId: "O-002",
+          objectiveIds: ["O-002"],
+          options: ["SHOULD_NOT_EXPORT_FILL_A", "SHOULD_NOT_EXPORT_FILL_B"],
+        },
+      ],
+      sections: [
+        { title: "是非題", itemIds: ["Q-TF-001"] },
+        { title: "填充題", itemIds: ["Q-FI-001"] },
+      ],
+    });
+
+    expect(html).toContain("是非題");
+    expect(html).toContain("填充題");
+    expect(html).not.toContain("SHOULD_NOT_EXPORT_TRUE_FALSE_A");
+    expect(html).not.toContain("SHOULD_NOT_EXPORT_FILL_A");
+  });
 });

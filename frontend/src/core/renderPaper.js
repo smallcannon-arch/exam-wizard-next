@@ -1,20 +1,23 @@
 import { toStudentItem } from "./itemViews.js";
+import {
+  shouldDisplayOptionsForQuestionType,
+  usesAnswerBlank,
+} from "./questionTypes.js";
 
 function numberToChinese(index) {
   const chars = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
   return chars[index - 1] || String(index);
 }
 
-// 選擇題形式（含實驗探究題、圖表判讀題）在題號前加作答括號（如 (      )1.）。
-const CHOICE_LIKE_TYPES = ["選擇題", "是非題", "實驗探究題", "圖表判讀題", "學力檢測題", "閱讀測驗"];
-
 function answerBlank(questionType) {
-  return CHOICE_LIKE_TYPES.includes(questionType) ? "(      ) " : "";
+  return usesAnswerBlank(questionType) ? "(      ) " : "";
 }
 
-// 是非題不呈現選項；其餘只要有 options 就列出。
+// 題型決定是否允許呈現選項，避免是非／填充被印成 A-D。
 function showsOptions(item) {
-  return item.questionType !== "是非題" && Array.isArray(item.options) && item.options.length > 0;
+  return shouldDisplayOptionsForQuestionType(item.questionType)
+    && Array.isArray(item.options)
+    && item.options.length > 0;
 }
 
 function getSubNumber(itemId) {
