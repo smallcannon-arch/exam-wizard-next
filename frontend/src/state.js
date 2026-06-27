@@ -25,6 +25,7 @@ export function createInitialState() {
     sections: [],
     items: [],
     partialResult: null,
+    generationFailureDetails: null,
     messages: [],
     errors: [],
     checkedChineseSubcategories: ["正確字音", "確認字形", "分辨部首", "字詞釋義", "句型辨識", "文句組成", "常用修辭", "提取訊息", "推論訊息", "主題習寫"],

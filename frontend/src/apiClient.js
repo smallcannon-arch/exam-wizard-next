@@ -1,16 +1,27 @@
 import { getApiBaseUrl } from "./config.js";
+import {
+  extractHttpErrorDetails,
+  normalizeGenerationError,
+} from "./core/generationDiagnostics.js";
 import { normalizeGeneratedItems } from "./core/normalizeItem.js";
 
-function timeoutError(timeout) {
+function timeoutError(timeout, diagnostics) {
   return {
     ok: false,
     error: `Request timed out after ${Math.round(timeout / 1000)} seconds.`,
     errorCode: "CLIENT_TIMEOUT",
+    diagnostics,
   };
 }
 
-async function readJsonResponse(response) {
-  return response.json().catch(() => null);
+async function readResponseBody(response) {
+  const text = await response.text().catch(() => "");
+  if (!text) return { json: null, text: "" };
+  try {
+    return { json: JSON.parse(text), text };
+  } catch {
+    return { json: null, text };
+  }
 }
 
 function normalizeItemsIfPresent(data) {
@@ -23,7 +34,14 @@ function normalizeItemsIfPresent(data) {
   return data;
 }
 
-async function postJson({ apiBaseUrl = getApiBaseUrl(), path, body, timeoutMs = 180000 }) {
+async function postJson({
+  apiBaseUrl = getApiBaseUrl(),
+  path,
+  body,
+  timeoutMs = 180000,
+  phase = "request",
+  jobId = "",
+}) {
   const controller = new AbortController();
   const timeout = Math.max(1000, Number(timeoutMs) || 180000);
   const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -40,28 +58,52 @@ async function postJson({ apiBaseUrl = getApiBaseUrl(), path, body, timeoutMs = 
 
     clearTimeout(timeoutId);
 
-    const data = await readJsonResponse(response);
+    const responseBody = await readResponseBody(response);
+    const data = responseBody.json;
 
     if (!response.ok) {
+      const httpDetails = extractHttpErrorDetails(response, responseBody);
+      const diagnostics = normalizeGenerationError(null, {
+        phase,
+        endpointPath: path,
+        ...httpDetails,
+        jobId: httpDetails.jobId || jobId,
+      });
       return {
         ok: false,
-        error: data?.error || `HTTP ${response.status}`,
-        errorCode: data?.errorCode,
+        error: diagnostics.errorMessage || `HTTP ${response.status}`,
+        errorCode: diagnostics.errorCode,
+        diagnostics,
       };
     }
 
     return normalizeItemsIfPresent(data);
   } catch (error) {
     clearTimeout(timeoutId);
-    if (error.name === "AbortError") return timeoutError(timeout);
+    const diagnostics = normalizeGenerationError(error, {
+      phase,
+      endpointPath: path,
+      jobId,
+      errorCode: error.name === "AbortError" ? "CLIENT_TIMEOUT" : "",
+      isAbort: error.name === "AbortError",
+      isNetworkError: error.name !== "AbortError",
+    });
+    if (error.name === "AbortError") return timeoutError(timeout, diagnostics);
     return {
       ok: false,
       error: error.message || String(error),
+      diagnostics,
     };
   }
 }
 
-async function getJson({ apiBaseUrl = getApiBaseUrl(), path, timeoutMs = 60000 }) {
+async function getJson({
+  apiBaseUrl = getApiBaseUrl(),
+  path,
+  timeoutMs = 60000,
+  phase = "request",
+  jobId = "",
+}) {
   const controller = new AbortController();
   const timeout = Math.max(1000, Number(timeoutMs) || 60000);
   const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -74,23 +116,41 @@ async function getJson({ apiBaseUrl = getApiBaseUrl(), path, timeoutMs = 60000 }
 
     clearTimeout(timeoutId);
 
-    const data = await readJsonResponse(response);
+    const responseBody = await readResponseBody(response);
+    const data = responseBody.json;
 
     if (!response.ok) {
+      const httpDetails = extractHttpErrorDetails(response, responseBody);
+      const diagnostics = normalizeGenerationError(null, {
+        phase,
+        endpointPath: path,
+        ...httpDetails,
+        jobId: httpDetails.jobId || jobId,
+      });
       return {
         ok: false,
-        error: data?.error || `HTTP ${response.status}`,
-        errorCode: data?.errorCode,
+        error: diagnostics.errorMessage || `HTTP ${response.status}`,
+        errorCode: diagnostics.errorCode,
+        diagnostics,
       };
     }
 
     return normalizeItemsIfPresent(data);
   } catch (error) {
     clearTimeout(timeoutId);
-    if (error.name === "AbortError") return timeoutError(timeout);
+    const diagnostics = normalizeGenerationError(error, {
+      phase,
+      endpointPath: path,
+      jobId,
+      errorCode: error.name === "AbortError" ? "CLIENT_TIMEOUT" : "",
+      isAbort: error.name === "AbortError",
+      isNetworkError: error.name !== "AbortError",
+    });
+    if (error.name === "AbortError") return timeoutError(timeout, diagnostics);
     return {
       ok: false,
       error: error.message || String(error),
+      diagnostics,
     };
   }
 }
@@ -114,6 +174,7 @@ export function generateItemsViaApi({
       checkedChineseSubcategories,
     },
     timeoutMs: 300000,
+    phase: "generate",
   });
 }
 
@@ -136,6 +197,7 @@ export function createGenerationJobViaApi({
       checkedChineseSubcategories,
     },
     timeoutMs: 30000,
+    phase: "create",
   });
 }
 
@@ -147,6 +209,8 @@ export function getGenerationJobStatusViaApi({
     apiBaseUrl,
     path: `/generation-jobs/${encodeURIComponent(jobId)}`,
     timeoutMs: 30000,
+    phase: "poll",
+    jobId,
   });
 }
 
@@ -158,6 +222,8 @@ export function getGenerationJobResultViaApi({
     apiBaseUrl,
     path: `/generation-jobs/${encodeURIComponent(jobId)}/result`,
     timeoutMs: 60000,
+    phase: "result",
+    jobId,
   });
 }
 
