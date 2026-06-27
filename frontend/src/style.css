@@ -288,6 +288,31 @@ button.danger {
   padding: 8px 10px;
   font-weight: 600;
 }
+.generation-diagnostics {
+  background: #fffaf5;
+  color: var(--ink);
+  border: 1px solid #efcaa7;
+}
+.generation-diagnostics summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--danger);
+}
+.generation-diagnostics p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+.generation-diagnostics table {
+  font-size: 0.88rem;
+}
+.generation-diagnostics th {
+  width: 160px;
+  white-space: nowrap;
+}
+.generation-diagnostics button {
+  margin-top: 10px;
+}
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .table-wrap { overflow-x: auto; }

@@ -18,6 +18,11 @@ import { validateGeneratedPaper } from "./core/validateGeneratedPaper.js";
 import { buildAuditRows } from "./core/auditRows.js";
 import { renderAuditTable } from "./core/renderAuditTable.js";
 import { toReviewItem } from "./core/itemViews.js";
+import {
+  buildSafeGenerationFailureDetails,
+  getGenerationFailureDisplayRows,
+  serializeGenerationFailureDetails,
+} from "./core/generationDiagnostics.js";
 import { buildGenerationFailureMessages, createGenerationProgress, getGenerationProgressView } from "./core/generationProgress.js";
 import { createGenerationBatches, mergeSerialBatchItems, shouldUseSerialBatching } from "./core/generationBatching.js";
 import { ASYNC_GENERATION_DEFAULTS, createAsyncInitialProgress, isAsyncGenerationFailure, isAsyncGenerationSuccess, progressFromAsyncStatus, shouldUseAsyncGeneration } from "./core/asyncGeneration.js";
@@ -56,6 +61,25 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function warnGenerationFailureDiagnostics(details) {
+  if (!details || typeof console === "undefined" || typeof console.warn !== "function") return;
+  console.warn("Generation failure diagnostics", details);
+}
+
+function renderGenerationFailureDiagnostics(details) {
+  if (!details) return "";
+  const rows = getGenerationFailureDisplayRows(details)
+    .map(([label, value]) => `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`)
+    .join("");
+
+  return `<details class="notice generation-diagnostics" data-generation-diagnostics>
+    <summary>錯誤診斷</summary>
+    <p>以下只包含安全 metadata，可提供給管理者協助排查。</p>
+    <table><tbody>${rows}</tbody></table>
+    <button class="secondary" type="button" data-copy-generation-diagnostics>複製診斷資訊</button>
+  </details>`;
 }
 
 function setState(patch) {
@@ -337,6 +361,7 @@ async function requestGeneratedItemsWithAsyncJob(intents) {
       ok: false,
       error: created?.error || "Async generation job could not be created.",
       errorCode: created?.errorCode,
+      diagnostics: created?.diagnostics,
     };
   }
 
@@ -356,6 +381,7 @@ async function requestGeneratedItemsWithAsyncJob(intents) {
         ok: false,
         error: status?.error || "Async generation status could not be read.",
         errorCode: status?.errorCode,
+        diagnostics: status?.diagnostics,
       };
     }
 
@@ -375,6 +401,7 @@ async function requestGeneratedItemsWithAsyncJob(intents) {
           ok: false,
           error: result?.error || "Async generation result could not be read.",
           errorCode: result?.errorCode,
+          diagnostics: result?.diagnostics,
         };
       }
       return result;
@@ -385,6 +412,7 @@ async function requestGeneratedItemsWithAsyncJob(intents) {
         ok: false,
         error: status.error || "Async generation failed.",
         errorCode: status.errorCode,
+        diagnostics: status.diagnostics,
       };
     }
   }
@@ -393,6 +421,15 @@ async function requestGeneratedItemsWithAsyncJob(intents) {
     ok: false,
     error: "Async generation polling timed out.",
     errorCode: "CLIENT_TIMEOUT",
+    diagnostics: buildSafeGenerationFailureDetails({
+      phase: "poll",
+      endpointPath: `/generation-jobs/${encodeURIComponent(created.jobId)}`,
+      jobId: created.jobId,
+      errorCode: "CLIENT_TIMEOUT",
+      errorMessage: "Async generation polling timed out.",
+      isAbort: true,
+      retryable: true,
+    }),
   };
 }
 
@@ -511,7 +548,7 @@ async function generateItems() {
           currentBatchItems: generationBatches[0]?.requestedCount || 0,
         }
       : {});
-  setState({ errors: [], messages: [], partialResult: null });
+  setState({ errors: [], messages: [], partialResult: null, generationFailureDetails: null });
   updateGenerationProgress("generating");
 
   try {
@@ -523,9 +560,11 @@ async function generateItems() {
       const result = await requestGeneratedItemsWithAsyncJob(state.intents);
 
       if (!result?.ok || !Array.isArray(result.items)) {
+        warnGenerationFailureDiagnostics(result?.diagnostics);
         setState({
           errors: buildGenerationFailureMessages(result?.error || result?.errorCode, { type: "network" }),
           messages: [],
+          generationFailureDetails: result?.diagnostics || null,
         });
         return;
       }
@@ -1073,6 +1112,7 @@ function renderMessages() {
   return [
     ...state.messages.map((message) => `<div class="notice success">${escapeHtml(message)}</div>`),
     ...state.errors.map((error) => `<div class="notice error">${escapeHtml(error)}</div>`),
+    renderGenerationFailureDiagnostics(state.generationFailureDetails),
   ].join("");
 }
 
@@ -2094,6 +2134,22 @@ app.addEventListener("click", (event) => {
   const stepButton = event.target.closest("[data-step]");
   const nextStepButton = event.target.closest("[data-next-step]");
   const actionButton = event.target.closest("[data-action]");
+
+  const copyDiagnosticsBtn = event.target.closest("[data-copy-generation-diagnostics]");
+  if (copyDiagnosticsBtn) {
+    event.stopPropagation();
+    const diagnosticsText = serializeGenerationFailureDetails(state.generationFailureDetails);
+    if (typeof navigator !== "undefined" && navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(diagnosticsText)
+        .then(() => {
+          alert("錯誤診斷資訊已複製。");
+        })
+        .catch((err) => {
+          console.warn("無法複製診斷資訊", err);
+        });
+    }
+    return;
+  }
 
   const copyPromptBtn = event.target.closest("[data-copy-prompt]");
   if (copyPromptBtn) {
