@@ -91,6 +91,16 @@ describe("validatePlan", () => {
     expect(mixed.totalItems).toBe(44);
   });
 
+  it("mixed enabled 時允許是非題與填充題單題 blueprint", () => {
+    expect(validatePlan([
+      { questionType: TRUE_FALSE_QUESTION_TYPE, count: 4, score: 2 },
+    ], null, mixedEnabled).ok).toBe(true);
+
+    expect(validatePlan([
+      { questionType: FILL_IN_QUESTION_TYPE, count: 4, score: 2 },
+    ], null, mixedEnabled).ok).toBe(true);
+  });
+
   it("mixed enabled 時拒絕 legacy preset 與 unknown 題型", () => {
     expect(validatePlan([
       { questionType: "應用題", count: 2, score: 5 },
@@ -108,6 +118,14 @@ describe("validatePlan", () => {
 
     expect(validatePlan([
       { questionType: STANDARD_CHOICE_QUESTION_TYPE, count: 2, score: 2, isGroup: true, groupCount: 2, subScores: [2, 3] },
+    ], null, mixedEnabled).ok).toBe(false);
+
+    expect(validatePlan([
+      { questionType: TRUE_FALSE_QUESTION_TYPE, count: 2, score: 2, isGroup: true, groupCount: 2, subScores: [2, 3] },
+    ], null, mixedEnabled).ok).toBe(false);
+
+    expect(validatePlan([
+      { questionType: FILL_IN_QUESTION_TYPE, count: 2, score: 2, isGroup: true, groupCount: 2, subScores: [2, 3] },
     ], null, mixedEnabled).ok).toBe(false);
 
     expect(validatePlan([
@@ -168,12 +186,23 @@ describe("buildPlanSequences 混合題組與單題", () => {
 
 describe("questionTypes", () => {
   it("production default 正式開放 public typed allowlist", () => {
-    expect(CHOICE_ONLY_STOPGAP_ENABLED).toBe(true);
-    expect(MIXED_TYPES_ENABLED).toBe(false);
+    expect(CHOICE_ONLY_STOPGAP_ENABLED).toBe(false);
+    expect(MIXED_TYPES_ENABLED).toBe(true);
     expect(getQuestionTypeReleaseConfig()).toEqual({
-      choiceOnlyStopgapEnabled: true,
-      mixedTypesEnabled: false,
+      choiceOnlyStopgapEnabled: false,
+      mixedTypesEnabled: true,
     });
+    expect(getQuestionTypeOptions("國語")).toEqual([
+      STANDARD_CHOICE_QUESTION_TYPE,
+      TRUE_FALSE_QUESTION_TYPE,
+      FILL_IN_QUESTION_TYPE,
+      LITERACY_ASSESSMENT_TYPE,
+    ]);
+    expect(isSupportedGenerationQuestionType(TRUE_FALSE_QUESTION_TYPE)).toBe(true);
+    expect(isSupportedGenerationQuestionType(FILL_IN_QUESTION_TYPE)).toBe(true);
+    expect(isSupportedGenerationQuestionType(LITERACY_ASSESSMENT_TYPE)).toBe(true);
+    expect(isSupportedGenerationQuestionType("應用題")).toBe(false);
+    expect(isSupportedGenerationQuestionType("短答題")).toBe(false);
   });
 
   it("stopgap override 只帶出標準四選一選擇題", () => {
